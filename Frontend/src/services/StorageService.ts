@@ -1,4 +1,31 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Simple in-memory storage for development
+// In production, replace with @react-native-async-storage/async-storage
+const AsyncStorage = {
+  _storage: new Map<string, string>(),
+  
+  setItem: async (key: string, value: string) => {
+    AsyncStorage._storage.set(key, value);
+    return Promise.resolve();
+  },
+  
+  getItem: async (key: string) => {
+    return Promise.resolve(AsyncStorage._storage.get(key) || null);
+  },
+  
+  removeItem: async (key: string) => {
+    AsyncStorage._storage.delete(key);
+    return Promise.resolve();
+  },
+  
+  clear: async () => {
+    AsyncStorage._storage.clear();
+    return Promise.resolve();
+  },
+  
+  getAllKeys: async () => {
+    return Promise.resolve(Array.from(AsyncStorage._storage.keys()));
+  }
+};
 
 export class StorageService {
   private static instance: StorageService;
