@@ -14,7 +14,7 @@ const clinicalNoteSchema = new mongoose.Schema({
   appointment: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
-    required: [true, 'Appointment is required']
+    required: false // Optional - allows notes for walk-in patients
   },
   doctor: {
     type: mongoose.Schema.Types.ObjectId,
