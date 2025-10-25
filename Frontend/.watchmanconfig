@@ -1,0 +1,10 @@
+{
+  "ignore_dirs": [
+    "vendor",
+    "ios/build",
+    "android/build",
+    "android/.gradle",
+    "android/app/build"
+  ]
+}
+

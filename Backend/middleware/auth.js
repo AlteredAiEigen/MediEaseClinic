@@ -45,7 +45,7 @@ const protect = async (req, res, next) => {
     } catch (error) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid token.'
+        message: 'Invalid token'
       });
     }
   } catch (error) {
@@ -67,6 +67,13 @@ const authorize = (...roles) => {
     }
 
     if (!roles.includes(req.user.role)) {
+      // Special message for admin role
+      if (roles.includes('admin')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Admin role required.'
+        });
+      }
       return res.status(403).json({
         success: false,
         message: `Access denied. Required role: ${roles.join(' or ')}. Your role: ${req.user.role}`

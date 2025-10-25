@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const recordingSchema = new mongoose.Schema({
   recordingId: {
     type: String,
-    unique: true,
     required: false,
     uppercase: true
   },
@@ -100,7 +99,7 @@ const recordingSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-recordingSchema.index({ recordingId: 1 });
+recordingSchema.index({ recordingId: 1 }, { unique: true });
 recordingSchema.index({ patient: 1 });
 recordingSchema.index({ appointment: 1 });
 recordingSchema.index({ doctor: 1 });

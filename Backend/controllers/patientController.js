@@ -6,9 +6,7 @@ const { validationResult } = require('express-validator');
 // @access  Private (Doctor, Receptionist, Admin)
 const getPatients = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = req.pagination;
     const search = req.query.search || '';
     const sortBy = req.query.sortBy || 'updatedAt';
     const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
@@ -41,8 +39,6 @@ const getPatients = async (req, res) => {
       success: true,
       count: patients.length,
       total,
-      page,
-      pages: Math.ceil(total / limit),
       data: patients
     });
   } catch (error) {
@@ -60,6 +56,14 @@ const getPatients = async (req, res) => {
 // @access  Private (Doctor, Receptionist, Admin)
 const getPatient = async (req, res) => {
   try {
+    // Check if ID is valid MongoDB ObjectId
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ID format'
+      });
+    }
+
     const patient = await Patient.findById(req.params.id);
 
     if (!patient) {
@@ -78,6 +82,87 @@ const getPatient = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch patient',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get patient full profile with appointment history
+// @route   GET /api/patients/:id/full-profile
+// @access  Private (Doctor, Admin)
+const getPatientFullProfile = async (req, res) => {
+  try {
+    // Check if ID is valid MongoDB ObjectId
+    if (!req.params.id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid ID format'
+      });
+    }
+
+    const patient = await Patient.findById(req.params.id)
+      .populate({
+        path: 'appointmentHistory',
+        populate: [
+          { path: 'doctor', select: 'firstName lastName speciality' },
+          { path: 'scheduledBy', select: 'firstName lastName' }
+        ]
+      });
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: patient
+    });
+  } catch (error) {
+    console.error('Get patient full profile error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch patient profile',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Get patient appointments
+// @route   GET /api/patients/:id/appointments
+// @access  Private (Doctor, Receptionist, Admin)
+const getPatientAppointments = async (req, res) => {
+  try {
+    const patient = await Patient.findById(req.params.id)
+      .populate({
+        path: 'appointmentHistory',
+        populate: [
+          { path: 'doctor', select: 'firstName lastName speciality' },
+          { path: 'scheduledBy', select: 'firstName lastName' }
+        ]
+      });
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      count: patient.appointmentHistory ? patient.appointmentHistory.length : 0,
+      data: {
+        appointments: patient.appointmentHistory || []
+      }
+    });
+  } catch (error) {
+    console.error('Get patient appointments error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch patient appointments',
       error: error.message
     });
   }
@@ -266,13 +351,178 @@ const searchPatients = async (req, res) => {
     res.status(200).json({
       success: true,
       count: patients.length,
-      data: patients
+      data: {
+        patients,
+        pagination: {
+          current: 1,
+          pages: 1,
+          total: patients.length,
+          limit: patients.length
+        }
+      }
     });
   } catch (error) {
     console.error('Search patients error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to search patients',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update patient vitals
+// @route   PUT /api/patients/:id/vitals
+// @access  Private (Doctor, Receptionist, Admin)
+const updatePatientVitals = async (req, res) => {
+  try {
+    const { bloodPressure, heartRate, temperature, oxygenSaturation, weight, height, bmi } = req.body;
+
+    const patient = await Patient.findByIdAndUpdate(
+      req.params.id,
+      { 
+        vitals: {
+          bloodPressure,
+          heartRate,
+          temperature,
+          oxygenSaturation,
+          weight,
+          height,
+          bmi
+        }
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Patient vitals updated successfully',
+      data: patient
+    });
+  } catch (error) {
+    console.error('Update patient vitals error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update patient vitals',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Update patient medical history
+// @route   PUT /api/patients/:id/medical-history
+// @access  Private (Doctor, Admin)
+const updatePatientMedicalHistory = async (req, res) => {
+  try {
+    const { 
+      medicalHistory, 
+      allergies, 
+      familyHistory, 
+      previousSurgeries, 
+      currentMedication,
+      medicationDosage,
+      medicationFrequency,
+      lastMedicationReview
+    } = req.body;
+
+    const updateData = {};
+    if (medicalHistory !== undefined) updateData.medicalHistory = medicalHistory;
+    if (allergies !== undefined) updateData.allergies = allergies;
+    if (familyHistory !== undefined) updateData.familyHistory = familyHistory;
+    if (previousSurgeries !== undefined) updateData.previousSurgeries = previousSurgeries;
+    if (currentMedication !== undefined) updateData.currentMedication = currentMedication;
+    if (medicationDosage !== undefined) updateData.medicationDosage = medicationDosage;
+    if (medicationFrequency !== undefined) updateData.medicationFrequency = medicationFrequency;
+    if (lastMedicationReview !== undefined) updateData.lastMedicationReview = lastMedicationReview;
+
+    const patient = await Patient.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    );
+
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Patient medical history updated successfully',
+      data: patient
+    });
+  } catch (error) {
+    console.error('Update patient medical history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update patient medical history',
+      error: error.message
+    });
+  }
+};
+
+// @desc    Quick patient registration (for walk-ins)
+// @route   POST /api/patients/quick-register
+// @access  Private (Receptionist, Admin)
+const quickRegisterPatient = async (req, res) => {
+  try {
+    const { firstName, lastName, phone, age, gender, bloodGroup } = req.body;
+
+    if (!firstName || !lastName || !phone || !age || !gender || !bloodGroup) {
+      return res.status(400).json({
+        success: false,
+        message: 'Required fields: firstName, lastName, phone, age, gender, bloodGroup'
+      });
+    }
+
+    // Check if patient with phone exists
+    const existingPatient = await Patient.findOne({ phone });
+    if (existingPatient) {
+      return res.status(200).json({
+        success: true,
+        message: 'Patient already exists',
+        data: existingPatient,
+        existing: true
+      });
+    }
+
+    // Create temporary email from phone (remove + and any special chars)
+    const cleanPhone = phone.replace(/\D/g, ''); // Remove non-digits
+    const tempEmail = `patient${cleanPhone}@temp.mediease.com`;
+
+    // Create minimal patient record
+    const patient = await Patient.create({
+      firstName,
+      lastName,
+      phone,
+      age,
+      gender,
+      bloodGroup,
+      email: tempEmail,
+      address: 'To be updated',
+      dateOfBirth: 'To be updated'
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Patient registered successfully',
+      data: patient,
+      existing: false
+    });
+  } catch (error) {
+    console.error('Quick register patient error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to register patient',
       error: error.message
     });
   }
@@ -340,9 +590,14 @@ const getPatientStats = async (req, res) => {
 module.exports = {
   getPatients,
   getPatient,
+  getPatientFullProfile,
+  getPatientAppointments,
   getPatientByPatientId,
   createPatient,
   updatePatient,
+  updatePatientVitals,
+  updatePatientMedicalHistory,
+  quickRegisterPatient,
   deletePatient,
   searchPatients,
   getPatientStats

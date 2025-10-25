@@ -188,10 +188,27 @@ describe('Admin API', () => {
     });
 
     it('should not create user with existing email', async () => {
+      // First create a user with the test email
+      const existingUserData = {
+        firstName: 'Existing',
+        lastName: 'User',
+        email: 'test@example.com',
+        password: 'Password@123',
+        role: 'receptionist',
+        phone: '+1234567890'
+      };
+
+      await request(app)
+        .post('/api/admin/users')
+        .set(getAuthHeaders(adminToken))
+        .send(existingUserData)
+        .expect(201);
+
+      // Now try to create another user with the same email
       const userData = {
         firstName: 'New',
         lastName: 'User',
-        email: 'test@example.com', // Existing email
+        email: 'test@example.com', // Same email as existing user
         password: 'Password@123',
         role: 'receptionist',
         phone: '+1234567890'
@@ -280,8 +297,11 @@ describe('Admin API', () => {
 
   describe('DELETE /api/admin/users/:id', () => {
     it('should delete user as admin', async () => {
+      // Create a separate user for deletion (not used in appointments)
+      const userToDelete = await createTestUser({ role: 'receptionist' });
+
       const response = await request(app)
-        .delete(`/api/admin/users/${doctor._id}`)
+        .delete(`/api/admin/users/${userToDelete._id}`)
         .set(getAuthHeaders(adminToken))
         .expect(200);
 

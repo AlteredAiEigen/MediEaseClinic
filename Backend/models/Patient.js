@@ -22,8 +22,7 @@ const lifestyleSchema = new mongoose.Schema({
 const patientSchema = new mongoose.Schema({
   patientId: {
     type: String,
-    unique: true,
-    required: true,
+    required: false, // Will be auto-generated
     uppercase: true
   },
   firstName: {
@@ -142,8 +141,16 @@ patientSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
 });
 
+// Virtual for appointment history
+patientSchema.virtual('appointmentHistory', {
+  ref: 'Appointment',
+  localField: '_id',
+  foreignField: 'patient',
+  options: { sort: { date: -1, time: -1 } }
+});
+
 // Indexes for better query performance
-patientSchema.index({ patientId: 1 });
+patientSchema.index({ patientId: 1 }, { unique: true });
 patientSchema.index({ email: 1 });
 patientSchema.index({ phone: 1 });
 patientSchema.index({ firstName: 1, lastName: 1 });

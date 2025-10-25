@@ -5,9 +5,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ViewStyle,
+  Platform,
 } from 'react-native';
 import { useTheme } from '../themes/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ModernHeaderProps {
   title?: string;
@@ -33,12 +33,13 @@ const ModernHeader: React.FC<ModernHeaderProps> = ({
   transparent = false,
 }) => {
   const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  // Use a simple top padding for safe area (approximate for most devices)
+  const safeAreaTop = Platform.OS === 'ios' ? 44 : 24;
 
   const headerStyles: ViewStyle[] = [
     styles.container,
     {
-      paddingTop: insets.top + theme.spacing.md,
+      paddingTop: safeAreaTop + theme.spacing.md,
       backgroundColor: transparent ? 'transparent' : theme.colors.surface,
     },
     style,

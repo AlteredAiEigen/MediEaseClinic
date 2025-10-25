@@ -263,7 +263,7 @@ const logout = async (req, res) => {
     // For now, we'll just return a success message
     res.status(200).json({
       success: true,
-      message: 'Logged out successfully'
+      message: 'Logout successful'
     });
   } catch (error) {
     console.error('Logout error:', error);
@@ -275,8 +275,66 @@ const logout = async (req, res) => {
   }
 };
 
+// @desc    Register clinic admin
+// @route   POST /api/auth/register/admin
+// @access  Public
+const registerAdmin = async (req, res) => {
+  try {
+    const { clinicName, adminEmail, adminPassword, doctorRange } = req.body;
+
+    // Check if admin email already exists
+    const existingAdmin = await User.findByEmail(adminEmail);
+    if (existingAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Admin email already exists'
+      });
+    }
+
+    // Create admin user
+    const admin = await User.create({
+      firstName: 'Admin',
+      lastName: 'User',
+      email: adminEmail,
+      password: adminPassword,
+      role: 'admin',
+      phone: null
+    });
+
+    // Create clinic profile (you might want to create a separate Clinic model)
+    const clinic = {
+      id: `clinic-${Date.now()}`,
+      clinicName,
+      adminEmail,
+      doctorRange: doctorRange || '1-10',
+      createdAt: new Date().toISOString()
+    };
+
+    // Generate token
+    const token = generateToken(admin._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Clinic admin registered successfully',
+      data: {
+        clinic,
+        admin: admin.getPublicProfile(),
+        token
+      }
+    });
+  } catch (error) {
+    console.error('Admin registration error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Admin registration failed',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
+  registerAdmin,
   login,
   getMe,
   updateProfile,

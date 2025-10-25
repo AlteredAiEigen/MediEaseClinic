@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const appointmentSchema = new mongoose.Schema({
   appointmentId: {
     type: String,
-    unique: true,
     required: true,
     uppercase: true
   },
@@ -90,7 +89,7 @@ const appointmentSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-appointmentSchema.index({ appointmentId: 1 });
+appointmentSchema.index({ appointmentId: 1 }, { unique: true });
 appointmentSchema.index({ patient: 1 });
 appointmentSchema.index({ doctor: 1 });
 appointmentSchema.index({ date: 1 });

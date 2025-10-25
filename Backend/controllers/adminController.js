@@ -264,7 +264,11 @@ const createUser = async (req, res) => {
     sendSuccess(res, 'User created successfully', { user: userResponse }, 201);
   } catch (error) {
     console.error('Error creating user:', error);
-    sendError(res, 'Failed to create user', error.message);
+    if (error.name === 'ValidationError') {
+      sendError(res, 'Validation failed', null, 400);
+    } else {
+      sendError(res, 'Failed to create user', error.message);
+    }
   }
 };
 
@@ -478,7 +482,7 @@ const getClinicalNotes = async (req, res) => {
     };
 
     sendSuccess(res, 'Clinical notes retrieved successfully', {
-      clinicalNotes,
+      notes: clinicalNotes,
       pagination
     });
   } catch (error) {

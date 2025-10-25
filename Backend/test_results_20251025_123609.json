@@ -1,0 +1,2168 @@
+{
+  "test_run": "2025-10-25T12:36:09.597127",
+  "total_tests": 37,
+  "passed": 35,
+  "failed": 2,
+  "results": [
+    {
+      "name": "Register Admin Account",
+      "method": "POST",
+      "endpoint": "/api/auth/register/admin",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Clinic admin registered successfully",
+        "data": {
+          "clinic": {
+            "id": "clinic-1761375961406",
+            "clinicName": "HealthCare Plus Clinic",
+            "adminEmail": "admin20251025123601@healthcareplus.com",
+            "doctorRange": "10-20",
+            "createdAt": "2025-10-25T07:06:01.406Z"
+          },
+          "admin": {
+            "firstName": "Admin",
+            "lastName": "User",
+            "email": "admin20251025123601@healthcareplus.com",
+            "role": "admin",
+            "phone": null,
+            "isActive": true,
+            "profileImage": null,
+            "experience": 0,
+            "permissions": [],
+            "_id": "68fc76d9c752cb9e8248d927",
+            "createdAt": "2025-10-25T07:06:01.072Z",
+            "updatedAt": "2025-10-25T07:06:01.072Z",
+            "__v": 0,
+            "fullName": "Admin User",
+            "id": "68fc76d9c752cb9e8248d927"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmQ5Yzc1MmNiOWU4MjQ4ZDkyNyIsImlhdCI6MTc2MTM3NTk2MSwiZXhwIjoxNzYxOTgwNzYxfQ.lS0wMp1uYNeWgEm7O0V3HAmOPBsTx065JlpWnQuLy0I"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:01.410524"
+    },
+    {
+      "name": "Admin Login",
+      "method": "POST",
+      "endpoint": "/api/auth/login",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Login successful",
+        "data": {
+          "user": {
+            "_id": "68fc748aae981676e5953669",
+            "firstName": "Admin",
+            "lastName": "User",
+            "email": "admin@healthcareplus.com",
+            "role": "admin",
+            "phone": null,
+            "isActive": true,
+            "profileImage": null,
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T06:56:10.154Z",
+            "updatedAt": "2025-10-25T07:06:01.781Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:06:01.780Z",
+            "fullName": "Admin User",
+            "id": "68fc748aae981676e5953669"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NDhhYWU5ODE2NzZlNTk1MzY2OSIsImlhdCI6MTc2MTM3NTk2MSwiZXhwIjoxNzYxOTgwNzYxfQ.j7waZWOPkB1NBaM39Mjuptzu0gy5XuAthIroW1XCIcw"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:01.832223"
+    },
+    {
+      "name": "Add Doctor - Dr. Sarah Johnson",
+      "method": "POST",
+      "endpoint": "/api/auth/register",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "User registered successfully",
+        "data": {
+          "user": {
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "email": "dr.sarah20251025123601@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+12025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "CARD20251025123601",
+            "experience": 0,
+            "permissions": [],
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "createdAt": "2025-10-25T07:06:01.928Z",
+            "updatedAt": "2025-10-25T07:06:01.928Z",
+            "__v": 0,
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmQ5Yzc1MmNiOWU4MjQ4ZDkyZCIsImlhdCI6MTc2MTM3NTk2MiwiZXhwIjoxNzYxOTgwNzYyfQ.NdL_D3eXgV-wF2T49RsYWVXy_3S0OSxhRetW4ml3l5M"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:02.276015"
+    },
+    {
+      "name": "Add Doctor - Dr. Michael Chen",
+      "method": "POST",
+      "endpoint": "/api/auth/register",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "User registered successfully",
+        "data": {
+          "user": {
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "email": "dr.chen20251025123601@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+22025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "General Medicine",
+            "licenseNumber": "GM20251025123601",
+            "experience": 0,
+            "permissions": [],
+            "_id": "68fc76dac752cb9e8248d931",
+            "createdAt": "2025-10-25T07:06:02.360Z",
+            "updatedAt": "2025-10-25T07:06:02.360Z",
+            "__v": 0,
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmRhYzc1MmNiOWU4MjQ4ZDkzMSIsImlhdCI6MTc2MTM3NTk2MiwiZXhwIjoxNzYxOTgwNzYyfQ.tyUuyc6Yz0hdkJXPXI_cptOcod8MDUud6XdxSM8WW4Y"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:02.702881"
+    },
+    {
+      "name": "Add Receptionist - Emily Brown",
+      "method": "POST",
+      "endpoint": "/api/auth/register",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "User registered successfully",
+        "data": {
+          "user": {
+            "firstName": "Emily",
+            "lastName": "Brown",
+            "email": "emily20251025123601@healthcareplus.com",
+            "role": "receptionist",
+            "phone": "+32025102512",
+            "isActive": true,
+            "profileImage": null,
+            "experience": 0,
+            "permissions": [],
+            "_id": "68fc76dac752cb9e8248d935",
+            "createdAt": "2025-10-25T07:06:02.789Z",
+            "updatedAt": "2025-10-25T07:06:02.789Z",
+            "__v": 0,
+            "fullName": "Emily Brown",
+            "id": "68fc76dac752cb9e8248d935"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmRhYzc1MmNiOWU4MjQ4ZDkzNSIsImlhdCI6MTc2MTM3NTk2MywiZXhwIjoxNzYxOTgwNzYzfQ.HMdFFTe6Jp7wZ9D33QYJyYb_c--EaMJb_5tsKQW7Fno"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:03.153184"
+    },
+    {
+      "name": "List All Doctors",
+      "method": "GET",
+      "endpoint": "/api/doctors",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 10,
+        "data": [
+          {
+            "_id": "68fc609726254b69c425af49",
+            "firstName": "Dr. Jane",
+            "lastName": "Smith",
+            "email": "doctor@medieaseclinic.com",
+            "role": "doctor",
+            "phone": "+1-555-0002",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiologist",
+            "licenseNumber": "MD123456",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T05:31:03.073Z",
+            "updatedAt": "2025-10-25T05:31:03.073Z",
+            "__v": 0,
+            "fullName": "Dr. Jane Smith",
+            "id": "68fc609726254b69c425af49"
+          },
+          {
+            "_id": "68fc65b01bca920dc1bc710f",
+            "firstName": "Dr. Jane",
+            "lastName": "Smith",
+            "email": "doctor@clinic.com",
+            "role": "doctor",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "DOC123456",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T05:52:48.105Z",
+            "updatedAt": "2025-10-25T05:52:48.105Z",
+            "__v": 0,
+            "fullName": "Dr. Jane Smith",
+            "id": "68fc65b01bca920dc1bc710f"
+          },
+          {
+            "_id": "68fc7617fb41ad63f92f4252",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "email": "dr.chen20251025123246@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+22025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "General Medicine",
+            "licenseNumber": "GM20251025123246",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:02:47.509Z",
+            "updatedAt": "2025-10-25T07:02:50.339Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:02:50.339Z",
+            "fullName": "Michael Chen",
+            "id": "68fc7617fb41ad63f92f4252"
+          },
+          {
+            "_id": "68fc7672b48f69a314afe833",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "email": "dr.chen20251025123418@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+22025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "General Medicine",
+            "licenseNumber": "GM20251025123418",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:04:18.965Z",
+            "updatedAt": "2025-10-25T07:04:21.489Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:04:21.489Z",
+            "fullName": "Michael Chen",
+            "id": "68fc7672b48f69a314afe833"
+          },
+          {
+            "_id": "68fc7699e975524d889de884",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "email": "dr.chen20251025123457@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+22025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "General Medicine",
+            "licenseNumber": "GM20251025123457",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:04:57.659Z",
+            "updatedAt": "2025-10-25T07:05:01.892Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:05:01.891Z",
+            "fullName": "Michael Chen",
+            "id": "68fc7699e975524d889de884"
+          },
+          {
+            "_id": "68fc76dac752cb9e8248d931",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "email": "dr.chen20251025123601@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+22025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "General Medicine",
+            "licenseNumber": "GM20251025123601",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:06:02.360Z",
+            "updatedAt": "2025-10-25T07:06:02.360Z",
+            "__v": 0,
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          {
+            "_id": "68fc7617fb41ad63f92f424e",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "email": "dr.sarah20251025123246@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+12025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "CARD20251025123246",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:02:47.024Z",
+            "updatedAt": "2025-10-25T07:02:49.822Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:02:49.821Z",
+            "fullName": "Sarah Johnson",
+            "id": "68fc7617fb41ad63f92f424e"
+          },
+          {
+            "_id": "68fc7672b48f69a314afe82f",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "email": "dr.sarah20251025123418@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+12025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "CARD20251025123418",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:04:18.502Z",
+            "updatedAt": "2025-10-25T07:04:20.996Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:04:20.996Z",
+            "fullName": "Sarah Johnson",
+            "id": "68fc7672b48f69a314afe82f"
+          },
+          {
+            "_id": "68fc7699e975524d889de880",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "email": "dr.sarah20251025123457@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+12025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "CARD20251025123457",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:04:57.222Z",
+            "updatedAt": "2025-10-25T07:05:00.937Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:05:00.936Z",
+            "fullName": "Sarah Johnson",
+            "id": "68fc7699e975524d889de880"
+          },
+          {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "email": "dr.sarah20251025123601@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+12025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "CARD20251025123601",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:06:01.928Z",
+            "updatedAt": "2025-10-25T07:06:01.928Z",
+            "__v": 0,
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          }
+        ]
+      },
+      "timestamp": "2025-10-25T12:36:03.261220"
+    },
+    {
+      "name": "List All Receptionists",
+      "method": "GET",
+      "endpoint": "/api/receptionists",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Receptionists retrieved successfully",
+        "data": {
+          "receptionists": [
+            {
+              "_id": "68fc76dac752cb9e8248d935",
+              "firstName": "Emily",
+              "lastName": "Brown",
+              "email": "emily20251025123601@healthcareplus.com",
+              "role": "receptionist",
+              "phone": "+32025102512",
+              "isActive": true,
+              "profileImage": null,
+              "experience": 0,
+              "permissions": [],
+              "createdAt": "2025-10-25T07:06:02.789Z",
+              "updatedAt": "2025-10-25T07:06:02.789Z",
+              "__v": 0,
+              "fullName": "Emily Brown",
+              "id": "68fc76dac752cb9e8248d935"
+            },
+            {
+              "_id": "68fc769ae975524d889de888",
+              "firstName": "Emily",
+              "lastName": "Brown",
+              "email": "emily20251025123457@healthcareplus.com",
+              "role": "receptionist",
+              "phone": "+32025102512",
+              "isActive": true,
+              "profileImage": null,
+              "experience": 0,
+              "permissions": [],
+              "createdAt": "2025-10-25T07:04:58.082Z",
+              "updatedAt": "2025-10-25T07:04:59.138Z",
+              "__v": 0,
+              "lastLogin": "2025-10-25T07:04:59.138Z",
+              "fullName": "Emily Brown",
+              "id": "68fc769ae975524d889de888"
+            },
+            {
+              "_id": "68fc7673b48f69a314afe837",
+              "firstName": "Emily",
+              "lastName": "Brown",
+              "email": "emily20251025123418@healthcareplus.com",
+              "role": "receptionist",
+              "phone": "+32025102512",
+              "isActive": true,
+              "profileImage": null,
+              "experience": 0,
+              "permissions": [],
+              "createdAt": "2025-10-25T07:04:19.391Z",
+              "updatedAt": "2025-10-25T07:04:20.319Z",
+              "__v": 0,
+              "lastLogin": "2025-10-25T07:04:20.318Z",
+              "fullName": "Emily Brown",
+              "id": "68fc7673b48f69a314afe837"
+            },
+            {
+              "_id": "68fc7618fb41ad63f92f4256",
+              "firstName": "Emily",
+              "lastName": "Brown",
+              "email": "emily20251025123246@healthcareplus.com",
+              "role": "receptionist",
+              "phone": "+32025102512",
+              "isActive": true,
+              "profileImage": null,
+              "experience": 0,
+              "permissions": [],
+              "createdAt": "2025-10-25T07:02:48.014Z",
+              "updatedAt": "2025-10-25T07:02:49.036Z",
+              "__v": 0,
+              "lastLogin": "2025-10-25T07:02:49.036Z",
+              "fullName": "Emily Brown",
+              "id": "68fc7618fb41ad63f92f4256"
+            },
+            {
+              "_id": "68fc609726254b69c425af4f",
+              "firstName": "Sarah",
+              "lastName": "Johnson",
+              "email": "reception@medieaseclinic.com",
+              "role": "receptionist",
+              "phone": "+1-555-0003",
+              "isActive": true,
+              "profileImage": null,
+              "experience": 0,
+              "permissions": [],
+              "createdAt": "2025-10-25T05:31:03.399Z",
+              "updatedAt": "2025-10-25T05:31:03.399Z",
+              "__v": 0,
+              "fullName": "Sarah Johnson",
+              "id": "68fc609726254b69c425af4f"
+            }
+          ],
+          "pagination": {
+            "page": 1,
+            "limit": 10,
+            "total": 5,
+            "totalPages": 1,
+            "hasNext": false,
+            "hasPrev": false
+          }
+        }
+      },
+      "timestamp": "2025-10-25T12:36:03.396763"
+    },
+    {
+      "name": "Receptionist Login",
+      "method": "POST",
+      "endpoint": "/api/auth/login",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Login successful",
+        "data": {
+          "user": {
+            "_id": "68fc76dac752cb9e8248d935",
+            "firstName": "Emily",
+            "lastName": "Brown",
+            "email": "emily20251025123601@healthcareplus.com",
+            "role": "receptionist",
+            "phone": "+32025102512",
+            "isActive": true,
+            "profileImage": null,
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:06:02.789Z",
+            "updatedAt": "2025-10-25T07:06:03.742Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:06:03.741Z",
+            "fullName": "Emily Brown",
+            "id": "68fc76dac752cb9e8248d935"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmRhYzc1MmNiOWU4MjQ4ZDkzNSIsImlhdCI6MTc2MTM3NTk2MywiZXhwIjoxNzYxOTgwNzYzfQ.HMdFFTe6Jp7wZ9D33QYJyYb_c--EaMJb_5tsKQW7Fno"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:03.798981"
+    },
+    {
+      "name": "Quick Register Patient - John Doe",
+      "method": "POST",
+      "endpoint": "/api/patients/quick-register",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient already exists",
+        "data": {
+          "_id": "68fc769be975524d889de893",
+          "firstName": "John",
+          "lastName": "Doe",
+          "gender": "Male",
+          "age": "45",
+          "bloodGroup": "A+",
+          "dateOfBirth": "To be updated",
+          "email": "patient1555001001@temp.mediease.com",
+          "phone": "+1555001001",
+          "address": "To be updated",
+          "medicalHistory": "",
+          "allergies": "",
+          "familyHistory": "",
+          "previousSurgeries": "",
+          "currentMedication": "",
+          "isActive": true,
+          "createdAt": "2025-10-25T07:04:59.290Z",
+          "updatedAt": "2025-10-25T07:05:01.304Z",
+          "patientId": "P899290551",
+          "__v": 0,
+          "vitals": {
+            "bloodPressure": "140/90",
+            "heartRate": "88",
+            "temperature": "98.6",
+            "oxygenSaturation": "96",
+            "weight": "82",
+            "height": "175"
+          },
+          "fullName": "John Doe",
+          "id": "68fc769be975524d889de893"
+        },
+        "existing": true
+      },
+      "timestamp": "2025-10-25T12:36:03.886205"
+    },
+    {
+      "name": "Check In Patient 1",
+      "method": "POST",
+      "endpoint": "/api/queue/check-in",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient checked in successfully",
+        "data": {
+          "patient": {
+            "_id": "68fc769be975524d889de893",
+            "firstName": "John",
+            "lastName": "Doe",
+            "gender": "Male",
+            "age": "45",
+            "phone": "+1555001001",
+            "patientId": "P899290551",
+            "fullName": "John Doe",
+            "id": "68fc769be975524d889de893"
+          },
+          "appointment": null,
+          "doctor": {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "speciality": "Cardiology",
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "waiting",
+          "priority": "high",
+          "reason": "Chest pain and shortness of breath",
+          "notes": "Patient reports discomfort for 2 hours",
+          "waitTime": 0,
+          "isActive": true,
+          "_id": "68fc76dcc752cb9e8248d943",
+          "checkedInAt": "2025-10-25T07:06:04.033Z",
+          "createdAt": "2025-10-25T07:06:04.034Z",
+          "updatedAt": "2025-10-25T07:06:04.034Z",
+          "queueId": "Q75964034",
+          "queueNumber": 1,
+          "__v": 0,
+          "id": "68fc76dcc752cb9e8248d943"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:04.179147"
+    },
+    {
+      "name": "Quick Register Patient - Mary Smith",
+      "method": "POST",
+      "endpoint": "/api/patients/quick-register",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient already exists",
+        "data": {
+          "_id": "68fc769be975524d889de89b",
+          "firstName": "Mary",
+          "lastName": "Smith",
+          "gender": "Female",
+          "age": "32",
+          "bloodGroup": "O+",
+          "dateOfBirth": "To be updated",
+          "email": "patient1555002002@temp.mediease.com",
+          "phone": "+1555002002",
+          "address": "To be updated",
+          "medicalHistory": "",
+          "allergies": "",
+          "familyHistory": "",
+          "previousSurgeries": "",
+          "currentMedication": "",
+          "isActive": true,
+          "createdAt": "2025-10-25T07:04:59.601Z",
+          "updatedAt": "2025-10-25T07:05:02.804Z",
+          "patientId": "P899601264",
+          "__v": 0,
+          "vitals": {
+            "bloodPressure": "118/75",
+            "heartRate": "68",
+            "temperature": "98.2",
+            "oxygenSaturation": "99",
+            "weight": "62",
+            "height": "165"
+          },
+          "fullName": "Mary Smith",
+          "id": "68fc769be975524d889de89b"
+        },
+        "existing": true
+      },
+      "timestamp": "2025-10-25T12:36:04.269139"
+    },
+    {
+      "name": "Create Appointment",
+      "method": "POST",
+      "endpoint": "/api/appointments",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Appointment created successfully",
+        "data": {
+          "appointment": {
+            "appointmentId": "APT75964450",
+            "patient": {
+              "_id": "68fc769be975524d889de89b",
+              "firstName": "Mary",
+              "lastName": "Smith",
+              "email": "patient1555002002@temp.mediease.com",
+              "phone": "+1555002002",
+              "patientId": "P899601264",
+              "fullName": "Mary Smith",
+              "id": "68fc769be975524d889de89b"
+            },
+            "doctor": {
+              "_id": "68fc76dac752cb9e8248d931",
+              "firstName": "Michael",
+              "lastName": "Chen",
+              "speciality": "General Medicine",
+              "fullName": "Michael Chen",
+              "id": "68fc76dac752cb9e8248d931"
+            },
+            "scheduledBy": {
+              "_id": "68fc76dac752cb9e8248d935",
+              "firstName": "Emily",
+              "lastName": "Brown",
+              "fullName": "Emily Brown",
+              "id": "68fc76dac752cb9e8248d935"
+            },
+            "date": "2025-10-26",
+            "time": "10:00",
+            "duration": 30,
+            "status": "scheduled",
+            "priority": "medium",
+            "reason": "Annual checkup",
+            "notes": "",
+            "presentInClinic": false,
+            "insurance": false,
+            "followUpRequired": false,
+            "_id": "68fc76dcc752cb9e8248d94e",
+            "createdAt": "2025-10-25T07:06:04.453Z",
+            "updatedAt": "2025-10-25T07:06:04.453Z",
+            "patientName": "Mary Smith",
+            "doctorName": "Michael Chen",
+            "scheduledByName": "Emily Brown",
+            "__v": 0,
+            "id": "68fc76dcc752cb9e8248d94e"
+          }
+        }
+      },
+      "timestamp": "2025-10-25T12:36:04.677921"
+    },
+    {
+      "name": "Check In Patient 2",
+      "method": "POST",
+      "endpoint": "/api/queue/check-in",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient checked in successfully",
+        "data": {
+          "patient": {
+            "_id": "68fc769be975524d889de89b",
+            "firstName": "Mary",
+            "lastName": "Smith",
+            "gender": "Female",
+            "age": "32",
+            "phone": "+1555002002",
+            "patientId": "P899601264",
+            "fullName": "Mary Smith",
+            "id": "68fc769be975524d889de89b"
+          },
+          "appointment": {
+            "_id": "68fc76dcc752cb9e8248d94e",
+            "appointmentId": "APT75964450",
+            "patient": "68fc769be975524d889de89b",
+            "doctor": "68fc76dac752cb9e8248d931",
+            "scheduledBy": "68fc76dac752cb9e8248d935",
+            "date": "2025-10-26",
+            "time": "10:00",
+            "duration": 30,
+            "status": "scheduled",
+            "priority": "medium",
+            "reason": "Annual checkup",
+            "notes": "",
+            "presentInClinic": false,
+            "insurance": false,
+            "followUpRequired": false,
+            "createdAt": "2025-10-25T07:06:04.453Z",
+            "updatedAt": "2025-10-25T07:06:04.453Z",
+            "patientName": "Mary Smith",
+            "doctorName": "Michael Chen",
+            "scheduledByName": "Emily Brown",
+            "__v": 0,
+            "id": "68fc76dcc752cb9e8248d94e"
+          },
+          "doctor": {
+            "_id": "68fc76dac752cb9e8248d931",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "speciality": "General Medicine",
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "waiting",
+          "priority": "medium",
+          "reason": "Annual checkup",
+          "notes": "",
+          "waitTime": 0,
+          "isActive": true,
+          "_id": "68fc76dcc752cb9e8248d959",
+          "checkedInAt": "2025-10-25T07:06:04.830Z",
+          "createdAt": "2025-10-25T07:06:04.830Z",
+          "updatedAt": "2025-10-25T07:06:04.830Z",
+          "queueId": "Q75964830",
+          "queueNumber": 1,
+          "__v": 0,
+          "id": "68fc76dcc752cb9e8248d959"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:04.976808"
+    },
+    {
+      "name": "View Clinic Queue",
+      "method": "GET",
+      "endpoint": "/api/queue",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 2,
+        "data": {
+          "queue": [
+            {
+              "_id": "68fc76dcc752cb9e8248d959",
+              "patient": {
+                "_id": "68fc769be975524d889de89b",
+                "firstName": "Mary",
+                "lastName": "Smith",
+                "gender": "Female",
+                "age": "32",
+                "phone": "+1555002002",
+                "patientId": "P899601264",
+                "fullName": "Mary Smith",
+                "id": "68fc769be975524d889de89b"
+              },
+              "appointment": {
+                "_id": "68fc76dcc752cb9e8248d94e",
+                "appointmentId": "APT75964450",
+                "patient": "68fc769be975524d889de89b",
+                "doctor": "68fc76dac752cb9e8248d931",
+                "scheduledBy": "68fc76dac752cb9e8248d935",
+                "date": "2025-10-26",
+                "time": "10:00",
+                "duration": 30,
+                "status": "scheduled",
+                "priority": "medium",
+                "reason": "Annual checkup",
+                "notes": "",
+                "presentInClinic": false,
+                "insurance": false,
+                "followUpRequired": false,
+                "createdAt": "2025-10-25T07:06:04.453Z",
+                "updatedAt": "2025-10-25T07:06:04.453Z",
+                "patientName": "Mary Smith",
+                "doctorName": "Michael Chen",
+                "scheduledByName": "Emily Brown",
+                "__v": 0,
+                "id": "68fc76dcc752cb9e8248d94e"
+              },
+              "doctor": {
+                "_id": "68fc76dac752cb9e8248d931",
+                "firstName": "Michael",
+                "lastName": "Chen",
+                "speciality": "General Medicine",
+                "fullName": "Michael Chen",
+                "id": "68fc76dac752cb9e8248d931"
+              },
+              "checkedInBy": "68fc76dac752cb9e8248d935",
+              "status": "waiting",
+              "priority": "medium",
+              "reason": "Annual checkup",
+              "notes": "",
+              "waitTime": 0,
+              "isActive": true,
+              "checkedInAt": "2025-10-25T07:06:04.830Z",
+              "createdAt": "2025-10-25T07:06:04.830Z",
+              "updatedAt": "2025-10-25T07:06:04.830Z",
+              "queueId": "Q75964830",
+              "queueNumber": 1,
+              "__v": 0,
+              "id": "68fc76dcc752cb9e8248d959"
+            },
+            {
+              "_id": "68fc76dcc752cb9e8248d943",
+              "patient": {
+                "_id": "68fc769be975524d889de893",
+                "firstName": "John",
+                "lastName": "Doe",
+                "gender": "Male",
+                "age": "45",
+                "phone": "+1555001001",
+                "patientId": "P899290551",
+                "fullName": "John Doe",
+                "id": "68fc769be975524d889de893"
+              },
+              "appointment": null,
+              "doctor": {
+                "_id": "68fc76d9c752cb9e8248d92d",
+                "firstName": "Sarah",
+                "lastName": "Johnson",
+                "speciality": "Cardiology",
+                "fullName": "Sarah Johnson",
+                "id": "68fc76d9c752cb9e8248d92d"
+              },
+              "checkedInBy": "68fc76dac752cb9e8248d935",
+              "status": "waiting",
+              "priority": "high",
+              "reason": "Chest pain and shortness of breath",
+              "notes": "Patient reports discomfort for 2 hours",
+              "waitTime": 0,
+              "isActive": true,
+              "checkedInAt": "2025-10-25T07:06:04.033Z",
+              "createdAt": "2025-10-25T07:06:04.034Z",
+              "updatedAt": "2025-10-25T07:06:04.034Z",
+              "queueId": "Q75964034",
+              "queueNumber": 1,
+              "__v": 0,
+              "id": "68fc76dcc752cb9e8248d943"
+            }
+          ]
+        }
+      },
+      "timestamp": "2025-10-25T12:36:05.118023"
+    },
+    {
+      "name": "Doctor 1 Login",
+      "method": "POST",
+      "endpoint": "/api/auth/login",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Login successful",
+        "data": {
+          "user": {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "email": "dr.sarah20251025123601@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+12025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "Cardiology",
+            "licenseNumber": "CARD20251025123601",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:06:01.928Z",
+            "updatedAt": "2025-10-25T07:06:05.462Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:06:05.462Z",
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmQ5Yzc1MmNiOWU4MjQ4ZDkyZCIsImlhdCI6MTc2MTM3NTk2NSwiZXhwIjoxNzYxOTgwNzY1fQ.2zQCif9UGYSPRRjPw2HBo9V_ARchfOlyyfspuC4nF6s"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:05.512034"
+    },
+    {
+      "name": "View Dr. Sarah's Queue",
+      "method": "GET",
+      "endpoint": "/api/queue/doctor/68fc76d9c752cb9e8248d92d",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 1,
+        "data": {
+          "queue": [
+            {
+              "_id": "68fc76dcc752cb9e8248d943",
+              "patient": {
+                "_id": "68fc769be975524d889de893",
+                "firstName": "John",
+                "lastName": "Doe",
+                "gender": "Male",
+                "age": "45",
+                "phone": "+1555001001",
+                "patientId": "P899290551",
+                "fullName": "John Doe",
+                "id": "68fc769be975524d889de893"
+              },
+              "appointment": null,
+              "doctor": {
+                "_id": "68fc76d9c752cb9e8248d92d",
+                "firstName": "Sarah",
+                "lastName": "Johnson",
+                "speciality": "Cardiology",
+                "fullName": "Sarah Johnson",
+                "id": "68fc76d9c752cb9e8248d92d"
+              },
+              "checkedInBy": "68fc76dac752cb9e8248d935",
+              "status": "waiting",
+              "priority": "high",
+              "reason": "Chest pain and shortness of breath",
+              "notes": "Patient reports discomfort for 2 hours",
+              "waitTime": 0,
+              "isActive": true,
+              "checkedInAt": "2025-10-25T07:06:04.033Z",
+              "createdAt": "2025-10-25T07:06:04.034Z",
+              "updatedAt": "2025-10-25T07:06:04.034Z",
+              "queueId": "Q75964034",
+              "queueNumber": 1,
+              "__v": 0,
+              "id": "68fc76dcc752cb9e8248d943"
+            }
+          ]
+        }
+      },
+      "timestamp": "2025-10-25T12:36:05.644292"
+    },
+    {
+      "name": "Start Consultation",
+      "method": "PUT",
+      "endpoint": "/api/queue/68fc76dcc752cb9e8248d943/start-consultation",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Consultation started",
+        "data": {
+          "_id": "68fc76dcc752cb9e8248d943",
+          "patient": {
+            "_id": "68fc769be975524d889de893",
+            "firstName": "John",
+            "lastName": "Doe",
+            "gender": "Male",
+            "age": "45",
+            "phone": "+1555001001",
+            "patientId": "P899290551",
+            "fullName": "John Doe",
+            "id": "68fc769be975524d889de893"
+          },
+          "appointment": null,
+          "doctor": {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "speciality": "Cardiology",
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "in-consultation",
+          "priority": "high",
+          "reason": "Chest pain and shortness of breath",
+          "notes": "Patient reports discomfort for 2 hours",
+          "waitTime": 0,
+          "isActive": true,
+          "checkedInAt": "2025-10-25T07:06:04.033Z",
+          "createdAt": "2025-10-25T07:06:04.034Z",
+          "updatedAt": "2025-10-25T07:06:05.735Z",
+          "queueId": "Q75964034",
+          "queueNumber": 1,
+          "__v": 0,
+          "consultationStartedAt": "2025-10-25T07:06:05.734Z",
+          "id": "68fc76dcc752cb9e8248d943"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:05.828501"
+    },
+    {
+      "name": "View Patient Full Profile",
+      "method": "GET",
+      "endpoint": "/api/patients/68fc769be975524d889de893/full-profile",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "data": {
+          "_id": "68fc769be975524d889de893",
+          "firstName": "John",
+          "lastName": "Doe",
+          "gender": "Male",
+          "age": "45",
+          "bloodGroup": "A+",
+          "dateOfBirth": "To be updated",
+          "email": "patient1555001001@temp.mediease.com",
+          "phone": "+1555001001",
+          "address": "To be updated",
+          "medicalHistory": "",
+          "allergies": "",
+          "familyHistory": "",
+          "previousSurgeries": "",
+          "currentMedication": "",
+          "isActive": true,
+          "createdAt": "2025-10-25T07:04:59.290Z",
+          "updatedAt": "2025-10-25T07:05:01.304Z",
+          "patientId": "P899290551",
+          "__v": 0,
+          "vitals": {
+            "bloodPressure": "140/90",
+            "heartRate": "88",
+            "temperature": "98.6",
+            "oxygenSaturation": "96",
+            "weight": "82",
+            "height": "175"
+          },
+          "fullName": "John Doe",
+          "appointmentHistory": [],
+          "id": "68fc769be975524d889de893"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:05.964591"
+    },
+    {
+      "name": "Update Patient Vitals",
+      "method": "PUT",
+      "endpoint": "/api/patients/68fc769be975524d889de893/vitals",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient vitals updated successfully",
+        "data": {
+          "_id": "68fc769be975524d889de893",
+          "firstName": "John",
+          "lastName": "Doe",
+          "gender": "Male",
+          "age": "45",
+          "bloodGroup": "A+",
+          "dateOfBirth": "To be updated",
+          "email": "patient1555001001@temp.mediease.com",
+          "phone": "+1555001001",
+          "address": "To be updated",
+          "medicalHistory": "",
+          "allergies": "",
+          "familyHistory": "",
+          "previousSurgeries": "",
+          "currentMedication": "",
+          "isActive": true,
+          "createdAt": "2025-10-25T07:04:59.290Z",
+          "updatedAt": "2025-10-25T07:06:06.015Z",
+          "patientId": "P899290551",
+          "__v": 0,
+          "vitals": {
+            "bloodPressure": "140/90",
+            "heartRate": "88",
+            "temperature": "98.6",
+            "oxygenSaturation": "96",
+            "weight": "82",
+            "height": "175"
+          },
+          "fullName": "John Doe",
+          "id": "68fc769be975524d889de893"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:06.069395"
+    },
+    {
+      "name": "Create Clinical Note",
+      "method": "POST",
+      "endpoint": "/api/clinical-notes",
+      "status_code": 400,
+      "success": false,
+      "response": {
+        "success": false,
+        "message": "Validation failed"
+      },
+      "timestamp": "2025-10-25T12:36:06.121080"
+    },
+    {
+      "name": "Create Prescription",
+      "method": "POST",
+      "endpoint": "/api/prescriptions",
+      "status_code": 201,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Prescription created successfully",
+        "data": {
+          "patient": {
+            "_id": "68fc769be975524d889de893",
+            "firstName": "John",
+            "lastName": "Doe",
+            "phone": "+1555001001",
+            "patientId": "P899290551",
+            "fullName": "John Doe",
+            "id": "68fc769be975524d889de893"
+          },
+          "doctor": {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "speciality": "Cardiology",
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "appointment": null,
+          "queue": "68fc76dcc752cb9e8248d943",
+          "medications": [
+            {
+              "name": "Nitroglycerin",
+              "dosage": "0.4mg",
+              "frequency": "As needed",
+              "duration": "30 days",
+              "instructions": "Place under tongue when chest pain occurs"
+            },
+            {
+              "name": "Aspirin",
+              "dosage": "81mg",
+              "frequency": "Once daily",
+              "duration": "Ongoing",
+              "instructions": "Take with food"
+            }
+          ],
+          "diagnosis": "Angina",
+          "notes": "Follow up with cardiologist within 48 hours",
+          "imageUrl": "",
+          "imagePublicId": "",
+          "isActive": true,
+          "_id": "68fc76dec752cb9e8248d977",
+          "prescribedAt": "2025-10-25T07:06:06.229Z",
+          "createdAt": "2025-10-25T07:06:06.230Z",
+          "updatedAt": "2025-10-25T07:06:06.230Z",
+          "prescriptionId": "RX75966231934",
+          "validUntil": "2025-11-24T07:06:06.229Z",
+          "__v": 0,
+          "id": "68fc76dec752cb9e8248d977"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:06.327236"
+    },
+    {
+      "name": "Complete Consultation",
+      "method": "PUT",
+      "endpoint": "/api/queue/68fc76dcc752cb9e8248d943/status",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Queue status updated successfully",
+        "data": {
+          "_id": "68fc76dcc752cb9e8248d943",
+          "patient": {
+            "_id": "68fc769be975524d889de893",
+            "firstName": "John",
+            "lastName": "Doe",
+            "gender": "Male",
+            "age": "45",
+            "phone": "+1555001001",
+            "patientId": "P899290551",
+            "fullName": "John Doe",
+            "id": "68fc769be975524d889de893"
+          },
+          "appointment": null,
+          "doctor": {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "speciality": "Cardiology",
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "completed",
+          "priority": "high",
+          "reason": "Chest pain and shortness of breath",
+          "notes": "Patient reports discomfort for 2 hours",
+          "waitTime": 0,
+          "isActive": true,
+          "checkedInAt": "2025-10-25T07:06:04.033Z",
+          "createdAt": "2025-10-25T07:06:04.034Z",
+          "updatedAt": "2025-10-25T07:06:06.422Z",
+          "queueId": "Q75964034",
+          "queueNumber": 1,
+          "__v": 0,
+          "consultationStartedAt": "2025-10-25T07:06:05.734Z",
+          "consultationEndedAt": "2025-10-25T07:06:06.421Z",
+          "id": "68fc76dcc752cb9e8248d943"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:06.525582"
+    },
+    {
+      "name": "Doctor 2 Login",
+      "method": "POST",
+      "endpoint": "/api/auth/login",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Login successful",
+        "data": {
+          "user": {
+            "_id": "68fc76dac752cb9e8248d931",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "email": "dr.chen20251025123601@healthcareplus.com",
+            "role": "doctor",
+            "phone": "+22025102512",
+            "isActive": true,
+            "profileImage": null,
+            "speciality": "General Medicine",
+            "licenseNumber": "GM20251025123601",
+            "experience": 0,
+            "permissions": [],
+            "createdAt": "2025-10-25T07:06:02.360Z",
+            "updatedAt": "2025-10-25T07:06:06.873Z",
+            "__v": 0,
+            "lastLogin": "2025-10-25T07:06:06.873Z",
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NmRhYzc1MmNiOWU4MjQ4ZDkzMSIsImlhdCI6MTc2MTM3NTk2NiwiZXhwIjoxNzYxOTgwNzY2fQ.1BEIKpYECsG_4-WNK-Tny1em2xexSMHkkG3NEAc7AuA"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:06.918338"
+    },
+    {
+      "name": "View Dr. Chen's Appointments",
+      "method": "GET",
+      "endpoint": "/api/appointments",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 1,
+        "total": 1,
+        "data": {
+          "appointments": [
+            {
+              "_id": "68fc76dcc752cb9e8248d94e",
+              "appointmentId": "APT75964450",
+              "patient": {
+                "_id": "68fc769be975524d889de89b",
+                "firstName": "Mary",
+                "lastName": "Smith",
+                "email": "patient1555002002@temp.mediease.com",
+                "phone": "+1555002002",
+                "patientId": "P899601264",
+                "fullName": "Mary Smith",
+                "id": "68fc769be975524d889de89b"
+              },
+              "doctor": {
+                "_id": "68fc76dac752cb9e8248d931",
+                "firstName": "Michael",
+                "lastName": "Chen",
+                "speciality": "General Medicine",
+                "fullName": "Michael Chen",
+                "id": "68fc76dac752cb9e8248d931"
+              },
+              "scheduledBy": {
+                "_id": "68fc76dac752cb9e8248d935",
+                "firstName": "Emily",
+                "lastName": "Brown",
+                "fullName": "Emily Brown",
+                "id": "68fc76dac752cb9e8248d935"
+              },
+              "date": "2025-10-26",
+              "time": "10:00",
+              "duration": 30,
+              "status": "scheduled",
+              "priority": "medium",
+              "reason": "Annual checkup",
+              "notes": "",
+              "presentInClinic": false,
+              "insurance": false,
+              "followUpRequired": false,
+              "createdAt": "2025-10-25T07:06:04.453Z",
+              "updatedAt": "2025-10-25T07:06:04.453Z",
+              "patientName": "Mary Smith",
+              "doctorName": "Michael Chen",
+              "scheduledByName": "Emily Brown",
+              "__v": 0,
+              "id": "68fc76dcc752cb9e8248d94e"
+            }
+          ],
+          "pagination": {
+            "page": 1,
+            "limit": 10,
+            "total": 1,
+            "totalPages": 1,
+            "hasNext": false,
+            "hasPrev": false
+          }
+        }
+      },
+      "timestamp": "2025-10-25T12:36:07.116534"
+    },
+    {
+      "name": "View Dr. Chen's Queue",
+      "method": "GET",
+      "endpoint": "/api/queue/doctor/68fc76dac752cb9e8248d931",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 1,
+        "data": {
+          "queue": [
+            {
+              "_id": "68fc76dcc752cb9e8248d959",
+              "patient": {
+                "_id": "68fc769be975524d889de89b",
+                "firstName": "Mary",
+                "lastName": "Smith",
+                "gender": "Female",
+                "age": "32",
+                "phone": "+1555002002",
+                "patientId": "P899601264",
+                "fullName": "Mary Smith",
+                "id": "68fc769be975524d889de89b"
+              },
+              "appointment": {
+                "_id": "68fc76dcc752cb9e8248d94e",
+                "appointmentId": "APT75964450",
+                "patient": "68fc769be975524d889de89b",
+                "doctor": "68fc76dac752cb9e8248d931",
+                "scheduledBy": "68fc76dac752cb9e8248d935",
+                "date": "2025-10-26",
+                "time": "10:00",
+                "duration": 30,
+                "status": "scheduled",
+                "priority": "medium",
+                "reason": "Annual checkup",
+                "notes": "",
+                "presentInClinic": false,
+                "insurance": false,
+                "followUpRequired": false,
+                "createdAt": "2025-10-25T07:06:04.453Z",
+                "updatedAt": "2025-10-25T07:06:04.453Z",
+                "patientName": "Mary Smith",
+                "doctorName": "Michael Chen",
+                "scheduledByName": "Emily Brown",
+                "__v": 0,
+                "id": "68fc76dcc752cb9e8248d94e"
+              },
+              "doctor": {
+                "_id": "68fc76dac752cb9e8248d931",
+                "firstName": "Michael",
+                "lastName": "Chen",
+                "speciality": "General Medicine",
+                "fullName": "Michael Chen",
+                "id": "68fc76dac752cb9e8248d931"
+              },
+              "checkedInBy": "68fc76dac752cb9e8248d935",
+              "status": "waiting",
+              "priority": "medium",
+              "reason": "Annual checkup",
+              "notes": "",
+              "waitTime": 0,
+              "isActive": true,
+              "checkedInAt": "2025-10-25T07:06:04.830Z",
+              "createdAt": "2025-10-25T07:06:04.830Z",
+              "updatedAt": "2025-10-25T07:06:04.830Z",
+              "queueId": "Q75964830",
+              "queueNumber": 1,
+              "__v": 0,
+              "id": "68fc76dcc752cb9e8248d959"
+            }
+          ]
+        }
+      },
+      "timestamp": "2025-10-25T12:36:07.262791"
+    },
+    {
+      "name": "Start Consultation with Mary",
+      "method": "PUT",
+      "endpoint": "/api/queue/68fc76dcc752cb9e8248d959/start-consultation",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Consultation started",
+        "data": {
+          "_id": "68fc76dcc752cb9e8248d959",
+          "patient": {
+            "_id": "68fc769be975524d889de89b",
+            "firstName": "Mary",
+            "lastName": "Smith",
+            "gender": "Female",
+            "age": "32",
+            "phone": "+1555002002",
+            "patientId": "P899601264",
+            "fullName": "Mary Smith",
+            "id": "68fc769be975524d889de89b"
+          },
+          "appointment": {
+            "_id": "68fc76dcc752cb9e8248d94e",
+            "appointmentId": "APT75964450",
+            "patient": "68fc769be975524d889de89b",
+            "doctor": "68fc76dac752cb9e8248d931",
+            "scheduledBy": "68fc76dac752cb9e8248d935",
+            "date": "2025-10-26",
+            "time": "10:00",
+            "duration": 30,
+            "status": "scheduled",
+            "priority": "medium",
+            "reason": "Annual checkup",
+            "notes": "",
+            "presentInClinic": false,
+            "insurance": false,
+            "followUpRequired": false,
+            "createdAt": "2025-10-25T07:06:04.453Z",
+            "updatedAt": "2025-10-25T07:06:04.453Z",
+            "patientName": "Mary Smith",
+            "doctorName": "Michael Chen",
+            "scheduledByName": "Emily Brown",
+            "__v": 0,
+            "id": "68fc76dcc752cb9e8248d94e"
+          },
+          "doctor": {
+            "_id": "68fc76dac752cb9e8248d931",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "speciality": "General Medicine",
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "in-consultation",
+          "priority": "medium",
+          "reason": "Annual checkup",
+          "notes": "",
+          "waitTime": 0,
+          "isActive": true,
+          "checkedInAt": "2025-10-25T07:06:04.830Z",
+          "createdAt": "2025-10-25T07:06:04.830Z",
+          "updatedAt": "2025-10-25T07:06:07.360Z",
+          "queueId": "Q75964830",
+          "queueNumber": 1,
+          "__v": 0,
+          "consultationStartedAt": "2025-10-25T07:06:07.359Z",
+          "id": "68fc76dcc752cb9e8248d959"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:07.451898"
+    },
+    {
+      "name": "Update Mary's Vitals",
+      "method": "PUT",
+      "endpoint": "/api/patients/68fc769be975524d889de89b/vitals",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient vitals updated successfully",
+        "data": {
+          "_id": "68fc769be975524d889de89b",
+          "firstName": "Mary",
+          "lastName": "Smith",
+          "gender": "Female",
+          "age": "32",
+          "bloodGroup": "O+",
+          "dateOfBirth": "To be updated",
+          "email": "patient1555002002@temp.mediease.com",
+          "phone": "+1555002002",
+          "address": "To be updated",
+          "medicalHistory": "",
+          "allergies": "",
+          "familyHistory": "",
+          "previousSurgeries": "",
+          "currentMedication": "",
+          "isActive": true,
+          "createdAt": "2025-10-25T07:04:59.601Z",
+          "updatedAt": "2025-10-25T07:06:07.506Z",
+          "patientId": "P899601264",
+          "__v": 0,
+          "vitals": {
+            "bloodPressure": "118/75",
+            "heartRate": "68",
+            "temperature": "98.2",
+            "oxygenSaturation": "99",
+            "weight": "62",
+            "height": "165"
+          },
+          "fullName": "Mary Smith",
+          "id": "68fc769be975524d889de89b"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:07.556203"
+    },
+    {
+      "name": "Create Annual Checkup Note",
+      "method": "POST",
+      "endpoint": "/api/clinical-notes",
+      "status_code": 400,
+      "success": false,
+      "response": {
+        "success": false,
+        "message": "Validation failed"
+      },
+      "timestamp": "2025-10-25T12:36:07.607233"
+    },
+    {
+      "name": "Complete Mary's Consultation",
+      "method": "PUT",
+      "endpoint": "/api/queue/68fc76dcc752cb9e8248d959/status",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Queue status updated successfully",
+        "data": {
+          "_id": "68fc76dcc752cb9e8248d959",
+          "patient": {
+            "_id": "68fc769be975524d889de89b",
+            "firstName": "Mary",
+            "lastName": "Smith",
+            "gender": "Female",
+            "age": "32",
+            "phone": "+1555002002",
+            "patientId": "P899601264",
+            "fullName": "Mary Smith",
+            "id": "68fc769be975524d889de89b"
+          },
+          "appointment": {
+            "_id": "68fc76dcc752cb9e8248d94e",
+            "appointmentId": "APT75964450",
+            "patient": "68fc769be975524d889de89b",
+            "doctor": "68fc76dac752cb9e8248d931",
+            "scheduledBy": "68fc76dac752cb9e8248d935",
+            "date": "2025-10-26",
+            "time": "10:00",
+            "duration": 30,
+            "status": "scheduled",
+            "priority": "medium",
+            "reason": "Annual checkup",
+            "notes": "",
+            "presentInClinic": false,
+            "insurance": false,
+            "followUpRequired": false,
+            "createdAt": "2025-10-25T07:06:04.453Z",
+            "updatedAt": "2025-10-25T07:06:04.453Z",
+            "patientName": "Mary Smith",
+            "doctorName": "Michael Chen",
+            "scheduledByName": "Emily Brown",
+            "__v": 0,
+            "id": "68fc76dcc752cb9e8248d94e"
+          },
+          "doctor": {
+            "_id": "68fc76dac752cb9e8248d931",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "speciality": "General Medicine",
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "completed",
+          "priority": "medium",
+          "reason": "Annual checkup",
+          "notes": "",
+          "waitTime": 0,
+          "isActive": true,
+          "checkedInAt": "2025-10-25T07:06:04.830Z",
+          "createdAt": "2025-10-25T07:06:04.830Z",
+          "updatedAt": "2025-10-25T07:06:07.705Z",
+          "queueId": "Q75964830",
+          "queueNumber": 1,
+          "__v": 0,
+          "consultationStartedAt": "2025-10-25T07:06:07.359Z",
+          "consultationEndedAt": "2025-10-25T07:06:07.704Z",
+          "id": "68fc76dcc752cb9e8248d959"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:07.802575"
+    },
+    {
+      "name": "Check Out Patient 1",
+      "method": "POST",
+      "endpoint": "/api/queue/68fc76dcc752cb9e8248d943/check-out",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient checked out successfully",
+        "data": {
+          "_id": "68fc76dcc752cb9e8248d943",
+          "patient": {
+            "_id": "68fc769be975524d889de893",
+            "firstName": "John",
+            "lastName": "Doe",
+            "gender": "Male",
+            "age": "45",
+            "phone": "+1555001001",
+            "patientId": "P899290551",
+            "fullName": "John Doe",
+            "id": "68fc769be975524d889de893"
+          },
+          "appointment": null,
+          "doctor": {
+            "_id": "68fc76d9c752cb9e8248d92d",
+            "firstName": "Sarah",
+            "lastName": "Johnson",
+            "speciality": "Cardiology",
+            "fullName": "Sarah Johnson",
+            "id": "68fc76d9c752cb9e8248d92d"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "checked-out",
+          "priority": "high",
+          "reason": "Chest pain and shortness of breath",
+          "notes": "Patient reports discomfort for 2 hours",
+          "waitTime": 0,
+          "isActive": false,
+          "checkedInAt": "2025-10-25T07:06:04.033Z",
+          "createdAt": "2025-10-25T07:06:04.034Z",
+          "updatedAt": "2025-10-25T07:06:07.899Z",
+          "queueId": "Q75964034",
+          "queueNumber": 1,
+          "__v": 0,
+          "consultationStartedAt": "2025-10-25T07:06:05.734Z",
+          "consultationEndedAt": "2025-10-25T07:06:06.421Z",
+          "id": "68fc76dcc752cb9e8248d943"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:07.990043"
+    },
+    {
+      "name": "Check Out Patient 2",
+      "method": "POST",
+      "endpoint": "/api/queue/68fc76dcc752cb9e8248d959/check-out",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Patient checked out successfully",
+        "data": {
+          "_id": "68fc76dcc752cb9e8248d959",
+          "patient": {
+            "_id": "68fc769be975524d889de89b",
+            "firstName": "Mary",
+            "lastName": "Smith",
+            "gender": "Female",
+            "age": "32",
+            "phone": "+1555002002",
+            "patientId": "P899601264",
+            "fullName": "Mary Smith",
+            "id": "68fc769be975524d889de89b"
+          },
+          "appointment": {
+            "_id": "68fc76dcc752cb9e8248d94e",
+            "appointmentId": "APT75964450",
+            "patient": "68fc769be975524d889de89b",
+            "doctor": "68fc76dac752cb9e8248d931",
+            "scheduledBy": "68fc76dac752cb9e8248d935",
+            "date": "2025-10-26",
+            "time": "10:00",
+            "duration": 30,
+            "status": "scheduled",
+            "priority": "medium",
+            "reason": "Annual checkup",
+            "notes": "",
+            "presentInClinic": false,
+            "insurance": false,
+            "followUpRequired": false,
+            "createdAt": "2025-10-25T07:06:04.453Z",
+            "updatedAt": "2025-10-25T07:06:04.453Z",
+            "patientName": "Mary Smith",
+            "doctorName": "Michael Chen",
+            "scheduledByName": "Emily Brown",
+            "__v": 0,
+            "id": "68fc76dcc752cb9e8248d94e"
+          },
+          "doctor": {
+            "_id": "68fc76dac752cb9e8248d931",
+            "firstName": "Michael",
+            "lastName": "Chen",
+            "speciality": "General Medicine",
+            "fullName": "Michael Chen",
+            "id": "68fc76dac752cb9e8248d931"
+          },
+          "checkedInBy": "68fc76dac752cb9e8248d935",
+          "status": "checked-out",
+          "priority": "medium",
+          "reason": "Annual checkup",
+          "notes": "",
+          "waitTime": 0,
+          "isActive": false,
+          "checkedInAt": "2025-10-25T07:06:04.830Z",
+          "createdAt": "2025-10-25T07:06:04.830Z",
+          "updatedAt": "2025-10-25T07:06:08.081Z",
+          "queueId": "Q75964830",
+          "queueNumber": 1,
+          "__v": 0,
+          "consultationStartedAt": "2025-10-25T07:06:07.359Z",
+          "consultationEndedAt": "2025-10-25T07:06:07.704Z",
+          "id": "68fc76dcc752cb9e8248d959"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:08.180318"
+    },
+    {
+      "name": "View Queue Statistics",
+      "method": "GET",
+      "endpoint": "/api/queue/stats",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "data": {
+          "totalPatientsToday": 0,
+          "currentWaiting": 0,
+          "inConsultation": 0,
+          "completed": 2,
+          "averageWaitTime": 0
+        }
+      },
+      "timestamp": "2025-10-25T12:36:08.441448"
+    },
+    {
+      "name": "View Admin Dashboard",
+      "method": "GET",
+      "endpoint": "/api/admin/dashboard",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "message": "Dashboard statistics retrieved successfully",
+        "data": {
+          "totalPatients": 2,
+          "totalAppointments": 2,
+          "totalDoctors": 10,
+          "totalReceptionists": 5,
+          "totalClinicalNotes": 0,
+          "totalRecordings": 0,
+          "appointmentsToday": 0,
+          "patientsThisMonth": 2,
+          "recentActivity": [
+            {
+              "type": "appointment",
+              "description": "Appointment scheduled for Mary Smith",
+              "date": "2025-10-25T07:06:04.453Z",
+              "user": "Michael Chen"
+            },
+            {
+              "type": "appointment",
+              "description": "Appointment scheduled for Mary Smith",
+              "date": "2025-10-25T07:04:59.843Z",
+              "user": "Michael Chen"
+            },
+            {
+              "type": "patient",
+              "description": "New patient registered: Mary Smith",
+              "date": "2025-10-25T07:04:59.601Z",
+              "user": "System"
+            },
+            {
+              "type": "patient",
+              "description": "New patient registered: John Doe",
+              "date": "2025-10-25T07:04:59.290Z",
+              "user": "System"
+            }
+          ]
+        }
+      },
+      "timestamp": "2025-10-25T12:36:08.971659"
+    },
+    {
+      "name": "View All Appointments",
+      "method": "GET",
+      "endpoint": "/api/appointments",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 2,
+        "total": 2,
+        "data": {
+          "appointments": [
+            {
+              "_id": "68fc769be975524d889de8a1",
+              "appointmentId": "APT75899840",
+              "patient": {
+                "_id": "68fc769be975524d889de89b",
+                "firstName": "Mary",
+                "lastName": "Smith",
+                "email": "patient1555002002@temp.mediease.com",
+                "phone": "+1555002002",
+                "patientId": "P899601264",
+                "fullName": "Mary Smith",
+                "id": "68fc769be975524d889de89b"
+              },
+              "doctor": {
+                "_id": "68fc7699e975524d889de884",
+                "firstName": "Michael",
+                "lastName": "Chen",
+                "speciality": "General Medicine",
+                "fullName": "Michael Chen",
+                "id": "68fc7699e975524d889de884"
+              },
+              "scheduledBy": {
+                "_id": "68fc769ae975524d889de888",
+                "firstName": "Emily",
+                "lastName": "Brown",
+                "fullName": "Emily Brown",
+                "id": "68fc769ae975524d889de888"
+              },
+              "date": "2025-10-26",
+              "time": "10:00",
+              "duration": 30,
+              "status": "scheduled",
+              "priority": "medium",
+              "reason": "Annual checkup",
+              "notes": "",
+              "presentInClinic": false,
+              "insurance": false,
+              "followUpRequired": false,
+              "createdAt": "2025-10-25T07:04:59.843Z",
+              "updatedAt": "2025-10-25T07:04:59.843Z",
+              "patientName": "Mary Smith",
+              "doctorName": "Michael Chen",
+              "scheduledByName": "Emily Brown",
+              "__v": 0,
+              "id": "68fc769be975524d889de8a1"
+            },
+            {
+              "_id": "68fc76dcc752cb9e8248d94e",
+              "appointmentId": "APT75964450",
+              "patient": {
+                "_id": "68fc769be975524d889de89b",
+                "firstName": "Mary",
+                "lastName": "Smith",
+                "email": "patient1555002002@temp.mediease.com",
+                "phone": "+1555002002",
+                "patientId": "P899601264",
+                "fullName": "Mary Smith",
+                "id": "68fc769be975524d889de89b"
+              },
+              "doctor": {
+                "_id": "68fc76dac752cb9e8248d931",
+                "firstName": "Michael",
+                "lastName": "Chen",
+                "speciality": "General Medicine",
+                "fullName": "Michael Chen",
+                "id": "68fc76dac752cb9e8248d931"
+              },
+              "scheduledBy": {
+                "_id": "68fc76dac752cb9e8248d935",
+                "firstName": "Emily",
+                "lastName": "Brown",
+                "fullName": "Emily Brown",
+                "id": "68fc76dac752cb9e8248d935"
+              },
+              "date": "2025-10-26",
+              "time": "10:00",
+              "duration": 30,
+              "status": "scheduled",
+              "priority": "medium",
+              "reason": "Annual checkup",
+              "notes": "",
+              "presentInClinic": false,
+              "insurance": false,
+              "followUpRequired": false,
+              "createdAt": "2025-10-25T07:06:04.453Z",
+              "updatedAt": "2025-10-25T07:06:04.453Z",
+              "patientName": "Mary Smith",
+              "doctorName": "Michael Chen",
+              "scheduledByName": "Emily Brown",
+              "__v": 0,
+              "id": "68fc76dcc752cb9e8248d94e"
+            }
+          ],
+          "pagination": {
+            "page": 1,
+            "limit": 10,
+            "total": 2,
+            "totalPages": 1,
+            "hasNext": false,
+            "hasPrev": false
+          }
+        }
+      },
+      "timestamp": "2025-10-25T12:36:09.154950"
+    },
+    {
+      "name": "View All Patients",
+      "method": "GET",
+      "endpoint": "/api/patients",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 2,
+        "total": 2,
+        "data": {
+          "patients": [
+            {
+              "_id": "68fc769be975524d889de89b",
+              "firstName": "Mary",
+              "lastName": "Smith",
+              "gender": "Female",
+              "age": "32",
+              "bloodGroup": "O+",
+              "dateOfBirth": "To be updated",
+              "email": "patient1555002002@temp.mediease.com",
+              "phone": "+1555002002",
+              "address": "To be updated",
+              "medicalHistory": "",
+              "allergies": "",
+              "familyHistory": "",
+              "previousSurgeries": "",
+              "currentMedication": "",
+              "isActive": true,
+              "createdAt": "2025-10-25T07:04:59.601Z",
+              "updatedAt": "2025-10-25T07:06:07.506Z",
+              "patientId": "P899601264",
+              "vitals": {
+                "bloodPressure": "118/75",
+                "heartRate": "68",
+                "temperature": "98.2",
+                "oxygenSaturation": "99",
+                "weight": "62",
+                "height": "165"
+              },
+              "fullName": "Mary Smith",
+              "id": "68fc769be975524d889de89b"
+            },
+            {
+              "_id": "68fc769be975524d889de893",
+              "firstName": "John",
+              "lastName": "Doe",
+              "gender": "Male",
+              "age": "45",
+              "bloodGroup": "A+",
+              "dateOfBirth": "To be updated",
+              "email": "patient1555001001@temp.mediease.com",
+              "phone": "+1555001001",
+              "address": "To be updated",
+              "medicalHistory": "",
+              "allergies": "",
+              "familyHistory": "",
+              "previousSurgeries": "",
+              "currentMedication": "",
+              "isActive": true,
+              "createdAt": "2025-10-25T07:04:59.290Z",
+              "updatedAt": "2025-10-25T07:06:06.015Z",
+              "patientId": "P899290551",
+              "vitals": {
+                "bloodPressure": "140/90",
+                "heartRate": "88",
+                "temperature": "98.6",
+                "oxygenSaturation": "96",
+                "weight": "82",
+                "height": "175"
+              },
+              "fullName": "John Doe",
+              "id": "68fc769be975524d889de893"
+            }
+          ],
+          "pagination": {
+            "page": 1,
+            "limit": 10,
+            "total": 2,
+            "totalPages": 1,
+            "hasNext": false,
+            "hasPrev": false
+          }
+        }
+      },
+      "timestamp": "2025-10-25T12:36:09.287903"
+    },
+    {
+      "name": "View All Prescriptions",
+      "method": "GET",
+      "endpoint": "/api/prescriptions",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "count": 1,
+        "total": 1,
+        "data": {
+          "items": [
+            {
+              "_id": "68fc76dec752cb9e8248d977",
+              "patient": {
+                "_id": "68fc769be975524d889de893",
+                "firstName": "John",
+                "lastName": "Doe",
+                "phone": "+1555001001",
+                "patientId": "P899290551",
+                "fullName": "John Doe",
+                "id": "68fc769be975524d889de893"
+              },
+              "doctor": {
+                "_id": "68fc76d9c752cb9e8248d92d",
+                "firstName": "Sarah",
+                "lastName": "Johnson",
+                "speciality": "Cardiology",
+                "fullName": "Sarah Johnson",
+                "id": "68fc76d9c752cb9e8248d92d"
+              },
+              "appointment": null,
+              "queue": "68fc76dcc752cb9e8248d943",
+              "medications": [
+                {
+                  "name": "Nitroglycerin",
+                  "dosage": "0.4mg",
+                  "frequency": "As needed",
+                  "duration": "30 days",
+                  "instructions": "Place under tongue when chest pain occurs"
+                },
+                {
+                  "name": "Aspirin",
+                  "dosage": "81mg",
+                  "frequency": "Once daily",
+                  "duration": "Ongoing",
+                  "instructions": "Take with food"
+                }
+              ],
+              "diagnosis": "Angina",
+              "notes": "Follow up with cardiologist within 48 hours",
+              "imageUrl": "",
+              "imagePublicId": "",
+              "isActive": true,
+              "prescribedAt": "2025-10-25T07:06:06.229Z",
+              "createdAt": "2025-10-25T07:06:06.230Z",
+              "updatedAt": "2025-10-25T07:06:06.230Z",
+              "prescriptionId": "RX75966231934",
+              "validUntil": "2025-11-24T07:06:06.229Z",
+              "__v": 0,
+              "id": "68fc76dec752cb9e8248d977"
+            }
+          ],
+          "pagination": {
+            "page": 1,
+            "limit": 10,
+            "total": 1,
+            "totalPages": 1,
+            "hasNext": false,
+            "hasPrev": false
+          }
+        }
+      },
+      "timestamp": "2025-10-25T12:36:09.466169"
+    },
+    {
+      "name": "View Patient 1 Full History",
+      "method": "GET",
+      "endpoint": "/api/patients/68fc769be975524d889de893/full-profile",
+      "status_code": 200,
+      "success": true,
+      "response": {
+        "success": true,
+        "data": {
+          "_id": "68fc769be975524d889de893",
+          "firstName": "John",
+          "lastName": "Doe",
+          "gender": "Male",
+          "age": "45",
+          "bloodGroup": "A+",
+          "dateOfBirth": "To be updated",
+          "email": "patient1555001001@temp.mediease.com",
+          "phone": "+1555001001",
+          "address": "To be updated",
+          "medicalHistory": "",
+          "allergies": "",
+          "familyHistory": "",
+          "previousSurgeries": "",
+          "currentMedication": "",
+          "isActive": true,
+          "createdAt": "2025-10-25T07:04:59.290Z",
+          "updatedAt": "2025-10-25T07:06:06.015Z",
+          "patientId": "P899290551",
+          "__v": 0,
+          "vitals": {
+            "bloodPressure": "140/90",
+            "heartRate": "88",
+            "temperature": "98.6",
+            "oxygenSaturation": "96",
+            "weight": "82",
+            "height": "175"
+          },
+          "fullName": "John Doe",
+          "appointmentHistory": [],
+          "id": "68fc769be975524d889de893"
+        }
+      },
+      "timestamp": "2025-10-25T12:36:09.595898"
+    }
+  ]
+}

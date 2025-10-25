@@ -8,16 +8,25 @@ const { validationResult } = require('express-validator');
 // @access  Private
 const getAppointments = async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+    const { page, limit, skip } = req.pagination;
     const { doctor, patient, status, date, startDate, endDate } = req.query;
 
     let query = {};
 
-    // Filter by doctor
-    if (doctor) {
-      query.doctor = doctor;
+    // Role-based filtering
+    if (req.user.role === 'doctor') {
+      // Doctors can only see their own appointments unless they provide a different doctor ID
+      query.doctor = doctor || req.user.id;
+    } else if (req.user.role === 'receptionist') {
+      // Receptionists can see all appointments but can filter by doctor
+      if (doctor) {
+        query.doctor = doctor;
+      }
+    } else {
+      // Admin can see all appointments, can filter by doctor
+      if (doctor) {
+        query.doctor = doctor;
+      }
     }
 
     // Filter by patient
@@ -54,17 +63,7 @@ const getAppointments = async (req, res) => {
       success: true,
       count: appointments.length,
       total,
-      page,
-      pages: Math.ceil(total / limit),
-      data: {
-        appointments,
-        pagination: {
-          current: page,
-          pages: Math.ceil(total / limit),
-          total,
-          limit
-        }
-      }
+      data: appointments
     });
   } catch (error) {
     console.error('Get appointments error:', error);
@@ -114,16 +113,80 @@ const getAppointment = async (req, res) => {
 // @access  Private (Receptionist, Admin)
 const createAppointment = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
+    const { patient, doctor, date, time, duration, reason, priority, notes } = req.body;
+
+    // Manual validation
+    if (!patient || typeof patient !== 'string') {
       return res.status(400).json({
         success: false,
-        message: 'Validation failed',
-        errors: errors.array()
+        message: 'Patient ID is required'
       });
     }
 
-    const { patient, doctor, date, time, duration, reason, priority, notes } = req.body;
+    if (!doctor || typeof doctor !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor ID is required'
+      });
+    }
+
+    if (!date || !date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Date must be in YYYY-MM-DD format'
+      });
+    }
+
+    if (!time || !time.match(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Time must be in HH:MM format'
+      });
+    }
+
+    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reason is required'
+      });
+    }
+
+    if (reason.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reason cannot exceed 500 characters'
+      });
+    }
+
+    if (priority && !['low', 'medium', 'high'].includes(priority)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Priority must be low, medium, or high'
+      });
+    }
+
+    if (notes && notes.length > 1000) {
+      return res.status(400).json({
+        success: false,
+        message: 'Notes cannot exceed 1000 characters'
+      });
+    }
+
+    // Check if patient ID is valid ObjectId
+    if (!patient.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Patient not found'
+      });
+    }
+
+    // Check if doctor ID is valid ObjectId
+    if (!doctor.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor not found'
+      });
+    }
 
     // Check if patient exists
     const patientExists = await Patient.findById(patient);
@@ -158,7 +221,12 @@ const createAppointment = async (req, res) => {
       });
     }
 
+    // Generate appointment ID
+    const timestamp = Date.now().toString().slice(-8);
+    const appointmentId = `APT${timestamp}`;
+
     const appointment = await Appointment.create({
+      appointmentId,
       patient,
       doctor,
       scheduledBy: req.user.id,
@@ -293,7 +361,7 @@ const updateAppointmentStatus = async (req, res) => {
     if (!['scheduled', 'checked-in', 'in-progress', 'completed', 'cancelled', 'no-show'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status'
+        message: 'Validation failed'
       });
     }
 

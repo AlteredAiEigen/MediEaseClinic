@@ -1,0 +1,101 @@
+====================
+API Test Results
+Date: Sat Oct 25 12:26:10 IST 2025
+====================
+
+USER STORY 1: ADMIN SETUP
+Test: Register Admin
+Response Code: 201
+Response Body: {"success":true,"message":"Clinic admin registered successfully","data":{"clinic":{"id":"clinic-1761375370511","clinicName":"HealthCare Plus Clinic","adminEmail":"admin@healthcareplus.com","doctorRange":"10-20","createdAt":"2025-10-25T06:56:10.511Z"},"admin":{"firstName":"Admin","lastName":"User","email":"admin@healthcareplus.com","role":"admin","phone":null,"isActive":true,"profileImage":null,"experience":0,"permissions":[],"_id":"68fc748aae981676e5953669","createdAt":"2025-10-25T06:56:10.154Z","updatedAt":"2025-10-25T06:56:10.154Z","__v":0,"fullName":"Admin User","id":"68fc748aae981676e5953669"},"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NDhhYWU5ODE2NzZlNTk1MzY2OSIsImlhdCI6MTc2MTM3NTM3MCwiZXhwIjoxNzYxOTgwMTcwfQ.RQ0gRblEQk0wktCCVrJs6REf8hRH2y54P13NGmbDbl4"}}
+---
+STATUS: PASSED
+Test: Admin Login
+Response Code: 200
+Response Body: {"success":true,"message":"Login successful","data":{"user":{"_id":"68fc748aae981676e5953669","firstName":"Admin","lastName":"User","email":"admin@healthcareplus.com","role":"admin","phone":null,"isActive":true,"profileImage":null,"experience":0,"permissions":[],"createdAt":"2025-10-25T06:56:10.154Z","updatedAt":"2025-10-25T06:56:11.028Z","__v":0,"lastLogin":"2025-10-25T06:56:11.027Z","fullName":"Admin User","id":"68fc748aae981676e5953669"},"token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4ZmM3NDhhYWU5ODE2NzZlNTk1MzY2OSIsImlhdCI6MTc2MTM3NTM3MSwiZXhwIjoxNzYxOTgwMTcxfQ.0HR5QLq02dGORSd983ebQmkXKaTcRM5OtocSO-gdVcQ"}}
+---
+STATUS: PASSED
+USER STORY 2: ADDING STAFF
+Test: Add Doctor - Dr. Sarah Johnson
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: Add Doctor - Dr. Michael Chen
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: Add Receptionist - Emily Brown
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: List All Doctors
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: List All Receptionists
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+USER STORY 3: RECEPTIONIST DAY START
+Test: Receptionist Login
+Response Code: 401
+Response Body: {"success":false,"message":"Invalid credentials"}
+---
+STATUS: FAILED
+USER STORY 4: FIRST PATIENT
+Test: Quick Register Patient - John Doe
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: Check In Patient 1
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+USER STORY 5: SCHEDULED PATIENT
+Test: Quick Register Patient - Mary Smith
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: Create Appointment
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: Check In Patient 2 with Appointment
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: View Clinic Queue
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+USER STORY 6: DR. SARAH'S CONSULTATION
+Test: Doctor 1 Login
+Response Code: 401
+Response Body: {"success":false,"message":"Invalid credentials"}
+---
+STATUS: FAILED
+Test: View Dr. Sarah's Queue
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED
+Test: Start Consultation
+Response Code: 404
+Response Body: {"success":false,"message":"Route not found","stack":"Error: Route not found\n    at notFound (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/middleware/notFound.js:2:17)\n    at Layer.handle [as handle_request] (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/layer.js:95:5)\n    at trim_prefix (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:328:13)\n    at /Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:286:9\n    at router.process_params (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:346:12)\n    at next (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:280:10)\n    at /Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:646:15\n    at next (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:265:14)\n    at router.handle (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:175:3)\n    at router (/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/Backend/node_modules/express/lib/router/index.js:47:12)"}
+---
+STATUS: FAILED
+Test: View Patient Full Profile
+Response Code: 401
+Response Body: {"success":false,"message":"Access denied. No token provided."}
+---
+STATUS: FAILED

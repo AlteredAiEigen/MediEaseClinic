@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useMemo, useState, useEffect } from 'react';
 import { Alert } from 'react-native';
 import StorageService from '../services/StorageService';
+import authService from '../services/AuthService';
+import appointmentApiService from '../services/AppointmentApiService';
+import patientApiService from '../services/PatientApiService';
+import clinicalNotesApiService from '../services/ClinicalNotesApiService';
+import adminApiService from '../services/AdminApiService';
 
 export type DoctorRange = '1-10' | '10-20' | '20+';
 
@@ -61,12 +66,14 @@ export interface CurrentUser {
 }
 
 interface AppContextValue {
+  mode: 'api' | 'local';
   clinicProfile?: ClinicProfile;
   doctors: Doctor[];
   receptionists: Receptionist[];
   appointments: Appointment[];
   currentUser?: CurrentUser;
   setClinicProfile: (profile: ClinicProfile) => void;
+  setMode: (mode: 'api' | 'local') => void;
   addDoctor: (input: {
     name: string;
     speciality: string;
@@ -83,6 +90,7 @@ interface AppContextValue {
   rescheduleAppointment: (appointmentId: string, date: string, time: string) => void;
   authenticateDoctor: (identifier: string, password: string) => Doctor | undefined;
   authenticateReceptionist: (identifier: string, password: string) => Receptionist | undefined;
+  login: (email: string, password: string) => Promise<{ success: boolean; user?: CurrentUser; message?: string }>;
   setCurrentUser: (user?: CurrentUser) => void;
   logout: () => void;
 }
@@ -417,12 +425,21 @@ const generateDemoAppointments = (): Appointment[] => {
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize with demo data
+  // Mode selection: 'api' for backend integration, 'local' for demo mode
+  const [mode, setMode] = useState<'api' | 'local'>('local');
+
+  // Initialize with demo data for local mode
   const [clinicProfile, setClinicProfileState] = useState<ClinicProfile | undefined>(DEMO_CLINIC_PROFILE);
   const [doctors, setDoctors] = useState<Doctor[]>(DEMO_DOCTORS);
   const [receptionists, setReceptionists] = useState<Receptionist[]>(DEMO_RECEPTIONISTS);
   const [appointments, setAppointments] = useState<Appointment[]>(generateDemoAppointments());
   const [currentUser, setCurrentUser] = useState<CurrentUser | undefined>();
+
+  // API data states for when mode is 'api'
+  const [apiDoctors, setApiDoctors] = useState<Doctor[]>([]);
+  const [apiReceptionists, setApiReceptionists] = useState<Receptionist[]>([]);
+  const [apiAppointments, setApiAppointments] = useState<Appointment[]>([]);
+  const [apiPatients, setApiPatients] = useState<any[]>([]);
 
   // Initialize storage and migrate data on app start
   useEffect(() => {
@@ -457,31 +474,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addDoctor: AppContextValue['addDoctor'] = async ({ name, speciality, email, autoEmail }) => {
-    const newDoctor: Doctor = {
-      id: randomId(),
-      name,
-      speciality,
-      email,
-      temporaryPassword: generateTempPassword(),
-      autoEmailSent: autoEmail,
-      createdAt: new Date(),
-    };
+    if (mode === 'api') {
+      try {
+        // Use API service for admin user creation
+        const response = await adminApiService.createUser({
+          firstName: name.split(' ')[0],
+          lastName: name.split(' ').slice(1).join(' '),
+          email,
+          password: generateTempPassword(),
+          role: 'doctor',
+          speciality,
+        });
 
-    setDoctors((prev) => [...prev, newDoctor]);
+        if (response.success) {
+          const newDoctor: Doctor = {
+            id: response.data.user._id,
+            name: `${response.data.user.firstName} ${response.data.user.lastName}`,
+            speciality: response.data.user.speciality || '',
+            email: response.data.user.email,
+            temporaryPassword: generateTempPassword(), // This would come from backend
+            autoEmailSent: autoEmail,
+            createdAt: new Date(response.data.user.createdAt),
+          };
 
-    // Save to storage
-    try {
-      const updatedDoctors = [...doctors, newDoctor];
-      await StorageService.saveDoctors(updatedDoctors);
-    } catch (error) {
-      console.error('Error saving doctor:', error);
+          setApiDoctors((prev) => [...prev, newDoctor]);
+
+          if (autoEmail) {
+            Alert.alert('Email queued', `An access email will be sent to ${name}.`);
+          }
+
+          return newDoctor;
+        } else {
+          throw new Error(response.message || 'Failed to create doctor');
+        }
+      } catch (error) {
+        console.error('Error creating doctor via API:', error);
+        Alert.alert('Error', 'Failed to create doctor account');
+        throw error;
+      }
+    } else {
+      // Local storage mode
+      const newDoctor: Doctor = {
+        id: randomId(),
+        name,
+        speciality,
+        email,
+        temporaryPassword: generateTempPassword(),
+        autoEmailSent: autoEmail,
+        createdAt: new Date(),
+      };
+
+      setDoctors((prev) => [...prev, newDoctor]);
+
+      // Save to storage
+      try {
+        const updatedDoctors = [...doctors, newDoctor];
+        await StorageService.saveDoctors(updatedDoctors);
+      } catch (error) {
+        console.error('Error saving doctor:', error);
+      }
+
+      if (autoEmail) {
+        Alert.alert('Email queued', `An access email will be sent to ${name}.`);
+      }
+
+      return newDoctor;
     }
-
-    if (autoEmail) {
-      Alert.alert('Email queued', `An access email will be sent to ${name}.`);
-    }
-
-    return newDoctor;
   };
 
   const removeDoctor: AppContextValue['removeDoctor'] = (doctorId) => {
@@ -608,18 +666,153 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return match;
   };
 
+  const login = async (email: string, password: string) => {
+    if (mode === 'api') {
+      try {
+        const response = await authService.login({ email, password });
+        if (response.success && response.data) {
+          const user: CurrentUser = {
+            id: response.data.user._id,
+            name: `${response.data.user.firstName} ${response.data.user.lastName}`,
+            email: response.data.user.email,
+            role: response.data.user.role,
+          };
+          setCurrentUser(user);
+
+          // Load relevant data based on user role
+          if (user.role === 'admin') {
+            // Load all data for admin
+            try {
+              const [doctorsRes, receptionistsRes, appointmentsRes] = await Promise.all([
+                adminApiService.getUsers({ role: 'doctor', limit: 100 }),
+                adminApiService.getUsers({ role: 'receptionist', limit: 100 }),
+                appointmentApiService.getAppointments({ limit: 100 }),
+              ]);
+
+              if (doctorsRes.success) {
+                const doctorsData = doctorsRes.data.users.map(u => ({
+                  id: u._id,
+                  name: `${u.firstName} ${u.lastName}`,
+                  speciality: u.speciality || '',
+                  email: u.email,
+                  temporaryPassword: 'API_MANAGED',
+                  autoEmailSent: true,
+                  createdAt: new Date(u.createdAt),
+                }));
+                setApiDoctors(doctorsData);
+              }
+
+              if (receptionistsRes.success) {
+                const receptionistsData = receptionistsRes.data.users.map(u => ({
+                  id: u._id,
+                  name: `${u.firstName} ${u.lastName}`,
+                  email: u.email,
+                  temporaryPassword: 'API_MANAGED',
+                  createdAt: new Date(u.createdAt),
+                }));
+                setApiReceptionists(receptionistsData);
+              }
+
+              if (appointmentsRes.success) {
+                const appointmentsData = appointmentsRes.data.appointments.map(a => ({
+                  id: a._id,
+                  doctorId: a.doctor,
+                  doctorName: a.doctorName || '',
+                  scheduledById: a.scheduledBy,
+                  scheduledByName: a.scheduledByName || '',
+                  patientFirstName: 'API_PATIENT', // Would need to populate from patient data
+                  patientLastName: '',
+                  patientPhone: '',
+                  age: '',
+                  gender: 'Unknown' as any,
+                  reason: a.reason,
+                  presentInClinic: a.presentInClinic || false,
+                  insurance: a.insurance || false,
+                  date: a.date,
+                  time: a.time,
+                  status: a.status as AppointmentStatus,
+                  notes: a.notes,
+                }));
+                setApiAppointments(appointmentsData);
+              }
+            } catch (error) {
+              console.error('Error loading data after login:', error);
+            }
+          }
+
+          return { success: true, user };
+        } else {
+          return { success: false, message: response.message || 'Login failed' };
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        return { success: false, message: 'Network error or invalid credentials' };
+      }
+    } else {
+      // Local mode - existing logic
+      if (clinicProfile && (email === clinicProfile.adminEmail) && password === clinicProfile.adminPassword) {
+        const user: CurrentUser = {
+          id: 'admin-1',
+          name: clinicProfile.clinicName,
+          email: clinicProfile.adminEmail,
+          role: 'admin',
+        };
+        setCurrentUser(user);
+        return { success: true, user };
+      }
+
+      // Check doctors
+      const doctor = doctors.find(d => d.email === email);
+      if (doctor && password === doctor.temporaryPassword) {
+        const user: CurrentUser = {
+          id: doctor.id,
+          name: doctor.name,
+          email: doctor.email,
+          role: 'doctor',
+        };
+        setCurrentUser(user);
+        return { success: true, user };
+      }
+
+      // Check receptionists
+      const receptionist = receptionists.find(r => r.email === email);
+      if (receptionist && password === receptionist.temporaryPassword) {
+        const user: CurrentUser = {
+          id: receptionist.id,
+          name: receptionist.name,
+          email: receptionist.email,
+          role: 'receptionist',
+        };
+        setCurrentUser(user);
+        return { success: true, user };
+      }
+
+      return { success: false, message: 'Invalid credentials' };
+    }
+  };
+
   const logout = () => {
+    if (mode === 'api') {
+      authService.logout();
+    }
     setCurrentUser(undefined);
   };
 
+  // Return appropriate data based on mode
+  const currentDoctors = mode === 'api' ? apiDoctors : doctors;
+  const currentReceptionists = mode === 'api' ? apiReceptionists : receptionists;
+  const currentAppointments = mode === 'api' ? apiAppointments : appointments;
+
   const value = useMemo<AppContextValue>(
     () => ({
+      mode,
       clinicProfile,
-      doctors,
-      receptionists,
-      appointments,
+      doctors: currentDoctors,
+      receptionists: currentReceptionists,
+      appointments: currentAppointments,
       currentUser,
       setClinicProfile,
+      setMode,
       addDoctor,
       removeDoctor,
       addReceptionist,
@@ -629,10 +822,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rescheduleAppointment,
       authenticateDoctor,
       authenticateReceptionist,
+      login,
       setCurrentUser,
       logout,
     }),
-    [clinicProfile, doctors, receptionists, appointments, currentUser],
+    [mode, clinicProfile, currentDoctors, currentReceptionists, currentAppointments, currentUser],
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
