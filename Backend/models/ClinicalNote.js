@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const clinicalNoteSchema = new mongoose.Schema({
   noteId: {
     type: String,
-    unique: true,
     required: false,
     uppercase: true
   },
@@ -15,7 +14,7 @@ const clinicalNoteSchema = new mongoose.Schema({
   appointment: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
-    required: [true, 'Appointment is required']
+    required: false // Optional - allows notes for walk-in patients
   },
   doctor: {
     type: mongoose.Schema.Types.ObjectId,
@@ -143,7 +142,7 @@ const clinicalNoteSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-clinicalNoteSchema.index({ noteId: 1 });
+clinicalNoteSchema.index({ noteId: 1 }, { unique: true });
 clinicalNoteSchema.index({ patient: 1 });
 clinicalNoteSchema.index({ appointment: 1 });
 clinicalNoteSchema.index({ doctor: 1 });

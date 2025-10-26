@@ -32,9 +32,10 @@ describe('Patient Management API', () => {
         .set(getAuthHeaders(adminToken))
         .expect(200);
 
+
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0].firstName).toBe('John');
+      expect(response.body.data.patients).toHaveLength(1);
+      expect(response.body.data.patients[0].firstName).toBe('John');
     });
 
     it('should get all patients for doctor', async () => {
@@ -44,7 +45,7 @@ describe('Patient Management API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data.patients).toHaveLength(1);
     });
 
     it('should support pagination', async () => {
@@ -62,7 +63,7 @@ describe('Patient Management API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(3);
+      expect(response.body.data.patients).toHaveLength(3);
       expect(response.body.data.pagination).toBeDefined();
     });
 
@@ -73,7 +74,7 @@ describe('Patient Management API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data.patients).toHaveLength(1);
     });
 
     it('should require authentication', async () => {
@@ -93,7 +94,7 @@ describe('Patient Management API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data.patients).toHaveLength(1);
     });
 
     it('should search patients by phone', async () => {
@@ -103,17 +104,17 @@ describe('Patient Management API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data.patients).toHaveLength(1);
     });
 
     it('should search patients by email', async () => {
       const response = await request(app)
-        .get('/api/patients/search?q=john.doe@example.com')
+        .get('/api/patients/search?q=john.doe')
         .set(getAuthHeaders(adminToken))
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(1);
+      expect(response.body.data.patients).toHaveLength(1);
     });
 
     it('should return empty array for no matches', async () => {
@@ -123,7 +124,7 @@ describe('Patient Management API', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toHaveLength(0);
+      expect(response.body.data.patients).toHaveLength(0);
     });
   });
 
@@ -267,6 +268,9 @@ describe('Patient Management API', () => {
     });
 
     it('should check for duplicate email', async () => {
+      // First create a patient with a specific email
+      await createTestPatient({ email: 'duplicate@example.com' });
+
       const patientData = {
         patientId: 'PAT789012',
         firstName: 'Jane',
@@ -275,8 +279,9 @@ describe('Patient Management API', () => {
         age: '25',
         bloodGroup: 'B+',
         dateOfBirth: '1998-05-15',
-        email: 'john.doe@example.com', // Same as existing patient
-        phone: '+1987654321'
+        email: 'duplicate@example.com', // Same as existing patient
+        phone: '+1987654321',
+        address: '123 Test St, Test City, TC 12345'
       };
 
       const response = await request(app)
@@ -284,7 +289,6 @@ describe('Patient Management API', () => {
         .set(getAuthHeaders(adminToken))
         .send(patientData)
         .expect(400);
-
       expect(response.body.success).toBe(false);
       expect(response.body.message).toContain('already exists');
     });

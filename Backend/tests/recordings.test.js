@@ -101,7 +101,7 @@ describe('Recording Management API', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.recordings).toHaveLength(1);
-      expect(response.body.data.recordings[0].patient).toBe(patient._id.toString());
+      expect(response.body.data.recordings[0].patient._id).toBe(patient._id.toString());
     });
 
     it('should return 404 for non-existent patient', async () => {
@@ -125,7 +125,7 @@ describe('Recording Management API', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.recordings).toHaveLength(1);
-      expect(response.body.data.recordings[0].doctor).toBe(doctor._id.toString());
+      expect(response.body.data.recordings[0].doctor._id).toBe(doctor._id.toString());
     });
 
     it('should return 404 for non-existent doctor', async () => {

@@ -1,13 +1,14 @@
 const request = require('supertest');
 const app = require('../server');
-const { 
-  createTestUser, 
-  createTestPatient, 
+const ClinicalNote = require('../models/ClinicalNote');
+const {
+  createTestUser,
+  createTestPatient,
   createTestAppointment,
   createTestClinicalNote,
-  generateAuthToken, 
-  getAuthHeaders, 
-  cleanupTestData 
+  generateAuthToken,
+  getAuthHeaders,
+  cleanupTestData
 } = require('./helpers/testHelpers');
 
 describe('Clinical Notes API', () => {
@@ -114,10 +115,19 @@ describe('Clinical Notes API', () => {
 
   describe('GET /api/clinical-notes/actionable', () => {
     it('should get only actionable notes', async () => {
+      // Clean up existing notes first
+      await ClinicalNote.deleteMany({});
+
+      // Create an actionable note
+      const actionableNote = await createTestClinicalNote(patient._id, doctor._id, appointment._id, {
+        title: 'Actionable Note',
+        actionable: true
+      });
+
       // Create a non-actionable note
       await createTestClinicalNote(patient._id, doctor._id, appointment._id, {
         title: 'Non-actionable Note',
-        isActionable: false
+        actionable: false
       });
 
       const response = await request(app)
@@ -127,7 +137,8 @@ describe('Clinical Notes API', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data.notes).toHaveLength(1);
-      expect(response.body.data.notes[0].isActionable).toBe(true);
+      expect(response.body.data.notes[0].actionable).toBe(true);
+      expect(response.body.data.notes[0].title).toBe('Actionable Note');
     });
   });
 
@@ -366,7 +377,7 @@ describe('Clinical Notes API', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toBe('Clinical note marked as complete');
-      expect(response.body.data.note.isCompleted).toBe(true);
+      expect(response.body.data.note.completed).toBe(true);
     });
 
     it('should return 404 for non-existent note', async () => {

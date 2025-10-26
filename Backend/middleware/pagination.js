@@ -50,38 +50,56 @@ const pagination = (req, res, next) => {
 // Add pagination metadata to response
 const addPaginationMeta = (req, res, next) => {
   const originalSend = res.send;
-  
+
   res.send = function(data) {
     // Only add pagination meta for successful responses with data
     if (res.statusCode >= 200 && res.statusCode < 300 && data) {
       try {
         const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-        
+
         if (parsedData && parsedData.data && Array.isArray(parsedData.data)) {
-          const { page, limit } = req.pagination;
+          const { page, limit } = req.pagination || { page: 1, limit: 10 };
           const total = parsedData.total || parsedData.data.length;
           const totalPages = Math.ceil(total / limit);
-          
-          parsedData.pagination = {
-            page,
-            limit,
-            total,
-            totalPages,
-            hasNext: page < totalPages,
-            hasPrev: page > 1
+
+          // Determine the key name based on the request path
+          let dataKey = 'items'; // default
+          const fullPath = req.baseUrl + req.path;
+          if (fullPath.includes('/appointments')) {
+            dataKey = 'appointments';
+          } else if (fullPath.includes('/patients')) {
+            dataKey = 'patients';
+          } else if (fullPath.includes('/clinical-notes')) {
+            dataKey = 'notes';
+          } else if (fullPath.includes('/recordings')) {
+            dataKey = 'recordings';
+          }
+
+          // Replace the data array with an object containing the appropriate key and pagination
+          parsedData.data = {
+            [dataKey]: parsedData.data,
+            pagination: {
+              page,
+              limit,
+              total,
+              totalPages,
+              hasNext: page < totalPages,
+              hasPrev: page > 1
+            }
           };
-          
+
           return originalSend.call(this, JSON.stringify(parsedData));
         }
       } catch (error) {
+        console.error('Pagination middleware error:', error);
         // If parsing fails, send original data
         return originalSend.call(this, data);
       }
     }
-    
+
     return originalSend.call(this, data);
   };
-  
+
   next();
 };
 

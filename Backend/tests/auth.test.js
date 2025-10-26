@@ -8,6 +8,14 @@ describe('Authentication API', () => {
   });
 
   describe('POST /api/auth/register', () => {
+    let adminToken;
+
+    beforeEach(async () => {
+      // Create an admin user for authentication
+      const adminUser = await createTestUser({ role: 'admin' });
+      adminToken = generateAuthToken(adminUser._id, 'admin');
+    });
+
     it('should register a new user successfully', async () => {
       const userData = {
         firstName: 'John',
@@ -22,6 +30,7 @@ describe('Authentication API', () => {
 
       const response = await request(app)
         .post('/api/auth/register')
+        .set(getAuthHeaders(adminToken))
         .send(userData)
         .expect(201);
 
@@ -44,10 +53,11 @@ describe('Authentication API', () => {
       };
 
       // Create first user
-      await createTestUser({ email: userData.email });
+      await createTestUser({ email: userData.email, role: 'doctor' });
 
       const response = await request(app)
         .post('/api/auth/register')
+        .set(getAuthHeaders(adminToken))
         .send(userData)
         .expect(400);
 
@@ -63,6 +73,7 @@ describe('Authentication API', () => {
 
       const response = await request(app)
         .post('/api/auth/register')
+        .set(getAuthHeaders(adminToken))
         .send(userData)
         .expect(400);
 
@@ -82,6 +93,7 @@ describe('Authentication API', () => {
 
       const response = await request(app)
         .post('/api/auth/register')
+        .set(getAuthHeaders(adminToken))
         .send(userData)
         .expect(400);
 
@@ -101,6 +113,7 @@ describe('Authentication API', () => {
 
       const response = await request(app)
         .post('/api/auth/register')
+        .set(getAuthHeaders(adminToken))
         .send(userData)
         .expect(400);
 

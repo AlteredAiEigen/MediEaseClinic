@@ -181,7 +181,7 @@ const createRecording = async (req, res) => {
 
     // Validate required fields
     if (!recordingData.patientId || !recordingData.doctorId || !recordingData.duration) {
-      return sendError(res, 'Patient ID, Doctor ID, and duration are required', null, 400);
+      return sendError(res, 'Validation failed', null, 400);
     }
 
     // Check if patient exists
@@ -219,7 +219,11 @@ const createRecording = async (req, res) => {
     sendSuccess(res, 'Recording created successfully', { recording }, 201);
   } catch (error) {
     console.error('Error creating recording:', error);
-    sendError(res, 'Failed to create recording', error.message);
+    if (error.name === 'ValidationError') {
+      sendError(res, 'Validation failed', null, 400);
+    } else {
+      sendError(res, 'Failed to create recording', error.message);
+    }
   }
 };
 
@@ -264,21 +268,37 @@ const processRecording = async (req, res) => {
     // Simulate processing delay
     setTimeout(async () => {
       try {
-        // Mock transcription processing
-        if (!recording.transcription) {
-          recording.transcription = 'Mock transcription generated from audio processing...';
+        // Check if recording still exists (might have been deleted during testing)
+        const existingRecording = await Recording.findById(id);
+        if (!existingRecording) {
+          console.log(`Recording ${id} no longer exists, skipping processing`);
+          return;
         }
-        
-        recording.status = 'processed';
-        recording.processedAt = new Date();
-        await recording.save();
+
+        // Mock transcription processing
+        if (!existingRecording.transcription) {
+          existingRecording.transcription = 'Mock transcription generated from audio processing...';
+        }
+
+        existingRecording.status = 'processed';
+        existingRecording.processedAt = new Date();
+        await existingRecording.save();
 
         console.log(`Recording ${id} processed successfully`);
       } catch (error) {
         console.error('Error processing recording:', error);
-        recording.status = 'error';
-        recording.error = error.message;
-        await recording.save();
+
+        try {
+          // Check if recording still exists before updating error status
+          const errorRecording = await Recording.findById(id);
+          if (errorRecording) {
+            errorRecording.status = 'error';
+            errorRecording.error = error.message;
+            await errorRecording.save();
+          }
+        } catch (saveError) {
+          console.error('Error saving recording error status:', saveError);
+        }
       }
     }, 2000); // 2 second delay
 
@@ -293,6 +313,11 @@ const processRecording = async (req, res) => {
 const deleteRecording = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Check if ID is valid MongoDB ObjectId
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return sendNotFound(res, 'Recording not found');
+    }
 
     const recording = await Recording.findByIdAndDelete(id);
 
