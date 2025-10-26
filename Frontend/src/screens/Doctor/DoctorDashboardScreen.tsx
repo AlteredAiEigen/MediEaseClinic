@@ -13,6 +13,7 @@ import { Theme } from '../../themes';
 import { useAppContext } from '../../context/AppContext';
 import { usePatients } from '../../context/PatientsContext';
 import { useAppointments } from '../../context/AppointmentsContext';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from '../../components/Icon';
 import Logo from '../../components/Logo';
 import ModernCard from '../../components/ModernCard';
@@ -20,12 +21,26 @@ import ModernButton from '../../components/ModernButton';
 import ModernIcon from '../../components/ModernIcon';
 import { Calendar } from 'react-native-calendars';
 
+type RootStackParamList = {
+  DoctorDashboard: undefined;
+  PatientDetails: { patient: any };
+};
+
+type DoctorDashboardScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'DoctorDashboard'
+>;
+
+interface Props {
+  navigation: DoctorDashboardScreenNavigationProp;
+}
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const IS_TABLET = SCREEN_WIDTH >= 768;
 
 type DoctorTab = 'schedule' | 'queue' | 'patients' | 'profile';
 
-const DoctorDashboardScreen: React.FC = () => {
+const DoctorDashboardScreen: React.FC<Props> = ({ navigation }) => {
   const theme = useTheme();
   const styles = React.useMemo(() => createStyles(theme), [theme]);
   const { currentUser, logout } = useAppContext();
@@ -36,7 +51,6 @@ const DoctorDashboardScreen: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Patient-related state - moved to top level to avoid hooks in render functions
-  const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
 
@@ -604,204 +618,6 @@ const DoctorDashboardScreen: React.FC = () => {
     );
   };
 
-  const renderPatientDetails = (patient: any) => (
-      <View style={styles.patientDetailsContainer}>
-        <Text style={[styles.patientDetailsTitle, { color: theme.colors.foreground }]}>
-          Patient Information
-        </Text>
-        
-        <View style={styles.patientDetailsLayout}>
-          {/* Left Column - Static Patient Information */}
-          <View style={styles.patientInfoColumn}>
-            <ScrollView style={styles.patientInfoScroll} showsVerticalScrollIndicator={false}>
-              {/* Basic Information */}
-              <ModernCard style={styles.patientInfoCard}>
-                <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                  Basic Information
-                </Text>
-                <View style={styles.patientInfoGrid}>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Name
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.firstName} {patient.lastName}
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Patient ID
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.patientId}
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Date of Birth
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.dateOfBirth}
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Age
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.age} years
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Gender
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.gender}
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Blood Group
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.bloodGroup}
-                    </Text>
-                  </View>
-                </View>
-              </ModernCard>
-
-              {/* Contact Information */}
-              <ModernCard style={styles.patientInfoCard}>
-                <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                  Contact Information
-                </Text>
-                <View style={styles.patientInfoGrid}>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Email
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.email}
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Phone
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.phone}
-                    </Text>
-                  </View>
-                  <View style={styles.patientInfoItem}>
-                    <Text style={[styles.patientInfoLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Address
-                    </Text>
-                    <Text style={[styles.patientInfoValue, { color: theme.colors.foreground }]}>
-                      {patient.address}
-                    </Text>
-                  </View>
-                </View>
-              </ModernCard>
-
-              {/* Medical History */}
-              <ModernCard style={styles.patientInfoCard}>
-                <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                  Medical History
-                </Text>
-                <Text style={[styles.patientInfoText, { color: theme.colors.foregroundSecondary }]}>
-                  {patient.medicalHistory}
-                </Text>
-              </ModernCard>
-
-              {/* Allergies */}
-              <ModernCard style={styles.patientInfoCard}>
-                <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                  Allergies
-                </Text>
-                <Text style={[styles.patientInfoText, { color: theme.colors.foregroundSecondary }]}>
-                  {patient.allergies}
-                </Text>
-              </ModernCard>
-
-              {/* Current Medications */}
-              <ModernCard style={styles.patientInfoCard}>
-                <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                  Current Medications
-                </Text>
-                <Text style={[styles.patientInfoText, { color: theme.colors.foregroundSecondary }]}>
-                  {patient.currentMedication}
-                </Text>
-              </ModernCard>
-
-              {/* Lifestyle */}
-              <ModernCard style={styles.patientInfoCard}>
-                <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                  Lifestyle
-                </Text>
-                <View style={styles.lifestyleGrid}>
-                  <View style={styles.lifestyleItem}>
-                    <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Smoking
-                    </Text>
-                    <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                      {patient.lifestyle.smoking}
-                    </Text>
-                  </View>
-                  <View style={styles.lifestyleItem}>
-                    <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Alcohol
-                    </Text>
-                    <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                      {patient.lifestyle.alcohol}
-                    </Text>
-                  </View>
-                  <View style={styles.lifestyleItem}>
-                    <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Exercise
-                    </Text>
-                    <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                      {patient.lifestyle.exercise}
-                    </Text>
-                  </View>
-                  <View style={styles.lifestyleItem}>
-                    <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Diet
-                    </Text>
-                    <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                      {patient.lifestyle.diet}
-                    </Text>
-                  </View>
-                  <View style={styles.lifestyleItem}>
-                    <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Sleep
-                    </Text>
-                    <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                      {patient.lifestyle.sleep}
-                    </Text>
-                  </View>
-                  <View style={styles.lifestyleItem}>
-                    <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                      Stress
-                    </Text>
-                    <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                      {patient.lifestyle.stress}
-                    </Text>
-                  </View>
-                </View>
-              </ModernCard>
-            </ScrollView>
-          </View>
-
-          {/* Right Column - Medical Events Timeline */}
-          <View style={styles.timelineColumn}>
-            {patient.appointmentHistory && patient.appointmentHistory.length > 0 && (
-              renderTimeline(patient.appointmentHistory)
-            )}
-          </View>
-        </View>
-      </View>
-    );
 
     return (
     <View style={styles.tabContent}>
@@ -816,55 +632,31 @@ const DoctorDashboardScreen: React.FC = () => {
         </Text>
       </ModernCard>
 
-        {selectedPatient ? (
-          <View>
-            <ModernCard variant="default" style={styles.patientCard}>
-              <View style={styles.patientHeader}>
-                <View style={styles.patientInfo}>
-                  <Text style={[styles.patientName, { color: theme.colors.foreground }]}>
-                    {selectedPatient.firstName} {selectedPatient.lastName}
+        <View>
+          {filteredPatients.map((patient) => (
+            <ModernCard key={patient.id} variant="default" style={styles.patientCard}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate('PatientDetails', { patient })}
+                style={styles.patientCardContent}
+              >
+                <View style={styles.patientHeader}>
+                  <View style={styles.patientInfo}>
+                    <Text style={[styles.patientName, { color: theme.colors.foreground }]}>
+                      {patient.firstName} {patient.lastName}
         </Text>
-                  <Text style={[styles.patientId, { color: theme.colors.foregroundSecondary }]}>
-                    ID: {selectedPatient.patientId}
-        </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.closeButton}
-                  onPress={() => setSelectedPatient(null)}
-                >
-                  <Icon name="x" size={20} color={theme.colors.foregroundMuted} />
-                </TouchableOpacity>
-              </View>
-              {renderPatientDetails(selectedPatient)}
-      </ModernCard>
-          </View>
-        ) : (
-          <View>
-            {filteredPatients.map((patient) => (
-              <ModernCard key={patient.id} variant="default" style={styles.patientCard}>
-                <TouchableOpacity
-                  onPress={() => setSelectedPatient(patient)}
-                  style={styles.patientCardContent}
-                >
-                  <View style={styles.patientHeader}>
-                    <View style={styles.patientInfo}>
-                      <Text style={[styles.patientName, { color: theme.colors.foreground }]}>
-                        {patient.firstName} {patient.lastName}
-        </Text>
-                      <Text style={[styles.patientId, { color: theme.colors.foregroundSecondary }]}>
-                        ID: {patient.patientId} | {patient.age} years, {patient.gender}
-                      </Text>
-                      <Text style={[styles.patientPhone, { color: theme.colors.foregroundMuted }]}>
-                        {patient.phone}
-                      </Text>
-                    </View>
-                    <Icon name="chevron-right" size={20} color={theme.colors.foregroundMuted} />
+                    <Text style={[styles.patientId, { color: theme.colors.foregroundSecondary }]}>
+                      ID: {patient.patientId} | {patient.age} years, {patient.gender}
+                    </Text>
+                    <Text style={[styles.patientPhone, { color: theme.colors.foregroundMuted }]}>
+                      {patient.phone}
+                    </Text>
                   </View>
-                </TouchableOpacity>
+                  <Icon name="chevron-right" size={20} color={theme.colors.foregroundMuted} />
+                </View>
+              </TouchableOpacity>
       </ModernCard>
-            ))}
-          </View>
-        )}
+          ))}
+        </View>
     </View>
   );
   };

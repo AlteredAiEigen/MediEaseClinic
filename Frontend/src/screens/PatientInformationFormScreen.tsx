@@ -1000,6 +1000,191 @@ const PatientInformationFormScreen: React.FC<Props> = ({ navigation, route }) =>
     </ModernCard>
   );
 
+  // New Card-Based Render Functions
+  const renderPatientHeaderCard = () => (
+    <ModernCard style={styles.patientHeaderCard}>
+      <View style={styles.patientHeaderContent}>
+        <View style={styles.patientProfileSection}>
+          <View style={styles.patientAvatar}>
+            <ModernIcon name="user" size={40} color={theme.colors.primary} />
+          </View>
+          <View style={styles.patientBasicInfo}>
+            <Text style={[styles.patientName, { color: theme.colors.foreground }]}>
+              {formData.firstName} {formData.lastName}
+            </Text>
+            <Text style={[styles.patientCondition, { color: theme.colors.foregroundSecondary }]}>
+              {formData.chiefComplaint || 'General Consultation'}
+            </Text>
+            <View style={styles.patientDemographics}>
+              <View style={styles.demographicItem}>
+                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>DOB:</Text>
+                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{formData.dateOfBirth}</Text>
+              </View>
+              <View style={styles.demographicItem}>
+                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Age:</Text>
+                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{formData.age}y</Text>
+              </View>
+              <View style={styles.demographicItem}>
+                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Weight:</Text>
+                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{formData.vitals.weight}</Text>
+              </View>
+              <View style={styles.demographicItem}>
+                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Height:</Text>
+                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{formData.vitals.height}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <ModernButton
+          title="SEND MESSAGE"
+          variant="gradient"
+          size="sm"
+          onPress={() => Alert.alert('Message', 'Send message functionality')}
+        />
+      </View>
+    </ModernCard>
+  );
+
+  const renderContactCard = () => (
+    <ModernCard style={styles.contactCard}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Contact Information</Text>
+      </View>
+      <View style={styles.contactInfo}>
+        <View style={styles.contactItem}>
+          <ModernIcon name="home" size={16} color={theme.colors.primary} />
+          <Text style={[styles.contactText, { color: theme.colors.foreground }]}>{formData.address}</Text>
+        </View>
+        <View style={styles.contactItem}>
+          <ModernIcon name="phone" size={16} color={theme.colors.primary} />
+          <Text style={[styles.contactText, { color: theme.colors.foreground }]}>Mobile: {formData.phone}</Text>
+        </View>
+        <View style={styles.contactItem}>
+          <ModernIcon name="mail" size={16} color={theme.colors.primary} />
+          <Text style={[styles.contactText, { color: theme.colors.foreground }]}>{formData.email}</Text>
+        </View>
+      </View>
+    </ModernCard>
+  );
+
+  const renderMedicationsCard = () => (
+    <ModernCard style={styles.medicationsCard}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Current medications</Text>
+        <View style={styles.cardActions}>
+          <TouchableOpacity style={styles.actionButton}>
+            <ModernIcon name="plus" size={16} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <ModernIcon name="more-vertical" size={16} color={theme.colors.foregroundMuted} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.medicationsList}>
+        {formData.currentMedication ? (
+          <View style={styles.medicationItem}>
+            <ModernIcon name="pill" size={16} color={theme.colors.primary} />
+            <Text style={[styles.medicationText, { color: theme.colors.foreground }]}>{formData.currentMedication}</Text>
+          </View>
+        ) : (
+          <Text style={[styles.emptyText, { color: theme.colors.foregroundMuted }]}>No medications listed</Text>
+        )}
+      </View>
+    </ModernCard>
+  );
+
+  const renderVitalsCard = () => (
+    <ModernCard style={styles.vitalsCard}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Vitals</Text>
+        <TouchableOpacity style={styles.actionButton}>
+          <ModernIcon name="more-vertical" size={16} color={theme.colors.foregroundMuted} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.vitalsGrid}>
+        <View style={styles.vitalItem}>
+          <ModernIcon name="heart" size={20} color={theme.colors.primary} />
+          <Text style={[styles.vitalValue, { color: theme.colors.foreground }]}>{formData.vitals.bloodPressure}</Text>
+          <Text style={[styles.vitalLabel, { color: theme.colors.foregroundMuted }]}>Blood Pressure</Text>
+        </View>
+        <View style={styles.vitalItem}>
+          <ModernIcon name="activity" size={20} color={theme.colors.primary} />
+          <Text style={[styles.vitalValue, { color: theme.colors.foreground }]}>{formData.vitals.heartRate} BPM</Text>
+          <Text style={[styles.vitalLabel, { color: theme.colors.foregroundMuted }]}>Pulse</Text>
+        </View>
+      </View>
+    </ModernCard>
+  );
+
+  const renderNotesCard = () => (
+    <ModernCard style={styles.notesCard}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Notes</Text>
+        <View style={styles.cardActions}>
+          <TouchableOpacity style={styles.actionButton}>
+            <ModernIcon name="plus" size={16} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton}>
+            <ModernIcon name="more-vertical" size={16} color={theme.colors.foregroundMuted} />
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.notesContent}>
+        <Text style={[styles.noteText, { color: theme.colors.foreground }]}>
+          {formData.doctorNotes || 'No notes available'}
+        </Text>
+      </View>
+    </ModernCard>
+  );
+
+  const renderLabResultsCard = () => (
+    <ModernCard style={styles.labResultsCard}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Lab results</Text>
+        <TouchableOpacity style={styles.actionButton}>
+          <ModernIcon name="more-vertical" size={16} color={theme.colors.foregroundMuted} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.labResultsList}>
+        <View style={styles.labResultItem}>
+          <ModernIcon name="file-text" size={16} color={theme.colors.primary} />
+          <Text style={[styles.labResultText, { color: theme.colors.foreground }]}>Blood Test - {new Date().toLocaleDateString()}</Text>
+        </View>
+        <View style={styles.labResultItem}>
+          <ModernIcon name="file-text" size={16} color={theme.colors.primary} />
+          <Text style={[styles.labResultText, { color: theme.colors.foreground }]}>X-Ray - {new Date().toLocaleDateString()}</Text>
+        </View>
+      </View>
+    </ModernCard>
+  );
+
+  const renderMedicalEventsTimeline = () => (
+    <ModernCard style={styles.timelineCardNew}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Medical Events Timeline</Text>
+        <TouchableOpacity style={styles.actionButton}>
+          <ModernIcon name="more-vertical" size={16} color={theme.colors.foregroundMuted} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.timelineContentNew}>
+        <View style={styles.timelineItemNew}>
+          <View style={[styles.timelineDotNew, { backgroundColor: theme.colors.primary }]} />
+          <View style={styles.timelineEventNew}>
+            <Text style={[styles.timelineDateNew, { color: theme.colors.foregroundMuted }]}>Today</Text>
+            <Text style={[styles.timelineEventTextNew, { color: theme.colors.foreground }]}>Patient consultation</Text>
+          </View>
+        </View>
+        <View style={styles.timelineItemNew}>
+          <View style={[styles.timelineDotNew, { backgroundColor: theme.colors.primary }]} />
+          <View style={styles.timelineEventNew}>
+            <Text style={[styles.timelineDateNew, { color: theme.colors.foregroundMuted }]}>Last week</Text>
+            <Text style={[styles.timelineEventTextNew, { color: theme.colors.foreground }]}>Blood test completed</Text>
+          </View>
+        </View>
+      </View>
+    </ModernCard>
+  );
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
@@ -1015,46 +1200,46 @@ const PatientInformationFormScreen: React.FC<Props> = ({ navigation, route }) =>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* Patient Information Form - Following handwritten structure */}
+          {/* Modern Card-Based Patient Overview Layout */}
           
           {/* Search Section */}
           {renderSearch()}
           
-          {/* Patient Info Section */}
-          {renderPatientDetails()}
+          {/* Patient Header Card */}
+          {renderPatientHeaderCard()}
           
-          {/* Contact Details Section */}
-          {renderContactInfo()}
+          {/* Two Column Layout */}
+          <View style={styles.twoColumnLayout}>
+            {/* Left Column */}
+            <View style={styles.leftColumn}>
+              {/* Contact Information Card */}
+              {renderContactCard()}
+              
+              {/* Notes Card */}
+              {renderNotesCard()}
+            </View>
+            
+            {/* Right Column */}
+            <View style={styles.rightColumn}>
+              {/* Current Medications Card */}
+              {renderMedicationsCard()}
+              
+              {/* Vitals Card */}
+              {renderVitalsCard()}
+              
+              {/* Lab Results Card */}
+              {renderLabResultsCard()}
+            </View>
+          </View>
           
-          {/* Reports Section - Vitals */}
-          {renderVitals()}
+          {/* Medical Events Timeline - Full Width */}
+          {renderMedicalEventsTimeline()}
           
-          {/* Impairments Section - Chief Complaint/Issues */}
-          {renderChiefComplaint()}
-          
-          {/* Insurance Section - Medical History */}
+          {/* Additional Sections */}
           {renderMedicalHistory()}
-          
-          {/* Admission Information Section - Current Medication */}
-          {renderCurrentMedication()}
-          
-          {/* Treatment/Termination & Information Section - Lifestyle & Habits */}
           {renderLifestyle()}
-          
-          {/* Care Plans Section */}
           {renderCarePlan()}
-          
-          {/* Doctor Notes Section */}
           {renderDoctorNotes()}
-          
-          {/* Medical Events Timeline Section */}
-          {renderMedicalEvents()}
-          
-          {/* Patient Portal Section */}
-          {renderPatientPortal()}
-          
-          {/* My Appointments Section */}
-          {renderAppointments()}
           
           <View style={styles.buttonContainer}>
             <ModernButton
@@ -1312,6 +1497,205 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     flex: 1,
+  },
+  // New Card-Based Layout Styles
+  twoColumnLayout: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 20,
+  },
+  leftColumn: {
+    flex: 1,
+    gap: 16,
+  },
+  rightColumn: {
+    flex: 1,
+    gap: 16,
+  },
+  patientHeaderCard: {
+    marginBottom: 20,
+    padding: 20,
+  },
+  patientHeaderContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  patientProfileSection: {
+    flexDirection: 'row',
+    flex: 1,
+  },
+  patientAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#2DD4BF10',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  patientBasicInfo: {
+    flex: 1,
+  },
+  patientName: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  patientCondition: {
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  patientDemographics: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  demographicItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  demographicLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  demographicValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#F8FAFC',
+  },
+  contactCard: {
+    padding: 16,
+  },
+  contactInfo: {
+    gap: 12,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  contactText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  medicationsCard: {
+    padding: 16,
+  },
+  medicationsList: {
+    gap: 8,
+  },
+  medicationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  medicationText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  vitalsCard: {
+    padding: 16,
+  },
+  vitalsGrid: {
+    gap: 16,
+  },
+  vitalItem: {
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+  },
+  vitalValue: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  vitalLabel: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  notesCard: {
+    padding: 16,
+  },
+  notesContent: {
+    gap: 8,
+  },
+  noteText: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  labResultsCard: {
+    padding: 16,
+  },
+  labResultsList: {
+    gap: 8,
+  },
+  labResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  labResultText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  timelineCardNew: {
+    padding: 16,
+    marginBottom: 20,
+  },
+  timelineContentNew: {
+    gap: 16,
+  },
+  timelineItemNew: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  timelineDotNew: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  timelineEventNew: {
+    flex: 1,
+  },
+  timelineDateNew: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  timelineEventTextNew: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emptyText: {
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: 16,
   },
 });
 

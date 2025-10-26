@@ -17,6 +17,9 @@ import DoctorDashboardScreen from '../screens/Doctor/DoctorDashboardScreen';
 // Receptionist Screens
 import ReceptionistDashboardScreen from '../screens/Receptionist/ReceptionistDashboardScreen';
 
+// Patient Screens
+import PatientDetailsScreen from '../screens/PatientDetailsScreen';
+
 export type RootStackParamList = {
   Splash: undefined;
   Landing: undefined;
@@ -24,6 +27,7 @@ export type RootStackParamList = {
   AdminDashboard: undefined;
   DoctorDashboard: undefined;
   ReceptionistDashboard: undefined;
+  PatientDetails: { patient: any };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -53,13 +57,16 @@ const RootNavigator = () => {
           <Stack.Screen name="Splash" component={SplashScreen} />
         ) : currentUser ? (
           // User is logged in
-          currentUser.role === 'admin' ? (
-            <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
-          ) : currentUser.role === 'doctor' ? (
-            <Stack.Screen name="DoctorDashboard" component={DoctorDashboardScreen} />
-          ) : (
-            <Stack.Screen name="ReceptionistDashboard" component={ReceptionistDashboardScreen} />
-          )
+          <>
+            {currentUser.role === 'admin' ? (
+              <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
+            ) : currentUser.role === 'doctor' ? (
+              <Stack.Screen name="DoctorDashboard" component={DoctorDashboardScreen} />
+            ) : (
+              <Stack.Screen name="ReceptionistDashboard" component={ReceptionistDashboardScreen} />
+            )}
+            <Stack.Screen name="PatientDetails" component={PatientDetailsScreen} />
+          </>
         ) : (
           // User is not logged in
           <>
