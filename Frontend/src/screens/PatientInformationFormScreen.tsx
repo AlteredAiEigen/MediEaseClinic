@@ -1013,7 +1013,7 @@ const PatientInformationFormScreen: React.FC<Props> = ({ navigation, route }) =>
               {formData.firstName} {formData.lastName}
             </Text>
             <Text style={[styles.patientCondition, { color: theme.colors.foregroundSecondary }]}>
-              {formData.chiefComplaint || 'General Consultation'}
+              {formData.chiefComplaint || 'Generally Consultation'}
             </Text>
             <View style={styles.patientDemographics}>
               <View style={styles.demographicItem}>

@@ -236,62 +236,7 @@ const PatientDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
               </Text>
             </ModernCard>
 
-            {/* Lifestyle */}
-            <ModernCard style={styles.patientInfoCard}>
-              <Text style={[styles.patientInfoTitle, { color: theme.colors.foreground }]}>
-                Lifestyle
-              </Text>
-              <View style={styles.lifestyleGrid}>
-                <View style={styles.lifestyleItem}>
-                  <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                    Smoking
-                  </Text>
-                  <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                    {patient.lifestyle.smoking}
-                  </Text>
-                </View>
-                <View style={styles.lifestyleItem}>
-                  <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                    Alcohol
-                  </Text>
-                  <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                    {patient.lifestyle.alcohol}
-                  </Text>
-                </View>
-                <View style={styles.lifestyleItem}>
-                  <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                    Exercise
-                  </Text>
-                  <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                    {patient.lifestyle.exercise}
-                  </Text>
-                </View>
-                <View style={styles.lifestyleItem}>
-                  <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                    Diet
-                  </Text>
-                  <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                    {patient.lifestyle.diet}
-                  </Text>
-                </View>
-                <View style={styles.lifestyleItem}>
-                  <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                    Sleep
-                  </Text>
-                  <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                    {patient.lifestyle.sleep}
-                  </Text>
-                </View>
-                <View style={styles.lifestyleItem}>
-                  <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
-                    Stress
-                  </Text>
-                  <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
-                    {patient.lifestyle.stress}
-                  </Text>
-                </View>
-              </View>
-            </ModernCard>
+        
           </ScrollView>
         </View>
 
@@ -306,57 +251,79 @@ const PatientDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
   );
 
   // New Card-Based Render Functions
-  const renderPatientHeaderCard = (patient: any) => (
-    <ModernCard style={styles.patientHeaderCard}>
-      <View style={styles.patientHeaderContent}>
-        <View style={styles.patientProfileSection}>
-          {/* Avatar + Name + Complaint centered vertically */}
-          <View style={{ alignItems: 'center', width: '100%' }}>
-            {/* Avatar/Initials */}
-            <View style={styles.patientAvatar}>
-              <Text style={styles.patientAvatarText}>
-                {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
-              </Text>
-            </View>
-            {/* Name below */}
-            <Text style={[styles.patientName, { color: theme.colors.foreground, marginTop: 8 }]}>
-              {patient.firstName} {patient.lastName}
-            </Text>
-            {/* Chief Complaint below */}
-            <Text style={[styles.patientCondition, { color: theme.colors.foregroundSecondary, marginTop: 4, marginBottom: 16 }]}>
-              {patient.chiefComplaint || 'General Consultation'}
-            </Text>
-            {/* DOB & Age row */}
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 12 }}>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>DOB:</Text>
-                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.dateOfBirth}</Text>
-              </View>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Age:</Text>
-                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.age}y</Text>
-              </View>
-            </View>
-            {/* Weight & Height row */}
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40 }}>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Weight:</Text>
-                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.weight || '75kg'}</Text>
-              </View>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Height:</Text>
-                <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.height || '175cm'}</Text>
-              </View>
-            </View>
-            {/* Send Message button below */}
-            <TouchableOpacity style={[styles.messageButton, { marginTop: 24 }]}>
-              <Text style={styles.messageButtonText}>SEND MESSAGE</Text>
-            </TouchableOpacity>
-          </View>
+ // ... existing code ...
+
+const renderPatientHeaderCard = (patient: any) => (
+  <ModernCard style={styles.patientHeaderCard}>
+  <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+    {/* Left section with Avatar, Name, Complaint... */}
+    <View style={{ flex: 1, alignItems: 'center', paddingRight: 16 }}>
+      {/* Avatar, Name, Complaint */}
+      <View style={styles.patientAvatar}>
+        <Text style={styles.patientAvatarText}>
+          {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
+        </Text>
+      </View>
+      <Text style={[styles.patientName, { color: theme.colors.foreground, marginTop: 8 }]}>
+        {patient.firstName} {patient.lastName}
+      </Text>
+      <Text style={[styles.commonText, styles.patientCondition, { color: theme.colors.foregroundSecondary, marginTop: 4, marginBottom: 16 }]}>
+        {patient.chiefComplaint || 'General Consultation'}
+      </Text>
+      {/* DOB & Age row */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 12 }}>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>DOB:</Text>
+          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.dateOfBirth}</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Age:</Text>
+          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.age}y</Text>
         </View>
       </View>
-    </ModernCard>
-  );
+      {/* Weight & Height row */}
+      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 20 }}>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Weight:</Text>
+          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.weight || '75kg'}</Text>
+        </View>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Height:</Text>
+          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.height || '175cm'}</Text>
+        </View>
+      </View>
+      {/* Send Message button */}
+      <View style={{ alignItems: 'center', width: '100%' }}>
+        <TouchableOpacity style={styles.messageButton}>
+          <Text style={styles.messageButtonText}>SEND MESSAGE</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+
+    {/* Right section with Contact Information */}
+    <View style={[styles.contactInfoSection, { flex: 0.8, paddingLeft: 16 }]}>
+      <View style={styles.contactInfoItem}>
+        <ModernIcon name="home" size={14} color={theme.colors.primary} />
+        <Text style={[styles.commonText, styles.contactInfoText, { color: theme.colors.foreground }]}>
+          {patient.address || '123 Broadway, New York, NY, 10012'}
+        </Text>
+      </View>
+      <View style={styles.contactInfoItem}>
+        <ModernIcon name="phone" size={14} color={theme.colors.primary} />
+        <Text style={[styles.commonText, styles.contactInfoText, { color: theme.colors.foreground }]}>
+          Mobile: {patient.phone || '917 (543)-1234'}
+        </Text>
+      </View>
+      <View style={styles.contactInfoItem}>
+        <ModernIcon name="mail" size={14} color={theme.colors.primary} />
+        <Text style={[styles.commonText,styles.contactInfoText, { color: theme.colors.foreground }]}>
+          {patient.email || 'j.smith@gmail.com'}
+        </Text>
+      </View>
+    </View>
+  </View>
+  </ModernCard>
+);
   
   const renderContactCard = (patient: any) => (
     <ModernCard style={styles.contactCard}>
@@ -432,6 +399,65 @@ const PatientDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
       </View>
     </ModernCard>
   );
+
+  // Add this new function after renderContactCard
+const renderLifestyleCard = (patient: any) => (
+  <ModernCard style={styles.lifestyleCard}>
+    <View style={styles.cardHeader}>
+      <Text style={[styles.cardTitle, { color: theme.colors.foreground }]}>Lifestyle</Text>
+    </View>
+    <View style={styles.lifestyleGrid}>
+      <View style={styles.lifestyleItem}>
+        <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
+          Smoking
+        </Text>
+        <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
+          {patient.lifestyle?.smoking || 'Non-smoker'}
+        </Text>
+      </View>
+      <View style={styles.lifestyleItem}>
+        <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
+          Alcohol
+        </Text>
+        <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
+          {patient.lifestyle?.alcohol || 'Occasional'}
+        </Text>
+      </View>
+      <View style={styles.lifestyleItem}>
+        <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
+          Exercise
+        </Text>
+        <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
+          {patient.lifestyle?.exercise || 'Regular'}
+        </Text>
+      </View>
+      <View style={styles.lifestyleItem}>
+        <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
+          Diet
+        </Text>
+        <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
+          {patient.lifestyle?.diet || 'Balanced'}
+        </Text>
+      </View>
+      <View style={styles.lifestyleItem}>
+        <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
+          Sleep
+        </Text>
+        <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
+          {patient.lifestyle?.sleep || '7-8 hours'}
+        </Text>
+      </View>
+      <View style={styles.lifestyleItem}>
+        <Text style={[styles.lifestyleLabel, { color: theme.colors.foregroundSecondary }]}>
+          Stress
+        </Text>
+        <Text style={[styles.lifestyleValue, { color: theme.colors.foreground }]}>
+          {patient.lifestyle?.stress || 'Moderate'}
+        </Text>
+      </View>
+    </View>
+  </ModernCard>
+);
 
   const renderNotesCard = (patient: any) => (
     <ModernCard style={styles.notesCard}>
@@ -524,49 +550,53 @@ const PatientDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
   };
 
   // Overview Section (exact layout from image)
+
   const renderOverviewSection = (patient: any) => (
-    <View>
-      {/* Top Row - Patient Header and Contact Information */}
-      <View style={styles.topRow}>
-        <View style={styles.patientHeaderContainer}>
-          {renderPatientHeaderCard(patient)}
+    <View style={{ flex: 1, flexDirection: 'row', gap: 16 }}>
+      {/* Left Column: Patient Header, Medications, Vitals, Lifestyle, Notes, Lab Results */}
+      <View style={{ flex: 2, flexDirection: 'column', gap: 16 }}>
+        {/* Top row: Patient Header, Medications, Vitals horizontally */}
+        <View style={{ flexDirection: 'row', gap: 16 }}>
+          <View style={[styles.patientHeaderContainer, { flex: 1 }]}>
+            {renderPatientHeaderCard(patient)}
+          </View>
         </View>
-
-        {/* Vertical Divider */}
-        <View style={styles.verticalDivider} />
-
-        {/* Contact Information */}
-        <View style={styles.contactContainer}>
-          {renderContactCard(patient)}
+  
+        {/* Below vitals aligned with medical history on right, Lifestyle, Notes, Lab Results vertically stacked */}
+        <View style={{ flexDirection: 'column', gap: 16 }}>
+          <View style={styles.lifestyleContainer}>
+            {renderLifestyleCard(patient)}
+          </View>
+          <View style={styles.labResultsContainer}>
+            {renderLabResultsCard(patient)}
+          </View>
         </View>
-
-        {/* Medications */}
-        <View style={styles.medicationsContainer}>
+      </View>
+  
+      {/* Right Column */}
+    <View style={{ flex: 1, paddingLeft: 16, justifyContent: 'flex-start'}}>
+      {/* Horizontal: Medications and Vitals */}
+      <View style={{ flexDirection: 'row', marginBottom: 12/* adjust height to reduce vitals length*/ }}>
+        <View style={[styles.medicationsContainer, { flex: 1, marginRight: 8,minHeight: 120,  maxHeight: 140 }]}>
           {renderMedicationsCard(patient)}
         </View>
-      </View>
-      
-      {/* Middle Row - Medications, Vitals, Notes */}
-      <View style={styles.middleRow}>
-        <View style={styles.vitalsContainer}>
+        <View style={[styles.vitalsContainer, { flex: 1, minHeight: 120, maxHeight: 140 }]}>
           {renderVitalsCard(patient)}
         </View>
-        <View style={styles.notesContainer}>
-          {renderNotesCard(patient)}
-        </View>
       </View>
-      
-      {/* Bottom Row - Lab Results and Medical Timeline */}
-      <View style={styles.bottomRow}>
-        <View style={styles.labResultsContainer}>
-          {renderLabResultsCard(patient)}
-        </View>
-        <View style={styles.medicalTimelineContainer}>
-          {renderMedicalTimelineSection(patient)}
-        </View>
+
+      {/* Notes below with same width and aligned height as medications */}
+      <View style={[styles.notesContainer, {minHeight: 110, marginBottom :12 }]}>
+        {renderNotesCard(patient)}
+      </View>
+
+      <View>
+        {renderMedicalTimelineSection(patient)}
       </View>
     </View>
-  );
+  </View>
+);
+  
 
   // History Section (Medical Events Timeline)
   const renderHistorySection = (patient: any) => (
@@ -997,7 +1027,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    padding: 16,
+    padding:16,
     paddingBottom: 20,
   },
   patientDetailsContainer: {
@@ -1012,7 +1042,8 @@ const createStyles = (theme: any) => StyleSheet.create({
     gap: 20,
   },
   patientInfoColumn: {
-    flex: IS_TABLET ? 0.6 : 1,
+    // flex: IS_TABLET ? 0.6 : 1,
+    flex: 2,
   },
   patientInfoScroll: {
     flex: 1,
@@ -1168,6 +1199,11 @@ const createStyles = (theme: any) => StyleSheet.create({
   patientHeaderCard: {
     marginBottom: 16,
     padding: 16,
+    maxWidth: 520,
+    minWidth: 420,
+    paddingVertical: 24,
+    paddingHorizontal: 32,
+    alignSelf: 'left', // centers card if needed
   },
   patientHeaderContent: {
     flexDirection: 'row',
@@ -1577,7 +1613,7 @@ const createStyles = (theme: any) => StyleSheet.create({
     marginBottom: 16,
   },
   patientHeaderContainer: {
-    flex: 2,
+    flex: 2, // Increased to accommodate contact info
   },
   contactContainer: {
     flex: 1,
@@ -1589,17 +1625,28 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   medicationsContainer: {
     flex: 1,
+    marginRight: 8,
+    minHeight: 120,
+    maxHeight: 140,
   },
   vitalsContainer: {
     flex: 1,
+    minHeight: 120,
+    maxHeight: 140,
   },
   notesContainer: {
-    flex: 1,
+    minHeight: 110,
+    marginBottom: 12,
+  },
+    // (Inside ModernCard or add to specific cards as needed)
+  cardHeader: {
+    marginBottom: 8,
   },
   bottomRow: {
     flexDirection: 'row',
     gap: 16,
     marginBottom: 16,
+    alignItems: 'flex-start',
   },
   labResultsContainer: {
     flex: 1,
@@ -1774,6 +1821,42 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   profileRole: {
     fontSize: 14,
+  },
+  commonText: {
+    fontFamily: 'Roboto', // e.g., 'Roboto', 'System', etc.
+    fontSize: 16,                 // Choose an appropriate size
+    fontWeight: '400',            // Or 'bold', '500' as needed
+    color: theme.colors.foreground  // Optional for consistency
+  },
+  // Contact info inside profile card
+  contactInfoSection: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    width: '100%',
+  },
+  contactInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  contactInfoText: {
+    fontSize: 12,
+    flex: 1,
+    lineHeight: 16,
+  },
+  
+  // Lifestyle card
+  lifestyleCard: {
+    padding: 16,
+    flex: 1,
+  },
+  lifestyleContainer: {
+    flex: 1,
+  },
+  lifestyleRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
   },
 });
 
