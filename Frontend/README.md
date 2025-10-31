@@ -1,97 +1,84 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# MediEaseClinic - External Microphone Recording Feature
 
-# Getting Started
+## Overview
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+This feature allows doctors to record consultations using an external microphone connected via OTG to the tablet. The recording is amplified for better clarity and can be played back directly from the app.
 
-## Step 1: Start Metro
+## Implementation Details
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+### Native Module for External Microphone Access
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+We've implemented a native Android module (`ExternalMicModule`) that provides the following functionality:
 
-```sh
-# Using npm
-npm start
+- Access to external microphones connected via OTG
+- Audio recording with automatic amplification
+- Audio playback
+- Audio level monitoring for visualization
 
-# OR using Yarn
-yarn start
-```
+### Audio Amplification
 
-## Step 2: Build and run your app
+The audio amplification algorithm is similar to the Python implementation and includes:
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+1. Normalization to prevent clipping
+2. Linear gain application (configurable gain factor)
+3. Final clipping prevention to ensure audio stays within bounds
 
-### Android
+### Recording Flow
 
-```sh
-# Using npm
-npm run android
+1. Doctor selects a patient from the queue
+2. Clicks "Start Consultation" to navigate to the recording screen
+3. Starts recording using the external microphone
+4. Can stop, play back, and continue to clinical notes
+5. The amplified audio is saved for later reference
 
-# OR using Yarn
-yarn android
-```
+### User Interface
 
-### iOS
+- Real-time audio level visualization
+- Recording timer display
+- Playback functionality
+- Clear recording status indicators
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+## Technical Notes
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+### Android Native Module
 
-```sh
-bundle install
-```
+The native module handles the low-level audio processing:
 
-Then, and every time you update your native dependencies, run:
+- Uses Android's `AudioRecord` API to capture audio
+- Processes the audio data with amplification
+- Saves as WAV file with proper headers
+- Provides callbacks for audio levels
 
-```sh
-bundle exec pod install
-```
+### React Native Integration
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+The feature is integrated into the React Native app through:
 
-```sh
-# Using npm
-npm run ios
+- TypeScript interface for the native module
+- Updated `RecordingService` that uses the external microphone
+- New `ConsultationRecordingScreen` component
+- Navigation updates in `RootNavigator` and `DoctorDashboardScreen`
 
-# OR using Yarn
-yarn ios
-```
+### Permissions
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+The app requires the following permissions:
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+- `RECORD_AUDIO` - For microphone access
+- `READ_EXTERNAL_STORAGE` - For accessing saved recordings
+- `WRITE_EXTERNAL_STORAGE` - For saving recordings
 
-## Step 3: Modify your app
+## Usage
 
-Now that you have successfully run the app, let's make changes!
+1. Connect an external microphone to the tablet via OTG
+2. Log in as a doctor
+3. Select a patient from the queue
+4. Click "Start Consultation"
+5. Use the recording controls to start/stop recording
+6. Play back the recording if needed
+7. Continue to clinical notes
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+## Future Enhancements
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+- Support for iOS devices
+- Multiple microphone selection
+- Advanced audio processing options
+- Direct integration with transcription services

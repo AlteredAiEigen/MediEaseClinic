@@ -24,6 +24,7 @@ import { Calendar } from 'react-native-calendars';
 type RootStackParamList = {
   DoctorDashboard: undefined;
   PatientDetails: { patient: any };
+  ConsultationRecording: { patient: any };
 };
 
 type DoctorDashboardScreenNavigationProp = NativeStackNavigationProp<
@@ -57,22 +58,72 @@ const DoctorDashboardScreen: React.FC<Props> = ({ navigation }) => {
   // Filter appointments for current doctor
   const myAppointments = appointments.filter(apt => apt.doctorId === currentUser?.id);
 
-  // Get patient queue from real data
-  const patientQueue = patients.slice(0, 5).map(patient => ({
-    id: patient.id,
-    name: `${patient.firstName} ${patient.lastName}`,
-    reason: patient.medicalHistory || 'General Consultation',
-    waitTime: '15 min', // Mock wait time
-    status: 'waiting',
-  }));
+  // Get patient queue from real data - force include demo patient
+  const patientQueue = [
+    // Force add demo patient
+    {
+      id: 'demo123',
+      name: 'Demo Patient',
+      reason: 'Persistent cough and mild fever',
+      waitTime: '5 min',
+      status: 'waiting',
+    },
+    // Add other patients from the list
+    ...patients
+      .filter(patient => patient.id !== 'demo123' && patient.presentInClinic === true)
+      .slice(0, 4)
+      .map(patient => ({
+        id: patient.id,
+        name: `${patient.firstName} ${patient.lastName}`,
+        reason: patient.chiefComplaint || patient.medicalHistory || 'General Consultation',
+        waitTime: patient.waitTime || '15 min',
+        status: patient.status || 'waiting',
+      }))
+  ];
 
   // Handler functions
   const handleStartConsultation = (patient: any) => {
     // Find the real patient data
-    const realPatient = patients.find(p => p.id === patient.id);
-    if (!realPatient) {
-      Alert.alert('Error', 'Patient not found');
-      return;
+    let patientData;
+    
+    if (patient.id === 'demo123') {
+      // Use hardcoded demo patient data
+      patientData = {
+        id: 'demo123',
+        patientId: 'P999',
+        firstName: 'Demo',
+        lastName: 'Patient',
+        gender: 'Male',
+        age: '42',
+        bloodGroup: 'O+',
+        dateOfBirth: '01/01/1982',
+        email: 'demo.patient@example.com',
+        phone: '555-DEMO',
+        address: '123 Test Street, Demo City',
+        vitals: {
+          bloodPressure: '120/80',
+          heartRate: '72',
+          temperature: '98.6°F',
+          oxygenSaturation: '98%',
+          weight: '70kg',
+          height: '175cm',
+          bmi: '22.9'
+        },
+        medicalHistory: 'Asthma, Seasonal Allergies',
+        allergies: 'Pollen, Dust',
+        chiefComplaint: 'Persistent cough and mild fever',
+        currentSymptoms: 'Coughing, slight fever, fatigue for the past 3 days',
+        waitTime: '5 min',
+        status: 'waiting',
+        reason: 'Persistent cough and mild fever',
+      };
+    } else {
+      // Find real patient in the database
+      patientData = patients.find(p => p.id === patient.id);
+      if (!patientData) {
+        Alert.alert('Error', 'Patient not found');
+        return;
+      }
     }
 
     Alert.alert(
@@ -86,9 +137,8 @@ const DoctorDashboardScreen: React.FC<Props> = ({ navigation }) => {
         {
           text: 'Start Recording',
           onPress: () => {
-            // Navigate to recording screen with patient data
-            // This would need to be implemented with proper navigation
-            Alert.alert('Navigation', 'Would navigate to Recording screen with patient data');
+            // Navigate to our new ConsultationRecordingScreen with patient data
+            navigation.navigate('ConsultationRecording', { patient: patientData });
           },
         },
       ]

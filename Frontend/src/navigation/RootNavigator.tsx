@@ -13,6 +13,7 @@ import AdminDashboardScreen from '../screens/Admin/AdminDashboardScreen';
 
 // Doctor Screens
 import DoctorDashboardScreen from '../screens/Doctor/DoctorDashboardScreen';
+import ConsultationRecordingScreen from '../screens/Doctor/ConsultationRecordingScreen';
 
 // Receptionist Screens
 import ReceptionistDashboardScreen from '../screens/Receptionist/ReceptionistDashboardScreen';
@@ -28,6 +29,7 @@ export type RootStackParamList = {
   DoctorDashboard: undefined;
   ReceptionistDashboard: undefined;
   PatientDetails: { patient: any };
+  ConsultationRecording: { patient: any };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -66,6 +68,7 @@ const RootNavigator = () => {
               <Stack.Screen name="ReceptionistDashboard" component={ReceptionistDashboardScreen} />
             )}
             <Stack.Screen name="PatientDetails" component={PatientDetailsScreen} />
+            <Stack.Screen name="ConsultationRecording" component={ConsultationRecordingScreen} />
           </>
         ) : (
           // User is not logged in

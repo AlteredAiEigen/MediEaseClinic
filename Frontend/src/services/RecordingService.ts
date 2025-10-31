@@ -1,5 +1,6 @@
 import { Platform, Alert } from 'react-native';
 import StorageService from './StorageService';
+import ExternalMicService from './ExternalMicService';
 
 export interface Recording {
   id: string;
@@ -54,8 +55,27 @@ export class RecordingService {
       audioLevel: 0,
     };
 
-    // Start the recording simulation
-    this.startRecordingSimulation();
+    try {
+      // Use external mic if on Android, otherwise fallback to simulation
+      if (Platform.OS === 'android') {
+        // Start recording with external mic and update audio level
+        await ExternalMicService.startRecording(
+          sessionId,
+          (level) => {
+            if (this.currentSession) {
+              this.currentSession.audioLevel = level;
+            }
+          }
+        );
+      } else {
+        // Start the recording simulation on iOS or other platforms
+        this.startRecordingSimulation();
+      }
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      // Fallback to simulation if external mic fails
+      this.startRecordingSimulation();
+    }
 
     return this.currentSession;
   }
@@ -67,9 +87,23 @@ export class RecordingService {
 
     const endTime = Date.now();
     const duration = Math.floor((endTime - this.currentSession.startTime) / 1000);
+    let filePath: string | undefined = undefined;
 
-    // Stop the recording simulation
-    this.stopRecordingSimulation();
+    try {
+      // Use external mic if on Android, otherwise fallback to simulation
+      if (Platform.OS === 'android') {
+        // Stop recording with external mic
+        const result = await ExternalMicService.stopRecording();
+        filePath = result.filePath;
+      } else {
+        // Stop the recording simulation on iOS or other platforms
+        this.stopRecordingSimulation();
+      }
+    } catch (error) {
+      console.error('Error stopping recording:', error);
+      // Stop the recording simulation as fallback
+      this.stopRecordingSimulation();
+    }
 
     const recording: Recording = {
       id: this.currentSession.id,
@@ -77,6 +111,7 @@ export class RecordingService {
       appointmentId: this.currentSession.appointmentId,
       doctorId: this.currentSession.doctorId,
       duration,
+      filePath, // Add the file path if available
       status: 'processing',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -240,6 +275,37 @@ export class RecordingService {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  
+  // Play a recorded audio file
+  async playRecording(recordingId: string): Promise<boolean> {
+    try {
+      const recording = await this.getRecordingById(recordingId);
+      
+      if (!recording) {
+        console.error('Recording not found');
+        return false;
+      }
+      
+      if (!recording.filePath) {
+        console.error('Recording has no file path');
+        return false;
+      }
+      
+      if (Platform.OS === 'android') {
+        // Use external mic service to play the recording
+        const success = await ExternalMicService.playRecording(recording.filePath);
+        return success;
+      } else {
+        // For iOS or other platforms, we'd need to implement audio playback
+        console.warn('Audio playback not implemented for this platform');
+        return false;
+      }
+
+    } catch (error) {
+      console.error('Error playing recording:', error);
+      return false;
+    }
   }
 
   // Statistics
