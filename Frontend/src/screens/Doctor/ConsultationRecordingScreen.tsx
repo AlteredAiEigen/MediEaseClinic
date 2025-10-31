@@ -445,46 +445,48 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
         heightMultiplier * 0.4;
       
       return (
-        <Animated.View
-          key={index}
-          style={[
-            styles.waveBar,
-            {
-              backgroundColor: isRecording ? theme.colors.primary : theme.colors.gray[300],
-              height: 60 * heightMultiplier,
-              transform: [
-                {
-                  scaleY: waveAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [
-                      isRecording ? dynamicHeight * 0.8 : 0.2, 
-                      isRecording ? dynamicHeight * 1.2 : heightMultiplier
-                    ],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <Animated.View
-            style={[
-              styles.waveBarHighlight,
-              {
-                backgroundColor: theme.colors.primary,
-                opacity: waveAnimation,
-                height: 60 * heightMultiplier,
-                transform: [
+              <Animated.View
+                key={index}
+                style={[
+                  styles.waveBar,
                   {
-                    scaleY: waveAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, 0.5],
-                    }),
+                    backgroundColor: isRecording ? theme.colors.primaryAlphaDark : theme.colors.gray[300],
+                    height: 60 * heightMultiplier,
+                    transform: [
+                      {
+                        scaleY: waveAnimation.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [
+                            isRecording ? dynamicHeight * 0.8 : 0.2, 
+                            isRecording ? dynamicHeight * 1.2 : heightMultiplier
+                          ],
+                        }),
+                      },
+                    ],
                   },
-                ],
-              },
-            ]}
-          />
-        </Animated.View>
+                ]}
+              >
+                <LinearGradient
+                  colors={[theme.colors.primary, theme.colors.primaryLight]}
+                  start={{ x: 0, y: 1 }}
+                  end={{ x: 0, y: 0 }}
+                  style={[
+                    styles.waveBarHighlight,
+                    {
+                      opacity: isRecording ? 1 : 0,
+                      height: 60 * heightMultiplier,
+                      transform: [
+                        {
+                          scaleY: waveAnimation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0.3, 1],
+                          }),
+                        },
+                      ],
+                    },
+                  ]}
+                />
+              </Animated.View>
       );
     });
   };
@@ -514,7 +516,7 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
           <View style={styles.liveStreamingContent}>
             <View style={styles.liveStreamingDot} />
             <Text style={styles.liveStreamingText}>
-              LIVE RECORDING • External Microphone Active
+              🔴 LIVE RECORDING • External Microphone Active
             </Text>
           </View>
         </LinearGradient>
@@ -523,11 +525,7 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
       <ModernHeader
         title="Consultation Recording"
         subtitle={`Recording with ${patient.firstName} ${patient.lastName}`}
-        leftIcon={
-          <View style={styles.backButtonContainer}>
-            <ModernIcon name="arrow-left" size={20} color={theme.colors.foreground} />
-          </View>
-        }
+        leftIcon={<ModernIcon name="arrow-left" size={24} color={theme.colors.primary} />}
         onLeftPress={() => {
           if (isRecording) {
             Alert.alert(
@@ -558,7 +556,8 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
         rightIcon={
           <View style={styles.headerRight}>
             {isRecording && (
-              <View style={[styles.recordingIndicator, { backgroundColor: theme.colors.medicalError }]}>
+              <View style={styles.recordingIndicator}>
+                <View style={styles.recordingPulse} />
                 <Text style={styles.recText}>REC</Text>
               </View>
             )}
@@ -566,27 +565,48 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
         }
       />
 
-      {/* Patient Info Card */}
+      {/* Premium Patient Info Card */}
       <View style={styles.patientSection}>
         <ModernCard variant="elevated" style={styles.patientCard}>
-          <View style={styles.patientHeader}>
-            <View style={styles.patientAvatar}>
-              <Logo width={40} height={40} />
-            </View>
-            <View style={styles.patientInfo}>
-              <Text style={[styles.patientName, { color: theme.colors.foreground }]}>
-                {patient.firstName} {patient.lastName}
-              </Text>
-              <Text style={[styles.patientDetails, { color: theme.colors.foregroundSecondary }]}>
-                Age {patient.age} • {patient.medicalHistory || 'General Consultation'}
-              </Text>
-            </View>
-            {isRecording && (
-              <View style={[styles.recBadge]}>
-                <Text style={styles.recBadgeText}>REC</Text>
+          <LinearGradient
+            colors={[theme.colors.primaryAlphaDark, theme.colors.primaryAlpha]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.patientCardGradient}
+          >
+            <View style={styles.patientHeader}>
+              <View style={styles.patientAvatar}>
+                <View style={styles.patientAvatarBorder}>
+                  <Text style={styles.patientAvatarText}>
+                    {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
+                  </Text>
+                </View>
               </View>
-            )}
-          </View>
+              <View style={styles.patientInfo}>
+                <Text style={[styles.patientName, { color: theme.colors.foreground }]}>
+                  {patient.firstName} {patient.lastName}
+                </Text>
+                <View style={styles.patientDetailsRow}>
+                  <View style={styles.patientDetailBadge}>
+                    <Text style={styles.patientDetailText}>
+                      Age {patient.age}
+                    </Text>
+                  </View>
+                  <View style={[styles.patientDetailBadge, { borderColor: theme.colors.primary }]}>
+                    <Text style={[styles.patientDetailText, { color: theme.colors.primary }]}>
+                      {patient.medicalHistory || 'General Consultation'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              {isRecording && (
+                <View style={styles.recBadge}>
+                  <View style={styles.recBadgePulse} />
+                  <Text style={styles.recBadgeText}>REC</Text>
+                </View>
+              )}
+            </View>
+          </LinearGradient>
         </ModernCard>
       </View>
 
@@ -637,32 +657,46 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
                   onPress={handleStartStopRecording}
                   activeOpacity={0.8}
                   disabled={recordingComplete && !isRecording}
+                  style={styles.recordButtonWrapper}
                 >
-                  <LinearGradient
-                    colors={isRecording ? ['#fff', '#fff'] : theme.gradients.primary}
-                    style={[
-                      styles.recordButtonContainer,
-                      isRecording && {
-                        borderColor: theme.colors.medicalError,
-                        borderWidth: 2,
-                      },
-                      recordingComplete && !isRecording && { opacity: 0.5 }
-                    ]}
-                  >
-                    <View style={styles.recordButtonInner}>
-                      <ModernIcon 
-                        name={isRecording ? "stop" : "mic"} 
-                        size={isRecording ? 28 : 32} 
-                        color={isRecording ? theme.colors.medicalError : theme.colors.surface} 
-                      />
-                      <Text style={[
-                        styles.recordButtonText, 
-                        { color: isRecording ? theme.colors.medicalError : theme.colors.surface }
-                      ]}>
-                        {isRecording ? 'Stop Recording' : 'Start Recording'}
-                      </Text>
+                  {isRecording ? (
+                    <View style={[styles.recordButtonContainer, styles.recordButtonStop]}>
+                      <View style={styles.recordButtonStopGlow} />
+                      <View style={styles.recordButtonInner}>
+                        <ModernIcon 
+                          name="stop" 
+                          size={28} 
+                          color={theme.colors.medicalError} 
+                        />
+                        <Text style={[styles.recordButtonText, { color: theme.colors.medicalError }]}>
+                          Stop Recording
+                        </Text>
+                      </View>
                     </View>
-                  </LinearGradient>
+                  ) : (
+                    <LinearGradient
+                      colors={theme.gradients.primary}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={[
+                        styles.recordButtonContainer,
+                        styles.recordButtonStart,
+                        recordingComplete && !isRecording && { opacity: 0.5 }
+                      ]}
+                    >
+                      <View style={styles.recordButtonGlow} />
+                      <View style={styles.recordButtonInner}>
+                        <ModernIcon 
+                          name="mic" 
+                          size={32} 
+                          color={theme.colors.surface} 
+                        />
+                        <Text style={[styles.recordButtonText, { color: theme.colors.surface }]}>
+                          Start Recording
+                        </Text>
+                      </View>
+                    </LinearGradient>
+                  )}
                 </TouchableOpacity>
               </Animated.View>
             </View>
@@ -702,21 +736,35 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
             {/* Microphone Status */}
             <View style={[styles.statusBanner, { 
               backgroundColor: recordingError 
-                ? 'rgba(239, 68, 68, 0.1)' 
+                ? 'rgba(255, 0, 102, 0.15)' 
                 : isRecording 
-                  ? 'rgba(16, 185, 129, 0.1)' 
-                  : 'rgba(59, 130, 246, 0.1)',
+                  ? 'rgba(0, 255, 136, 0.15)' 
+                  : theme.colors.primaryAlphaDark,
+              borderColor: recordingError 
+                ? theme.colors.medicalError 
+                : isRecording 
+                  ? theme.colors.medicalSuccess 
+                  : theme.colors.primary,
+              borderWidth: 1,
               marginBottom: 16
             }]}>
-              <ModernIcon 
-                name={recordingError ? "alert-circle" : isRecording ? "mic" : "info"} 
-                size={24} 
-                color={recordingError 
-                  ? theme.colors.medicalError 
+              <View style={[styles.statusIconContainer, {
+                backgroundColor: recordingError 
+                  ? 'rgba(255, 0, 102, 0.2)' 
                   : isRecording 
-                    ? theme.colors.medicalSuccess 
-                    : theme.colors.primary} 
-              />
+                    ? 'rgba(0, 255, 136, 0.2)' 
+                    : theme.colors.primaryAlphaDark,
+              }]}>
+                <ModernIcon 
+                  name={recordingError ? "alert-circle" : isRecording ? "mic" : "info"} 
+                  size={24} 
+                  color={recordingError 
+                    ? theme.colors.medicalError 
+                    : isRecording 
+                      ? theme.colors.medicalSuccess 
+                      : theme.colors.primary} 
+                />
+              </View>
               <View style={{flex: 1, marginLeft: 12}}>
                 <Text style={[styles.statusTitle, { 
                   color: recordingError 
@@ -728,7 +776,7 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
                   {micStatus}
                 </Text>
                 {recordingError && (
-                  <Text style={styles.errorText}>{recordingError}</Text>
+                  <Text style={[styles.errorText, { color: theme.colors.medicalError }]}>{recordingError}</Text>
                 )}
               </View>
             </View>
@@ -766,21 +814,35 @@ const ConsultationRecordingScreen: React.FC<Props> = ({ navigation, route }) => 
             {/* Status Indicator */}
             <View style={[styles.statusBadge, {
               backgroundColor: isRecording
-                ? 'rgba(239, 68, 68, 0.1)'
+                ? 'rgba(255, 0, 102, 0.15)'
                 : recordingComplete
-                ? 'rgba(34, 197, 94, 0.1)'
-                : 'rgba(59, 130, 246, 0.1)',
+                ? 'rgba(0, 255, 136, 0.15)'
+                : theme.colors.primaryAlphaDark,
+              borderColor: isRecording 
+                ? theme.colors.medicalError 
+                : recordingComplete
+                ? theme.colors.medicalSuccess
+                : theme.colors.primary,
+              borderWidth: 1,
               marginTop: 20
             }]}>
-              <ModernIcon
-                name={isRecording ? 'record' : recordingComplete ? 'check' : 'info'}
-                size={20}
-                color={isRecording 
-                  ? theme.colors.medicalError 
+              <View style={[styles.statusBadgeIcon, {
+                backgroundColor: isRecording 
+                  ? 'rgba(255, 0, 102, 0.2)' 
                   : recordingComplete
-                  ? theme.colors.medicalSuccess
-                  : theme.colors.primary}
-              />
+                  ? 'rgba(0, 255, 136, 0.2)'
+                  : theme.colors.primaryAlphaDark,
+              }]}>
+                <ModernIcon
+                  name={isRecording ? 'record' : recordingComplete ? 'check' : 'info'}
+                  size={20}
+                  color={isRecording 
+                    ? theme.colors.medicalError 
+                    : recordingComplete
+                    ? theme.colors.medicalSuccess
+                    : theme.colors.primary}
+                />
+              </View>
               <Text style={[styles.statusBadgeText, {
                 color: isRecording 
                   ? theme.colors.medicalError 
@@ -818,8 +880,15 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 16,
+  },
+  statusIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusTitle: {
     fontSize: 16,
@@ -828,7 +897,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   },
   errorText: {
     fontSize: 14,
-    color: '#ef4444',
+    marginTop: 4,
   },
   scrollContainer: {
     flex: 1,
@@ -860,49 +929,95 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.5,
   },
-  // Patient section
+  // Patient section - Premium Design
   patientSection: {
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 20,
     paddingBottom: 0,
   },
   patientCard: {
-    padding: 12,
+    padding: 0,
+    overflow: 'hidden',
+    ...theme.shadows.neon,
+  },
+  patientCardGradient: {
+    padding: 20,
+    borderRadius: 16,
   },
   patientHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   patientAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(174, 234, 214, 0.2)',
+    marginRight: 16,
+  },
+  patientAvatarBorder: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: theme.colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    borderWidth: 3,
+    borderColor: theme.colors.primaryLight,
+    ...theme.shadows.neon,
+  },
+  patientAvatarText: {
+    color: theme.colors.background,
+    fontSize: 20,
+    fontWeight: '700',
   },
   patientInfo: {
     flex: 1,
   },
   patientName: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 2,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
+    letterSpacing: -0.5,
   },
-  patientDetails: {
-    fontSize: 14,
+  patientDetailsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  patientDetailBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: theme.colors.primaryAlpha,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+  },
+  patientDetailText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.foregroundSecondary,
   },
   recBadge: {
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: theme.colors.medicalError,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    position: 'relative',
+    overflow: 'visible',
+    ...theme.shadows.md,
+  },
+  recBadgePulse: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: 18,
+    backgroundColor: theme.colors.medicalError,
+    opacity: 0.3,
   },
   recBadgeText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 1,
   },
   // Main content container - tablet optimized layout
   mainContentContainer: {
@@ -924,14 +1039,17 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     marginBottom: 40,
   },
   durationLabel: {
-    fontSize: 18,
-    fontWeight: '500',
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   durationValue: {
-    fontSize: 72,
-    fontWeight: '700',
-    letterSpacing: -1,
+    fontSize: 80,
+    fontWeight: '800',
+    letterSpacing: -2,
+    ...theme.shadows.neon,
   },
   waveSection: {
     alignItems: 'center',
@@ -963,6 +1081,7 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     height: 160,
     borderRadius: 80,
     borderWidth: 3,
+    borderColor: theme.colors.primary,
     opacity: 0.3,
   },
   buttonSection: {
@@ -970,25 +1089,60 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 24,
   },
+  recordButtonWrapper: {
+    position: 'relative',
+  },
   recordButtonContainer: {
-    width: width * 0.4,
-    maxWidth: 280,
-    height: 70,
-    borderRadius: 35,
+    width: width * 0.45,
+    maxWidth: 320,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  recordButtonStart: {
+    ...theme.shadows.neonGlow,
+  },
+  recordButtonStop: {
+    backgroundColor: '#fff',
+    borderWidth: 3,
+    borderColor: theme.colors.medicalError,
+    ...theme.shadows.md,
+  },
+  recordButtonGlow: {
+    position: 'absolute',
+    top: -20,
+    left: -20,
+    right: -20,
+    bottom: -20,
+    borderRadius: 60,
+    backgroundColor: theme.colors.primary,
+    opacity: 0.2,
+  },
+  recordButtonStopGlow: {
+    position: 'absolute',
+    top: -20,
+    left: -20,
+    right: -20,
+    bottom: -20,
+    borderRadius: 60,
+    backgroundColor: theme.colors.medicalError,
+    opacity: 0.2,
   },
   recordButtonInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
+    zIndex: 1,
   },
   recordButtonText: {
     fontSize: 18,
-    fontWeight: '600',
-    marginLeft: 10,
+    fontWeight: '700',
+    marginLeft: 12,
+    letterSpacing: 0.5,
   },
   // Post recording controls
   postRecordingControls: {
@@ -1002,17 +1156,15 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   continueButton: {
     minWidth: 200,
   },
-  // Guidelines section
+  // Guidelines section - Premium Design
   guidelinesSection: {
     flex: IS_TABLET ? 1 : undefined,
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: theme.colors.primaryAlphaDark,
+    borderRadius: 20,
     padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+    ...theme.shadows.neon,
   },
   guidelinesHeader: {
     flexDirection: 'row',
@@ -1020,56 +1172,90 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     marginBottom: 24,
   },
   guidelinesTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginLeft: 10,
-    color: '#0f172a',
+    fontSize: 22,
+    fontWeight: '700',
+    marginLeft: 12,
+    color: theme.colors.foreground,
+    letterSpacing: -0.5,
+  },
+  guidelinesText: {
+    fontSize: 15,
+    marginLeft: 12,
+    color: theme.colors.foregroundSecondary,
+    flex: 1,
+    lineHeight: 22,
   },
   guidelinesList: {
     gap: 20,
   },
   guidelineItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
   },
   guidelineText: {
-    fontSize: 16,
+    fontSize: 15,
     marginLeft: 12,
-    color: '#334155',
+    color: theme.colors.foregroundSecondary,
     flex: 1,
     lineHeight: 22,
   },
-  // Status badge
+  // Status badge - Premium Design
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderRadius: 16,
+  },
+  statusBadgeIcon: {
+    width: 40,
+    height: 40,
     borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   statusBadgeText: {
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 10,
+    letterSpacing: 0.3,
   },
-  // Header elements
+  // Header elements - Premium Design
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   recordingIndicator: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#ef4444',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: theme.colors.medicalError,
+    position: 'relative',
+    overflow: 'visible',
+    ...theme.shadows.md,
+  },
+  recordingPulse: {
+    position: 'absolute',
+    top: -4,
+    left: -4,
+    right: -4,
+    bottom: -4,
+    borderRadius: 20,
+    backgroundColor: theme.colors.medicalError,
+    opacity: 0.4,
   },
   recText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: '700',
+    letterSpacing: 1,
+    zIndex: 1,
   },
   backButtonContainer: {
     padding: 8,
+    borderRadius: 12,
+    backgroundColor: theme.colors.primaryAlpha,
   },
 });
 

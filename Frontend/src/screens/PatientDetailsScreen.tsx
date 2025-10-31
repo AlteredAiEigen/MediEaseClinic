@@ -10,6 +10,7 @@ import {
   TextInput,
   Modal,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import { useTheme } from '../themes/ThemeContext';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -254,74 +255,98 @@ const PatientDetailsScreen: React.FC<Props> = ({ navigation, route }) => {
  // ... existing code ...
 
 const renderPatientHeaderCard = (patient: any) => (
-  <ModernCard style={styles.patientHeaderCard}>
-  <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
-    {/* Left section with Avatar, Name, Complaint... */}
-    <View style={{ flex: 1, alignItems: 'center', paddingRight: 16 }}>
-      {/* Avatar, Name, Complaint */}
-      <View style={styles.patientAvatar}>
-        <Text style={styles.patientAvatarText}>
-          {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
-        </Text>
-      </View>
-      <Text style={[styles.patientName, { color: theme.colors.foreground, marginTop: 8 }]}>
-        {patient.firstName} {patient.lastName}
-      </Text>
-      <Text style={[styles.commonText, styles.patientCondition, { color: theme.colors.foregroundSecondary, marginTop: 4, marginBottom: 16 }]}>
-        {patient.chiefComplaint || 'General Consultation'}
-      </Text>
-      {/* DOB & Age row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 12 }}>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>DOB:</Text>
-          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.dateOfBirth}</Text>
+  <ModernCard variant="elevated" style={styles.patientHeaderCard}>
+    <LinearGradient
+      colors={[theme.colors.primaryAlphaDark, theme.colors.primaryAlpha]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.patientHeaderGradient}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+        {/* Left section with Avatar, Name, Complaint... */}
+        <View style={{ flex: 1, alignItems: 'center', paddingRight: 16 }}>
+          {/* Avatar, Name, Complaint */}
+          <View style={styles.patientAvatar}>
+            <View style={styles.patientAvatarBorder}>
+              <Text style={styles.patientAvatarText}>
+                {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.patientName, { color: theme.colors.foreground, marginTop: 12 }]}>
+            {patient.firstName} {patient.lastName}
+          </Text>
+          <View style={styles.patientConditionBadge}>
+            <Text style={[styles.patientCondition, { color: theme.colors.primary }]}>
+              {patient.chiefComplaint || 'General Consultation'}
+            </Text>
+          </View>
+          {/* DOB & Age row */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginTop: 20, marginBottom: 12 }}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>DOB:</Text>
+              <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.dateOfBirth}</Text>
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Age:</Text>
+              <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.age}y</Text>
+            </View>
+          </View>
+          {/* Weight & Height row */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 20 }}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Weight:</Text>
+              <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.weight || '75kg'}</Text>
+            </View>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Height:</Text>
+              <Text style={[styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.height || '175cm'}</Text>
+            </View>
+          </View>
+          {/* Send Message button */}
+          <View style={{ alignItems: 'center', width: '100%' }}>
+            <TouchableOpacity style={styles.messageButton}>
+              <LinearGradient
+                colors={theme.gradients.primary}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.messageButtonGradient}
+              >
+                <Text style={styles.messageButtonText}>SEND MESSAGE</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Age:</Text>
-          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.age}y</Text>
-        </View>
-      </View>
-      {/* Weight & Height row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 40, marginBottom: 20 }}>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Weight:</Text>
-          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.weight || '75kg'}</Text>
-        </View>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={[styles.commonText, styles.demographicLabel, { color: theme.colors.foregroundMuted }]}>Height:</Text>
-          <Text style={[styles.commonText, styles.demographicValue, { color: theme.colors.foreground }]}>{patient.vitals?.height || '175cm'}</Text>
-        </View>
-      </View>
-      {/* Send Message button */}
-      <View style={{ alignItems: 'center', width: '100%' }}>
-        <TouchableOpacity style={styles.messageButton}>
-          <Text style={styles.messageButtonText}>SEND MESSAGE</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
 
-    {/* Right section with Contact Information */}
-    <View style={[styles.contactInfoSection, { flex: 0.8, paddingLeft: 16 }]}>
-      <View style={styles.contactInfoItem}>
-        <ModernIcon name="home" size={14} color={theme.colors.primary} />
-        <Text style={[styles.commonText, styles.contactInfoText, { color: theme.colors.foreground }]}>
-          {patient.address || '123 Broadway, New York, NY, 10012'}
-        </Text>
+        {/* Right section with Contact Information */}
+        <View style={[styles.contactInfoSection, { flex: 0.8, paddingLeft: 16 }]}>
+          <View style={styles.contactInfoItem}>
+            <View style={styles.contactIconContainer}>
+              <ModernIcon name="home" size={16} color={theme.colors.primary} />
+            </View>
+            <Text style={[styles.contactInfoText, { color: theme.colors.foreground }]}>
+              {patient.address || '123 Broadway, New York, NY, 10012'}
+            </Text>
+          </View>
+          <View style={styles.contactInfoItem}>
+            <View style={styles.contactIconContainer}>
+              <ModernIcon name="phone" size={16} color={theme.colors.primary} />
+            </View>
+            <Text style={[styles.contactInfoText, { color: theme.colors.foreground }]}>
+              Mobile: {patient.phone || '917 (543)-1234'}
+            </Text>
+          </View>
+          <View style={styles.contactInfoItem}>
+            <View style={styles.contactIconContainer}>
+              <ModernIcon name="mail" size={16} color={theme.colors.primary} />
+            </View>
+            <Text style={[styles.contactInfoText, { color: theme.colors.foreground }]}>
+              {patient.email || 'j.smith@gmail.com'}
+            </Text>
+          </View>
+        </View>
       </View>
-      <View style={styles.contactInfoItem}>
-        <ModernIcon name="phone" size={14} color={theme.colors.primary} />
-        <Text style={[styles.commonText, styles.contactInfoText, { color: theme.colors.foreground }]}>
-          Mobile: {patient.phone || '917 (543)-1234'}
-        </Text>
-      </View>
-      <View style={styles.contactInfoItem}>
-        <ModernIcon name="mail" size={14} color={theme.colors.primary} />
-        <Text style={[styles.commonText,styles.contactInfoText, { color: theme.colors.foreground }]}>
-          {patient.email || 'j.smith@gmail.com'}
-        </Text>
-      </View>
-    </View>
-  </View>
+    </LinearGradient>
   </ModernCard>
 );
   
@@ -908,75 +933,90 @@ const renderLifestyleCard = (patient: any) => (
       </View>
 
       <View style={styles.mainContent}>
-        {/* Left Sidebar */}
+        {/* Left Sidebar - Premium Neon Design */}
         <View style={[styles.sidebar, { backgroundColor: theme.colors.primary }]}>
-          
-          <View style={styles.patientProfile}>
-            <View style={styles.patientAvatarSidebar}>
-              <Text style={styles.patientAvatarSidebarText}>
-                {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
-              </Text>
+          <LinearGradient
+            colors={theme.gradients.primary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.sidebarGradient}
+          >
+            <View style={styles.patientProfile}>
+              <View style={styles.patientAvatarSidebar}>
+                <View style={styles.patientAvatarSidebarBorder}>
+                  <Text style={styles.patientAvatarSidebarText}>
+                    {patient.firstName?.charAt(0)}{patient.lastName?.charAt(0)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.patientNameSidebar}>{patient.firstName} {patient.lastName}</Text>
+              <View style={styles.patientIdBadge}>
+                <Text style={styles.patientIdSidebar}>ID: {patient.patientId}</Text>
+              </View>
             </View>
-            <Text style={styles.patientNameSidebar}>{patient.firstName} {patient.lastName}</Text>
-            <Text style={styles.patientIdSidebar}>ID: {patient.patientId}</Text>
-          </View>
-          
-          <View style={styles.sidebarMenu}>
-            <TouchableOpacity 
-              style={[styles.sidebarMenuItem, activeSection === 'overview' && styles.sidebarMenuItemActive]}
-              onPress={() => setActiveSection('overview')}
-            >
-              <Text style={[styles.sidebarMenuItemText, activeSection === 'overview' && styles.sidebarMenuItemTextActive]}>
-                OVERVIEW
-              </Text>
-            </TouchableOpacity>
             
-            <TouchableOpacity 
-              style={[styles.sidebarMenuItem, activeSection === 'history' && styles.sidebarMenuItemActive]}
-              onPress={() => setActiveSection('history')}
-            >
-              <Text style={[styles.sidebarMenuItemText, activeSection === 'history' && styles.sidebarMenuItemTextActive]}>
-                HISTORY
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.sidebarMenuItem, activeSection === 'medications' && styles.sidebarMenuItemActive]}
-              onPress={() => setActiveSection('medications')}
-            >
-              <Text style={[styles.sidebarMenuItemText, activeSection === 'medications' && styles.sidebarMenuItemTextActive]}>
-                MEDICATIONS
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.sidebarMenuItem, activeSection === 'allergies' && styles.sidebarMenuItemActive]}
-              onPress={() => setActiveSection('allergies')}
-            >
-              <Text style={[styles.sidebarMenuItemText, activeSection === 'allergies' && styles.sidebarMenuItemTextActive]}>
-                ALLERGIES
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.sidebarMenuItem, activeSection === 'results' && styles.sidebarMenuItemActive]}
-              onPress={() => setActiveSection('results')}
-            >
-              <Text style={[styles.sidebarMenuItemText, activeSection === 'results' && styles.sidebarMenuItemTextActive]}>
-                RESULTS
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.sidebarMenuItem, activeSection === 'vaccines' && styles.sidebarMenuItemActive]}
-              onPress={() => setActiveSection('vaccines')}
-            >
-              <Text style={[styles.sidebarMenuItemText, activeSection === 'vaccines' && styles.sidebarMenuItemTextActive]}>
-                VACCINES
-              </Text>
-            </TouchableOpacity>
-            
-          </View>
+            <View style={styles.sidebarMenu}>
+              <TouchableOpacity 
+                style={[styles.sidebarMenuItem, activeSection === 'overview' && styles.sidebarMenuItemActive]}
+                onPress={() => setActiveSection('overview')}
+              >
+                <Text style={[styles.sidebarMenuItemText, activeSection === 'overview' && styles.sidebarMenuItemTextActive]}>
+                  OVERVIEW
+                </Text>
+                {activeSection === 'overview' && <View style={styles.sidebarMenuItemIndicator} />}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.sidebarMenuItem, activeSection === 'history' && styles.sidebarMenuItemActive]}
+                onPress={() => setActiveSection('history')}
+              >
+                <Text style={[styles.sidebarMenuItemText, activeSection === 'history' && styles.sidebarMenuItemTextActive]}>
+                  HISTORY
+                </Text>
+                {activeSection === 'history' && <View style={styles.sidebarMenuItemIndicator} />}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.sidebarMenuItem, activeSection === 'medications' && styles.sidebarMenuItemActive]}
+                onPress={() => setActiveSection('medications')}
+              >
+                <Text style={[styles.sidebarMenuItemText, activeSection === 'medications' && styles.sidebarMenuItemTextActive]}>
+                  MEDICATIONS
+                </Text>
+                {activeSection === 'medications' && <View style={styles.sidebarMenuItemIndicator} />}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.sidebarMenuItem, activeSection === 'allergies' && styles.sidebarMenuItemActive]}
+                onPress={() => setActiveSection('allergies')}
+              >
+                <Text style={[styles.sidebarMenuItemText, activeSection === 'allergies' && styles.sidebarMenuItemTextActive]}>
+                  ALLERGIES
+                </Text>
+                {activeSection === 'allergies' && <View style={styles.sidebarMenuItemIndicator} />}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.sidebarMenuItem, activeSection === 'results' && styles.sidebarMenuItemActive]}
+                onPress={() => setActiveSection('results')}
+              >
+                <Text style={[styles.sidebarMenuItemText, activeSection === 'results' && styles.sidebarMenuItemTextActive]}>
+                  RESULTS
+                </Text>
+                {activeSection === 'results' && <View style={styles.sidebarMenuItemIndicator} />}
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.sidebarMenuItem, activeSection === 'vaccines' && styles.sidebarMenuItemActive]}
+                onPress={() => setActiveSection('vaccines')}
+              >
+                <Text style={[styles.sidebarMenuItemText, activeSection === 'vaccines' && styles.sidebarMenuItemTextActive]}>
+                  VACCINES
+                </Text>
+                {activeSection === 'vaccines' && <View style={styles.sidebarMenuItemIndicator} />}
+              </TouchableOpacity>
+            </View>
+          </LinearGradient>
         </View>
 
         {/* Main Content Area */}
@@ -1198,12 +1238,15 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   patientHeaderCard: {
     marginBottom: 16,
-    padding: 16,
+    padding: 0,
     maxWidth: 520,
     minWidth: 420,
-    paddingVertical: 24,
-    paddingHorizontal: 32,
-    alignSelf: 'left', // centers card if needed
+    overflow: 'hidden',
+    ...theme.shadows.neon,
+  },
+  patientHeaderGradient: {
+    padding: 32,
+    paddingVertical: 28,
   },
   patientHeaderContent: {
     flexDirection: 'row',
@@ -1215,30 +1258,48 @@ const createStyles = (theme: any) => StyleSheet.create({
     flex: 1,
   },
   patientAvatar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#2DD4BF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginBottom: 8,
+  },
+  patientAvatarBorder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 4,
+    borderColor: theme.colors.primaryLight,
+    ...theme.shadows.neonGlow,
   },
   patientAvatarText: {
-    color: '#fff',
-    fontSize: 20,
+    color: theme.colors.background,
+    fontSize: 28,
     fontWeight: '700',
   },
   patientBasicInfo: {
     flex: 1,
   },
   patientName: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  patientConditionBadge: {
+    backgroundColor: theme.colors.primaryAlpha,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    marginTop: 4,
   },
   patientCondition: {
-    fontSize: 16,
-    marginBottom: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
   patientDemographics: {
     marginTop: 8,
@@ -1263,27 +1324,38 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontWeight: '600',
   },
   messageButton: {
-    backgroundColor: '#2DD4BF',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
+    borderRadius: 24,
+    overflow: 'hidden',
     marginTop: 12,
-    alignSelf: 'flex-start',
+    width: '100%',
+    ...theme.shadows.neon,
+  },
+  messageButtonGradient: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   messageButtonText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: theme.colors.background,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.primaryAlphaDark,
   },
   cardTitle: {
     fontSize: 18,
     fontWeight: '700',
+    color: theme.colors.foreground,
+    letterSpacing: -0.3,
   },
   cardActions: {
     flexDirection: 'row',
@@ -1310,7 +1382,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     flex: 1,
   },
   medicationsCard: {
-    padding: 16,
+    padding: 20,
+    backgroundColor: theme.colors.primaryAlphaDark,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+    ...theme.shadows.neon,
   },
   medicationsList: {
     gap: 8,
@@ -1326,7 +1402,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     flex: 1,
   },
   vitalsCard: {
-    padding: 16,
+    padding: 20,
+    backgroundColor: theme.colors.primaryAlphaDark,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+    ...theme.shadows.neon,
   },
   vitalsGrid: {
     gap: 16,
@@ -1344,9 +1424,11 @@ const createStyles = (theme: any) => StyleSheet.create({
   vitalItemHorizontal: {
     flex: 1,
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
+    padding: 20,
+    backgroundColor: theme.colors.primaryAlpha,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
   },
   vitalValue: {
     fontSize: 20,
@@ -1369,7 +1451,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     textAlign: 'center',
   },
   notesCard: {
-    padding: 16,
+    padding: 20,
+    backgroundColor: theme.colors.primaryAlphaDark,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+    ...theme.shadows.neon,
   },
   notesContent: {
     gap: 8,
@@ -1379,7 +1465,11 @@ const createStyles = (theme: any) => StyleSheet.create({
     lineHeight: 20,
   },
   labResultsCard: {
-    padding: 16,
+    padding: 20,
+    backgroundColor: theme.colors.primaryAlphaDark,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+    ...theme.shadows.neon,
   },
   labResultsList: {
     gap: 8,
@@ -1395,8 +1485,12 @@ const createStyles = (theme: any) => StyleSheet.create({
     flex: 1,
   },
   timelineCard: {
-    padding: 16,
+    padding: 20,
     marginBottom: 20,
+    backgroundColor: theme.colors.primaryAlphaDark,
+    borderWidth: 1,
+    borderColor: theme.colors.primaryAlphaDark,
+    ...theme.shadows.neon,
   },
   timelineContent: {
     gap: 16,
@@ -1407,10 +1501,13 @@ const createStyles = (theme: any) => StyleSheet.create({
     gap: 12,
   },
   timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginTop: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginTop: 2,
+    borderWidth: 3,
+    borderColor: theme.colors.background,
+    ...theme.shadows.md,
   },
   timelineEvent: {
     flex: 1,
@@ -1432,8 +1529,10 @@ const createStyles = (theme: any) => StyleSheet.create({
   // New Sidebar Navigation Styles
   topHeader: {
     borderBottomWidth: 1,
+    borderBottomColor: theme.colors.primaryAlphaDark,
     paddingTop: 50,
     paddingBottom: 16,
+    backgroundColor: theme.colors.background,
   },
   topHeaderContent: {
     flexDirection: 'row',
@@ -1446,6 +1545,9 @@ const createStyles = (theme: any) => StyleSheet.create({
     fontWeight: '700',
     flex: 1,
     textAlign: 'center',
+    color: theme.colors.foreground,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   topHeaderActions: {
     flexDirection: 'row',
@@ -1515,9 +1617,15 @@ const createStyles = (theme: any) => StyleSheet.create({
     flexDirection: 'row',
   },
   sidebar: {
-    width: 125,
+    width: 140,
     paddingTop: 20,
     paddingHorizontal: 8,
+    overflow: 'hidden',
+  },
+  sidebarGradient: {
+    flex: 1,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
   sidebarHeader: {
     marginBottom: 20,
@@ -1528,60 +1636,90 @@ const createStyles = (theme: any) => StyleSheet.create({
   patientProfile: {
     alignItems: 'center',
     marginBottom: 30,
+    paddingHorizontal: 12,
   },
   patientAvatarSidebar: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    marginBottom: 12,
+  },
+  patientAvatarSidebarBorder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     backgroundColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    borderWidth: 3,
+    borderColor: theme.colors.primaryLight,
+    ...theme.shadows.neon,
   },
   patientAvatarSidebarText: {
-    color: '#2DD4BF',
-    fontSize: 18,
+    color: theme.colors.primary,
+    fontSize: 22,
     fontWeight: '700',
   },
   patientNameSidebar: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 4,
+    marginBottom: 8,
+    letterSpacing: -0.3,
+  },
+  patientIdBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   patientIdSidebar: {
     color: '#fff',
-    fontSize: 12,
-    opacity: 0.8,
+    fontSize: 11,
+    fontWeight: '600',
+    opacity: 0.9,
+    letterSpacing: 0.5,
   },
   sidebarMenu: {
     gap: 4,
+    paddingHorizontal: 8,
   },
   sidebarMenuItem: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 8,
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     marginBottom: 4,
+    position: 'relative',
   },
   sidebarMenuItemActive: {
     backgroundColor: '#fff',
+    ...theme.shadows.md,
+  },
+  sidebarMenuItemIndicator: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+    backgroundColor: theme.colors.primary,
+    marginLeft: 8,
   },
   sidebarMenuItemText: {
-    color: '#fff',
-    fontSize: 10,
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 11,
     fontWeight: '600',
-    textAlign: 'center',
+    textAlign: 'left',
+    letterSpacing: 0.5,
+    flex: 1,
   },
   sidebarMenuItemTextActive: {
-    color: '#2DD4BF',
+    color: theme.colors.primary,
+    fontWeight: '700',
   },
   contentArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: theme.colors.background,
     paddingTop: 0,
   },
   sectionTitle: {
@@ -1830,20 +1968,31 @@ const createStyles = (theme: any) => StyleSheet.create({
   },
   // Contact info inside profile card
   contactInfoSection: {
-    marginTop: 16,
-    paddingHorizontal: 16,
+    marginTop: 0,
+    paddingHorizontal: 0,
     width: '100%',
   },
   contactInfoItem: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 12,
+    paddingVertical: 4,
+  },
+  contactIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: theme.colors.primaryAlphaDark,
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
+    justifyContent: 'center',
+    marginTop: 2,
   },
   contactInfoText: {
-    fontSize: 12,
+    fontSize: 13,
     flex: 1,
-    lineHeight: 16,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   
   // Lifestyle card

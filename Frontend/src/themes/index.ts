@@ -1,62 +1,65 @@
 export const theme = {
   colors: {
-    // Modern Medical Theme - Higher contrast for better visibility
-    primary: 'hsl(174, 72%, 40%)', // Darker teal for better contrast
-    primaryDark: 'hsl(174, 72%, 30%)', // Even darker teal for depth
-    primaryLight: 'hsl(174, 60%, 50%)', // Lighter teal but still good contrast
+    // Neon Cyan Theme - Premium Medical App
+    primary: '#00FFFF', // Bright neon cyan
+    primaryDark: '#00CCCC', // Darker neon cyan variant
+    primaryLight: '#33FFFF', // Lighter neon cyan variant
+    primaryMuted: '#00E6E6', // Muted neon cyan for backgrounds
+    primaryAlpha: 'rgba(0, 255, 255, 0.1)', // Subtle neon cyan alpha
+    primaryAlphaDark: 'rgba(0, 255, 255, 0.2)', // Darker neon cyan alpha for cards
 
-    background: 'hsl(210, 25%, 98%)', // More neutral background
-    backgroundSecondary: 'hsl(210, 15%, 95%)', // Slightly different background
+    background: '#0A0F1A', // Dark background for neon contrast
+    backgroundSecondary: '#0F1419', // Slightly lighter dark background
     surface: '#FFFFFF', // Clean white surfaces
-    surfaceSecondary: 'hsl(210, 10%, 97%)', // Subtle surface
+    surfaceSecondary: '#F8FAFC', // Subtle light surface
 
-    muted: 'hsl(210, 15%, 90%)', // Muted background
-    border: 'hsl(214, 32%, 80%)', // Higher contrast borders
-    borderLight: 'hsl(214, 20%, 85%)', // Lighter but visible borders
+    muted: '#1A1F2E', // Muted dark background
+    border: 'rgba(0, 255, 255, 0.2)', // Neon cyan borders
+    borderLight: 'rgba(0, 255, 255, 0.1)', // Lighter neon cyan borders
 
-    foreground: 'hsl(210, 25%, 10%)', // Darker text for better contrast
-    foregroundSecondary: 'hsl(210, 15%, 25%)', // Darker secondary text
-    foregroundMuted: 'hsl(210, 10%, 40%)', // Darker muted text
+    foreground: '#FFFFFF', // White text for dark backgrounds
+    foregroundSecondary: 'rgba(255, 255, 255, 0.8)', // Semi-transparent white
+    foregroundMuted: 'rgba(255, 255, 255, 0.6)', // Muted white text
 
-    // Medical Theme Extensions
-    medicalPrimary: 'hsl(174, 72%, 50%)',
-    medicalSecondary: 'hsl(172, 60%, 75%)',
-    medicalAccent: 'hsl(176, 68%, 85%)',
-    medicalSuccess: 'hsl(142, 76%, 40%)',
-    medicalWarning: 'hsl(38, 92%, 50%)',
-    medicalError: 'hsl(0, 84%, 60%)',
-    medicalInfo: 'hsl(199, 89%, 48%)',
+    // Medical Theme Extensions (keeping medical colors but updating primary)
+    medicalPrimary: '#00FFFF',
+    medicalSecondary: '#33FFFF',
+    medicalAccent: 'rgba(0, 255, 255, 0.3)',
+    medicalSuccess: '#00FF88', // Neon green for success
+    medicalWarning: '#FFAA00', // Neon orange for warnings
+    medicalError: '#FF0066', // Neon pink for errors
+    medicalInfo: '#00AAFF', // Neon blue for info
 
-    // Gradient Colors
-    gradientStart: 'hsl(174, 72%, 50%)',
-    gradientEnd: 'hsl(176, 68%, 70%)',
-    gradientSecondary: 'hsl(172, 60%, 75%)',
+    // Gradient Colors - Neon Cyan Variations
+    gradientStart: '#00FFFF',
+    gradientEnd: '#33FFFF',
+    gradientSecondary: ['#00CCCC', '#00FFFF'],
 
     // Status colors
-    success: 'hsl(142, 76%, 40%)',
-    warning: 'hsl(38, 92%, 50%)',
-    error: 'hsl(0, 84%, 60%)',
-    info: 'hsl(199, 89%, 48%)',
+    success: '#00FF88',
+    warning: '#FFAA00',
+    error: '#FF0066',
+    info: '#00AAFF',
 
-    // Enhanced grays
+    // Enhanced grays for dark theme
     gray: {
-      50: 'hsl(210, 20%, 98%)',
-      100: 'hsl(210, 15%, 95%)',
-      200: 'hsl(210, 10%, 89%)',
-      300: 'hsl(210, 8%, 75%)',
-      400: 'hsl(210, 8%, 56%)',
-      500: 'hsl(210, 6%, 43%)',
-      600: 'hsl(210, 8%, 35%)',
-      700: 'hsl(210, 10%, 25%)',
-      800: 'hsl(210, 15%, 16%)',
-      900: 'hsl(210, 20%, 10%)',
+      50: '#0A0F1A',
+      100: '#0F1419',
+      200: '#1A1F2E',
+      300: '#2A2F3E',
+      400: '#3A3F4E',
+      500: '#5A5F6E',
+      600: '#7A7F8E',
+      700: '#9A9FAE',
+      800: '#BABFCE',
+      900: '#DADFEE',
     },
 
     // Performance Indicators
-    latencyExcellent: 'hsl(174, 72%, 40%)',
-    latencyGood: 'hsl(174, 65%, 50%)',
-    latencyFair: 'hsl(38, 92%, 50%)',
-    latencyPoor: 'hsl(0, 84%, 60%)',
+    latencyExcellent: '#00FFFF',
+    latencyGood: '#33FFFF',
+    latencyFair: '#FFAA00',
+    latencyPoor: '#FF0066',
   },
 
   spacing: {
@@ -149,18 +152,35 @@ export const theme = {
       elevation: 0,
     },
     colored: {
-      shadowColor: 'hsl(174, 72%, 50%)',
+      shadowColor: '#00FFFF',
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
+      shadowOpacity: 0.3,
       shadowRadius: 12,
       elevation: 6,
+    },
+    neon: {
+      shadowColor: '#00FFFF',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.5,
+      shadowRadius: 20,
+      elevation: 8,
+    },
+    neonGlow: {
+      shadowColor: '#00FFFF',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.8,
+      shadowRadius: 30,
+      elevation: 10,
     },
   },
 
   gradients: {
-    primary: ['hsl(174, 72%, 50%)', 'hsl(176, 68%, 70%)'],
-    secondary: ['hsl(172, 60%, 75%)', 'hsl(174, 72%, 50%)'],
-    surface: ['#FFFFFF', 'hsl(174, 10%, 97%)'],
+    primary: ['#00FFFF', '#33FFFF'], // Neon cyan gradient
+    secondary: ['#00CCCC', '#00FFFF'], // Darker to brighter neon cyan
+    tertiary: ['#00E6E6', '#00FFFF'], // Muted to bright neon cyan
+    surface: ['#FFFFFF', '#F8FAFC'],
+    neon: ['#00FFFF', '#00CCCC', '#00FFFF'], // Multi-stop neon gradient
+    dark: ['#0A0F1A', '#0F1419'], // Dark background gradient
   },
 };
 
