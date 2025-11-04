@@ -1,0 +1,2 @@
+"""MediEaseClinic FastAPI Application Package"""
+

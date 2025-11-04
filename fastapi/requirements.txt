@@ -1,0 +1,53 @@
+# FastAPI core
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+pydantic==2.9.2
+pydantic-settings==2.6.0
+
+# Database
+motor==3.6.0
+pymongo==4.9.1
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+bcrypt==4.1.2
+
+# AWS Services
+boto3==1.35.0
+botocore==1.35.0
+
+# HTTP Client
+httpx==0.26.0
+requests==2.31.0
+
+# Rate Limiting
+slowapi==0.1.9
+
+# CORS
+python-dotenv==1.0.0
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Encryption
+cryptography==42.0.0
+pycryptodome==3.20.0
+
+# Logging & Monitoring
+python-json-logger==2.0.7
+
+# Date/Time
+python-dateutil==2.8.2
+
+# Email (for future notifications)
+aiosmtplib==3.0.1
+
+# AI Services
+openai==1.54.0
+google-generativeai==0.8.3
+

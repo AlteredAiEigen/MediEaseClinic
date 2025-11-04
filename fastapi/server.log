@@ -1,0 +1,121 @@
+/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pydantic/_internal/_config.py:341: UserWarning: Valid config keys have changed in V2:
+* 'allow_population_by_field_name' has been renamed to 'populate_by_name'
+  warnings.warn(message, UserWarning)
+2025-11-03 17:18:04,196 - app.services.ai_service - INFO - Initialized OpenAI for clinical notes
+2025-11-03 17:18:04,310 - app.main - INFO - Starting MediEase Clinic API v1.0.0
+2025-11-03 17:18:04,310 - app.main - INFO - Environment: development
+2025-11-03 17:18:04,310 - app.database - INFO - Connecting to MongoDB Atlas...
+2025-11-03 17:18:05,074 - app.database - INFO - Successfully connected to MongoDB: mediease
+2025-11-03 17:18:07,399 - app.database - INFO - Database indexes created successfully
+2025-11-03 17:18:07,399 - app.main - INFO - Database connection established
+2025-11-03 17:18:07,399 - app.main - INFO - Global database instance initialized
+2025-11-03 17:18:13,837 - passlib.handlers.bcrypt - WARNING - (trapped) error reading bcrypt version
+Traceback (most recent call last):
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/passlib/handlers/bcrypt.py", line 620, in _load_backend_mixin
+    version = _bcrypt.__about__.__version__
+              ^^^^^^^^^^^^^^^^^
+AttributeError: module 'bcrypt' has no attribute '__about__'
+2025-11-03 17:18:14,245 - app.middleware.audit_log - INFO - AUDIT: POST /api/auth/register - User: None (None) - Status: 201 - Time: 421.90ms
+2025-11-03 17:18:14,696 - app.middleware.audit_log - INFO - AUDIT: POST /api/auth/register - User: None (None) - Status: 201 - Time: 400.29ms
+2025-11-03 17:18:15,109 - app.middleware.audit_log - INFO - AUDIT: POST /api/auth/login - User: None (None) - Status: 200 - Time: 362.62ms
+2025-11-03 17:18:15,546 - app.middleware.audit_log - INFO - AUDIT: POST /api/auth/login - User: None (None) - Status: 200 - Time: 372.79ms
+2025-11-03 17:18:15,595 - app.middleware.audit_log - INFO - AUDIT: POST /api/patients - User: None (None) - Status: 307 - Time: 0.52ms
+2025-11-03 17:18:15,898 - app.middleware.audit_log - INFO - AUDIT: POST /api/patients/ - User: None (None) - Status: 201 - Time: 252.39ms
+2025-11-03 17:18:16,043 - app.middleware.audit_log - INFO - AUDIT: GET /api/patients/6908967f02e386e5e4f53b14 - User: None (None) - Status: 200 - Time: 91.90ms
+2025-11-03 17:18:16,317 - app.middleware.audit_log - INFO - AUDIT: PUT /api/patients/6908967f02e386e5e4f53b14 - User: None (None) - Status: 200 - Time: 211.81ms
+2025-11-03 17:18:16,368 - app.middleware.audit_log - INFO - AUDIT: GET /api/patients - User: None (None) - Status: 307 - Time: 0.60ms
+2025-11-03 17:18:16,582 - app.middleware.audit_log - INFO - AUDIT: GET /api/patients/ - User: None (None) - Status: 200 - Time: 139.16ms
+2025-11-03 17:18:16,645 - app.middleware.audit_log - INFO - AUDIT: POST /api/appointments - User: None (None) - Status: 307 - Time: 1.09ms
+2025-11-03 17:18:17,159 - app.middleware.audit_log - INFO - AUDIT: POST /api/appointments/ - User: None (None) - Status: 201 - Time: 463.92ms
+2025-11-03 17:18:17,300 - app.middleware.audit_log - INFO - AUDIT: GET /api/appointments/6908968102e386e5e4f53b1b - User: None (None) - Status: 200 - Time: 89.90ms
+2025-11-03 17:18:17,541 - app.middleware.audit_log - INFO - AUDIT: PUT /api/appointments/6908968102e386e5e4f53b1b - User: None (None) - Status: 200 - Time: 188.38ms
+2025-11-03 17:18:17,593 - app.middleware.audit_log - INFO - AUDIT: GET /api/appointments - User: None (None) - Status: 307 - Time: 0.73ms
+2025-11-03 17:18:17,862 - app.middleware.audit_log - INFO - AUDIT: GET /api/appointments/ - User: None (None) - Status: 200 - Time: 196.03ms
+2025-11-03 17:18:17,941 - app.middleware.audit_log - INFO - AUDIT: POST /api/prescriptions - User: None (None) - Status: 307 - Time: 0.84ms
+2025-11-03 17:18:18,319 - app.middleware.audit_log - INFO - AUDIT: POST /api/prescriptions/ - User: None (None) - Status: 201 - Time: 327.06ms
+2025-11-03 17:18:18,476 - app.middleware.audit_log - INFO - AUDIT: GET /api/prescriptions/6908968202e386e5e4f53b22 - User: None (None) - Status: 200 - Time: 105.91ms
+2025-11-03 17:18:18,528 - app.middleware.audit_log - INFO - AUDIT: GET /api/prescriptions - User: None (None) - Status: 307 - Time: 0.80ms
+2025-11-03 17:18:18,742 - app.middleware.audit_log - INFO - AUDIT: GET /api/prescriptions/ - User: None (None) - Status: 200 - Time: 137.68ms
+Traceback (most recent call last):
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 875, in _configured_socket
+    ssl_sock = ssl_context.wrap_socket(sock, server_hostname=host)
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ssl.py", line 455, in wrap_socket
+    return self.sslsocket_class._create(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        sock=sock,
+        ^^^^^^^^^^
+    ...<5 lines>...
+        session=session
+        ^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ssl.py", line 1076, in _create
+    self.do_handshake()
+    ~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/ssl.py", line 1372, in do_handshake
+    self._sslobj.do_handshake()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+TimeoutError: _ssl.c:1011: The handshake operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/mongo_client.py", line 2064, in _process_periodic_tasks
+    self._topology.update_pool()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/topology.py", line 676, in update_pool
+    server.pool.remove_stale_sockets(generation)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 1214, in remove_stale_sockets
+    conn = self.connect()
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 1261, in connect
+    sock = _configured_socket(self.address, self.opts)
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 905, in _configured_socket
+    _raise_connection_failure(address, exc, "SSL handshake failed: ", timeout_details=details)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 200, in _raise_connection_failure
+    raise NetworkTimeout(msg) from error
+pymongo.errors.NetworkTimeout: SSL handshake failed: ac-dxtsyns-shard-00-00.tnsxiov.mongodb.net:27017: _ssl.c:1011: The handshake operation timed out (configured timeouts: connectTimeoutMS: 20000.0ms)
+Traceback (most recent call last):
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/mongo_client.py", line 2064, in _process_periodic_tasks
+    self._topology.update_pool()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/topology.py", line 676, in update_pool
+    server.pool.remove_stale_sockets(generation)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 1214, in remove_stale_sockets
+    conn = self.connect()
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 1290, in connect
+    conn.hello()
+    ~~~~~~~~~~^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 379, in hello
+    return self._hello(None, None, None)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 425, in _hello
+    doc = self.command("admin", cmd, publish_events=False, exhaust_allowed=awaitable)
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/helpers.py", line 45, in inner
+    return func(*args, **kwargs)
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 566, in command
+    self._raise_connection_failure(error)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/pool.py", line 538, in command
+    return command(
+        self,
+    ...<20 lines>...
+        write_concern=write_concern,
+    )
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/network.py", line 208, in command
+    reply = receive_message(conn, request_id)
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/network.py", line 320, in receive_message
+    length, _, response_to, op_code = _UNPACK_HEADER(_receive_data_on_socket(conn, 16, deadline))
+                                                     ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/network.py", line 390, in _receive_data_on_socket
+    wait_for_read(conn, deadline)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/Users/chanpreetsingh/Documents/GitHub/Untitled/MediEaseClinic/fastapi/venv/lib/python3.13/site-packages/pymongo/synchronous/network.py", line 377, in wait_for_read
+    raise _OperationCancelled("operation cancelled")
+pymongo.errors._OperationCancelled: operation cancelled
+2025-11-04 14:53:38,388 - app.main - INFO - Shutting down application...
+2025-11-04 14:53:38,392 - app.database - INFO - Closing MongoDB connection...
+2025-11-04 14:53:38,804 - app.database - INFO - MongoDB connection closed
+2025-11-04 14:53:38,804 - app.main - INFO - Application shutdown complete
