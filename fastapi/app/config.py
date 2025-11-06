@@ -1,0 +1,134 @@
+"""
+Configuration management for MediEaseClinic FastAPI application.
+Handles environment variables and application settings with HIPAA compliance.
+"""
+
+from pydantic_settings import BaseSettings
+from typing import List
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    """Application settings with validation."""
+    
+    # Application Settings
+    app_name: str = "MediEaseClinic API"
+    app_version: str = "1.0.0"
+    environment: str = "development"
+    debug: bool = False
+    
+    # Server Configuration
+    host: str = "0.0.0.0"
+    port: int = 8000
+    
+    # MongoDB Configuration
+    mongodb_url: str
+    database_name: str = "mediease"
+    
+    # JWT Configuration
+    jwt_secret_key: str
+    jwt_refresh_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+    
+    # AWS Configuration
+    aws_access_key_id: str
+    aws_secret_access_key: str
+    aws_region: str = "us-east-1"
+    s3_bucket_name: str
+    aws_transcribe_region: str = "us-east-1"
+    aws_s3_presigned_url_expiration: int = 900  # 15 minutes
+    
+    # AWS Transcribe Configuration
+    aws_transcribe_language_options: str = "en-US,hi-IN"
+    aws_transcribe_media_format: str = "mp3"
+    
+    # OpenAI Configuration
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4"
+    
+    # Google Gemini Configuration
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-pro"
+    
+    # Security Settings
+    cors_origins: str = "http://localhost:3000,http://localhost:8081"
+    allowed_hosts: str = "localhost,127.0.0.1"
+    
+    # Rate Limiting
+    rate_limit_per_minute: int = 60
+    rate_limit_per_hour: int = 1000
+    
+    # Encryption Settings
+    encryption_key: str
+    
+    # File Upload Settings
+    max_upload_size_mb: int = 100
+    allowed_audio_formats: str = "mp3,wav,m4a,aac"
+    allowed_image_formats: str = "jpg,jpeg,png,pdf"
+    
+    # HIPAA Audit Logging
+    audit_log_enabled: bool = True
+    audit_log_level: str = "INFO"
+    audit_log_retention_days: int = 2555
+    enable_audit_logging: bool = True
+    enable_data_masking: bool = True
+    phi_encryption_enabled: bool = True
+    
+    # Recording Retention Policies (in days)
+    recording_retention_standard: int = 90
+    recording_retention_extended: int = 365
+    recording_retention_permanent: int = 0
+    
+    # Email Configuration
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "noreply@medieaseclinic.com"
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+    
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse CORS origins from comma-separated string."""
+        return [origin.strip() for origin in self.cors_origins.split(",")]
+    
+    @property
+    def allowed_hosts_list(self) -> List[str]:
+        """Parse allowed hosts from comma-separated string."""
+        return [host.strip() for host in self.allowed_hosts.split(",")]
+    
+    @property
+    def transcribe_languages(self) -> List[str]:
+        """Parse transcribe language options."""
+        return [lang.strip() for lang in self.aws_transcribe_language_options.split(",")]
+    
+    @property
+    def audio_formats_list(self) -> List[str]:
+        """Parse allowed audio formats."""
+        return [fmt.strip() for fmt in self.allowed_audio_formats.split(",")]
+    
+    @property
+    def image_formats_list(self) -> List[str]:
+        """Parse allowed image formats."""
+        return [fmt.strip() for fmt in self.allowed_image_formats.split(",")]
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    """
+    Create and cache settings instance.
+    Using lru_cache to ensure settings are loaded once.
+    """
+    return Settings()
+
+
+# Global settings instance
+settings = get_settings()
+

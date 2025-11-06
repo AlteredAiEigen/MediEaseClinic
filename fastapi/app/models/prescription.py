@@ -1,0 +1,137 @@
+"""
+Prescription model for managing patient medications.
+"""
+
+from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel, Field
+from bson import ObjectId
+
+
+class PyObjectId(ObjectId):
+    """Custom ObjectId type for Pydantic v2."""
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        from pydantic_core import core_schema
+        return core_schema.no_info_plain_validator_function(
+            cls.validate,
+            serialization=core_schema.to_string_ser_schema(),
+        )
+
+    @classmethod
+    def validate(cls, v):
+        if isinstance(v, ObjectId):
+            return v
+        if not ObjectId.is_valid(v):
+            raise ValueError("Invalid ObjectId")
+        return ObjectId(v)
+
+
+class Medication(BaseModel):
+    """Medication details."""
+    name: str = Field(..., min_length=1)
+    dosage: str = Field(..., min_length=1)
+    frequency: str = Field(..., min_length=1)
+    duration: str = Field(..., min_length=1)
+    instructions: Optional[str] = ""
+
+
+class PrescriptionBase(BaseModel):
+    """Base prescription fields."""
+    patientId: str
+    doctorId: str
+    appointmentId: Optional[str] = None
+    queueId: Optional[str] = None
+    medications: List[Medication] = Field(..., min_items=1)
+    diagnosis: Optional[str] = ""
+    notes: Optional[str] = ""
+    imageUrl: Optional[str] = ""
+    imagePublicId: Optional[str] = ""
+    validUntil: Optional[datetime] = None
+    isActive: bool = True
+
+
+class PrescriptionCreate(PrescriptionBase):
+    """Schema for creating prescription."""
+    pass
+
+
+class PrescriptionInDB(PrescriptionBase):
+    """Prescription as stored in database."""
+    id: Optional[PyObjectId] = Field(alias="_id")
+    prescriptionId: str
+    patientName: Optional[str] = None
+    doctorName: Optional[str] = None
+    prescribedAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=datetime.utcnow)
+    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        populate_by_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+
+class PrescriptionResponse(BaseModel):
+    """Schema for prescription response."""
+    id: str = Field(alias="_id")
+    prescriptionId: str
+    patientId: str
+    doctorId: str
+    appointmentId: Optional[str] = None
+    queueId: Optional[str] = None
+    patientName: Optional[str] = None
+    doctorName: Optional[str] = None
+    medications: List[Medication]
+    diagnosis: Optional[str] = None
+    notes: Optional[str] = None
+    imageUrl: Optional[str] = None
+    imagePublicId: Optional[str] = None
+    validUntil: Optional[datetime] = None
+    isActive: bool
+    prescribedAt: datetime
+    createdAt: datetime
+    updatedAt: datetime
+    
+    class Config:
+        populate_by_name = True
+
+
+class PrescriptionUpdate(BaseModel):
+    """Schema for updating prescription."""
+    medications: Optional[List[Medication]] = Field(None, min_items=1)
+    diagnosis: Optional[str] = None
+    notes: Optional[str] = None
+    imageUrl: Optional[str] = None
+    imagePublicId: Optional[str] = None
+    validUntil: Optional[datetime] = None
+    isActive: Optional[bool] = None
+
+
+async def prescription_helper(prescription: dict) -> dict:
+    """Helper to format prescription document."""
+    if not prescription:
+        return None
+    
+    return {
+        "_id": str(prescription["_id"]),
+        "prescriptionId": prescription.get("prescriptionId", ""),
+        "patientId": str(prescription["patientId"]),
+        "doctorId": str(prescription["doctorId"]),
+        "appointmentId": str(prescription["appointmentId"]) if prescription.get("appointmentId") else None,
+        "queueId": str(prescription["queueId"]) if prescription.get("queueId") else None,
+        "patientName": prescription.get("patientName"),
+        "doctorName": prescription.get("doctorName"),
+        "medications": prescription.get("medications", []),
+        "diagnosis": prescription.get("diagnosis", ""),
+        "notes": prescription.get("notes", ""),
+        "imageUrl": prescription.get("imageUrl", ""),
+        "imagePublicId": prescription.get("imagePublicId", ""),
+        "validUntil": prescription.get("validUntil"),
+        "isActive": prescription.get("isActive", True),
+        "prescribedAt": prescription.get("prescribedAt"),
+        "createdAt": prescription.get("createdAt"),
+        "updatedAt": prescription.get("updatedAt"),
+    }
+
