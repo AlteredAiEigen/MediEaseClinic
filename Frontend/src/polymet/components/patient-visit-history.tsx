@@ -1,0 +1,270 @@
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import {
+  CalendarIcon,
+  ClockIcon,
+  FileTextIcon,
+  PillIcon,
+  ExternalLinkIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ActivityIcon,
+} from "lucide-react";
+
+interface VisitHistoryItem {
+  id: string;
+  date: string;
+  time: string;
+  title: string;
+  description: string;
+  doctor: string;
+  relativeTime: string;
+  prescription?: string[];
+  clinicalNotes?: string;
+}
+
+interface PatientVisitHistoryProps {
+  visits: VisitHistoryItem[];
+  patientId: string;
+  className?: string;
+}
+
+export function PatientVisitHistory({
+  visits,
+  patientId,
+  className = "",
+}: PatientVisitHistoryProps) {
+  const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const toggleExpand = (visitId: string) => {
+    setExpandedVisit(expandedVisit === visitId ? null : visitId);
+  };
+
+  return (
+    <div className={`space-y-4 ${className}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ActivityIcon className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+
+          <h3 className="text-lg font-semibold text-foreground">
+            Recent Visit History
+          </h3>
+          <Badge variant="outline" className="text-xs">
+            {visits.length} visits
+          </Badge>
+        </div>
+        <Link to={`/patient-overview/${patientId}`}>
+          <Button variant="outline" size="sm" className="gap-2">
+            <ExternalLinkIcon className="w-4 h-4" />
+            View Full History
+          </Button>
+        </Link>
+      </div>
+
+      {/* Stacked Cards with Dynamic Hover Effect */}
+      <div className="relative perspective-1000">
+        {visits.map((visit, index) => {
+          const isExpanded = expandedVisit === visit.id;
+          const isHovered = hoveredIndex === index;
+
+          // Calculate dynamic stacking - cards below the hovered one move down
+          let stackOffset = 0;
+          if (hoveredIndex !== null) {
+            if (index > hoveredIndex) {
+              // Cards below hovered card move down more dramatically
+              stackOffset = (index - hoveredIndex) * 12;
+            } else if (index === hoveredIndex) {
+              // Hovered card lifts up
+              stackOffset = -8;
+            }
+          }
+
+          return (
+            <Card
+              key={visit.id}
+              className={`
+                border-border shadow-lg transition-all duration-500 ease-out cursor-pointer
+                ${index > 0 ? "-mt-16" : ""}
+                ${isExpanded ? "ring-2 ring-teal-500 dark:ring-teal-600 mt-4" : ""}
+                ${isHovered ? "scale-105 shadow-2xl ring-2 ring-teal-400/50 dark:ring-teal-600/50" : ""}
+                ${!isExpanded && !isHovered ? "hover:shadow-xl" : ""}
+              `}
+              style={{
+                transform: `translateY(${stackOffset}px) ${isHovered ? "rotateX(2deg)" : "rotateX(0deg)"}`,
+                zIndex: isExpanded
+                  ? 100
+                  : isHovered
+                    ? 50
+                    : visits.length - index,
+                transformStyle: "preserve-3d",
+              }}
+              onMouseEnter={() => setHoveredIndex(index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+              onClick={() => toggleExpand(visit.id)}
+            >
+              <CardContent className="p-4">
+                {/* Compact View */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <CalendarIcon className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+
+                        <span className="font-medium text-foreground">
+                          {visit.date}
+                        </span>
+                        <span className="text-xs">•</span>
+                        <ClockIcon className="w-3.5 h-3.5" />
+
+                        <span>{visit.time}</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-xs bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/30 dark:text-teal-400 dark:border-teal-800"
+                      >
+                        {visit.relativeTime}
+                      </Badge>
+                    </div>
+
+                    <h4 className="font-semibold text-foreground mb-1 truncate">
+                      {visit.title}
+                    </h4>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {visit.description}
+                    </p>
+
+                    {!isExpanded && (
+                      <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                        <FileTextIcon className="w-3.5 h-3.5" />
+
+                        <span>Dr. {visit.doctor}</span>
+                        {visit.prescription &&
+                          visit.prescription.length > 0 && (
+                            <>
+                              <span>•</span>
+                              <PillIcon className="w-3.5 h-3.5" />
+
+                              <span>
+                                {visit.prescription.length} medications
+                              </span>
+                            </>
+                          )}
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex-shrink-0 h-8 w-8 p-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpand(visit.id);
+                    }}
+                  >
+                    {isExpanded ? (
+                      <ChevronUpIcon className="w-4 h-4" />
+                    ) : (
+                      <ChevronDownIcon className="w-4 h-4" />
+                    )}
+                  </Button>
+                </div>
+
+                {/* Expanded View */}
+                {isExpanded && (
+                  <div className="mt-4 space-y-4 animate-in slide-in-from-top-2 duration-300">
+                    <Separator />
+
+                    {/* Doctor Info */}
+                    <div>
+                      <p className="text-xs font-semibold text-muted-foreground mb-1">
+                        Attending Physician
+                      </p>
+                      <p className="text-sm text-foreground">
+                        Dr. {visit.doctor}
+                      </p>
+                    </div>
+
+                    {/* Prescription */}
+                    {visit.prescription && visit.prescription.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <PillIcon className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+
+                          <p className="text-xs font-semibold text-foreground">
+                            Prescription
+                          </p>
+                        </div>
+                        <div className="space-y-1.5">
+                          {visit.prescription.map((med, idx) => (
+                            <div
+                              key={idx}
+                              className="text-sm text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-md"
+                            >
+                              {med}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Clinical Notes */}
+                    {visit.clinicalNotes && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileTextIcon className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+
+                          <p className="text-xs font-semibold text-foreground">
+                            Clinical Notes
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed bg-muted/30 p-3 rounded-md">
+                          {visit.clinicalNotes}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 pt-2">
+                      <Link
+                        to={`/patient-overview/${patientId}`}
+                        className="flex-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2"
+                        >
+                          <ExternalLinkIcon className="w-3.5 h-3.5" />
+                          View in Patient Overview
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Show More Button */}
+      {visits.length > 3 && (
+        <div className="flex justify-center pt-2">
+          <Link to={`/patient-overview/${patientId}`}>
+            <Button variant="outline" className="gap-2">
+              View All {visits.length} Visits
+              <ExternalLinkIcon className="w-4 h-4" />
+            </Button>
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
