@@ -1,6 +1,6 @@
 # MediEaseClinic - Healthcare Management System
 
-A comprehensive healthcare management system built with React Native (Frontend) and Express.js with MongoDB (Backend).
+A comprehensive healthcare management system built with **React/TypeScript (Frontend)** and **FastAPI/Python (Backend)** with MongoDB, featuring AWS transcription and AI-powered clinical notes.
 
 ## 🏥 Project Overview
 
@@ -24,26 +24,35 @@ MediEaseClinic is a modern healthcare management system designed to streamline c
 
 ## 🛠 Tech Stack
 
-### Frontend (React Native)
-- **React Native** - Cross-platform mobile development
+### Frontend (React/TypeScript)
+- **React** - Modern web framework
 - **TypeScript** - Type-safe development
-- **React Navigation** - Navigation management
+- **React Router** - Client-side routing
+- **Tailwind CSS** - Utility-first styling
+- **Lucide React** - Icon library
+- **React Hook Form** - Form management
 - **Context API** - State management
-- **AsyncStorage** - Local data persistence
-- **LinearGradient** - UI enhancements
-- **React Native Calendar** - Calendar integration
 
-### Backend (Express.js + MongoDB)
-- **Node.js** - Runtime environment
-- **Express.js** - Web framework
-- **MongoDB** - Database
-- **Mongoose** - ODM
+### Backend (FastAPI/Python)
+- **FastAPI** - Modern Python web framework
+- **Python 3.8+** - Runtime environment
+- **Motor** - Async MongoDB driver
+- **Pydantic** - Data validation
 - **JWT** - Authentication
-- **bcryptjs** - Password hashing
-- **express-validator** - Input validation
-- **helmet** - Security headers
-- **cors** - Cross-origin resource sharing
-- **multer** - File upload handling
+- **bcrypt** - Password hashing
+- **AWS SDK (boto3)** - Cloud services
+- **OpenAI API** - AI services
+
+### Cloud Services & AI
+- **AWS S3** - Secure file storage
+- **AWS Transcribe** - Audio transcription
+- **OpenAI GPT-4** - Clinical note extraction
+- **MongoDB** - Document database
+
+### Audio Processing
+- **pydub** - Audio manipulation
+- **ffmpeg-python** - Audio format conversion
+- **numpy** - Signal processing
 
 ## 📁 Project Structure
 
@@ -74,14 +83,47 @@ MediEaseClinic/
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Node.js (v14 or higher)
-- MongoDB (local or cloud)
-- React Native development environment
-- Android Studio (for Android development)
-- Xcode (for iOS development)
+### ⚠️ Security Warning
+**NEVER commit `.env` files to GitHub!** They contain sensitive credentials including:
+- AWS access keys
+- OpenAI API keys
+- Database passwords
+- JWT secrets
 
-### Backend Setup
+Use the provided template (`fastapi/.env.template`) and fill in your own credentials.
+
+### Prerequisites
+- **Node.js** (v18 or higher) - https://nodejs.org/
+- **Python** (v3.8 or higher) - https://python.org/
+- **MongoDB** (local or Atlas) - https://mongodb.com/
+- **FFmpeg** (for audio processing) - https://ffmpeg.org/
+- **AWS Account** (for transcription) - https://aws.amazon.com/
+- **OpenAI Account** (for AI notes) - https://platform.openai.com/
+
+### Automated Setup (Recommended)
+
+#### Linux/macOS
+```bash
+git clone <repository-url>
+cd MediEaseClinic
+./run.sh
+```
+
+#### Windows (PowerShell - Recommended)
+```powershell
+# Allow script execution
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+.\run-windows.ps1
+```
+
+#### Windows (Batch File)
+```batch
+run-windows.bat
+```
+
+For detailed Windows setup instructions, see [`README-WINDOWS.md`](README-WINDOWS.md).
+
+### Manual Setup
 
 1. **Navigate to Backend directory**
    ```bash
@@ -245,18 +287,67 @@ MediEaseClinic/
 - Transcription data
 - Processing status
 
+## 🚀 Usage & Testing
+
+### Accessing the Application
+
+After setup, access these URLs:
+- **Web Application**: http://localhost:5173
+- **API Documentation**: http://localhost:8000/docs
+- **API Alternative**: http://localhost:8000/redoc
+
+### AWS Transcription Testing
+
+1. **Setup Credentials**: Configure AWS and OpenAI keys in `fastapi/.env`
+2. **Create Users**: Register admin → Create doctor account
+3. **Start Consultation**:
+   - Login as doctor
+   - Go to consultation session
+   - Click "Start Recording" → speak for 10-15 seconds
+   - Click "Stop Recording" → "Upload & Generate Notes"
+4. **Monitor Progress**: Watch status change to "Transcribing & Analyzing..."
+5. **View Results**: Check AI-generated clinical notes in the sidebar
+
+### User Role Testing
+
+#### Admin Testing
+- Create/manage doctors and receptionists
+- View system analytics and metrics
+- Test user search and filtering
+
+#### Doctor Testing
+- Manage patient records and appointments
+- Test consultation recording workflow
+- Review AI-generated clinical notes
+- Verify patient data integration
+
+#### Receptionist Testing
+- Patient check-in/check-out operations
+- Appointment scheduling and management
+- Patient registration and search
+
 ## 🧪 Testing
 
 ### Backend Testing
 ```bash
-cd Backend
-npm test
+cd fastapi
+source venv/bin/activate  # or venv\Scripts\activate on Windows
+pytest
 ```
 
 ### Frontend Testing
 ```bash
 cd Frontend
 npm test
+```
+
+### Integration Testing
+```bash
+# Test full transcription workflow
+# 1. Start services with ./run.sh
+# 2. Complete user registration flow
+# 3. Test consultation recording end-to-end
+# 4. Verify AWS S3 storage and transcription
 ```
 
 ## 📈 Performance
