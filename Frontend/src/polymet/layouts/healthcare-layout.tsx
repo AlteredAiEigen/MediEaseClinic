@@ -70,11 +70,17 @@ export function HealthcareLayout({
   const effectiveRole = user?.role ?? userRole;
   const effectiveName = useMemo(() => {
     if (user) {
-      const fullName = `${user.firstName} ${user.lastName}`.trim();
-      return fullName.length > 0 ? fullName : userName;
+      return user.firstName || userName;
     }
     return userName;
   }, [user, userName]);
+
+  const clinicDisplay = useMemo(() => {
+    if (user?.clinicId) {
+      return `(${user.clinicId})`;
+    }
+    return '';
+  }, [user]);
 
   const effectiveAvatar = user?.profileImage ?? userAvatar;
 
@@ -222,10 +228,12 @@ export function HealthcareLayout({
                     <AvatarImage src={effectiveAvatar} alt={effectiveName} />
 
                     <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white text-lg font-semibold">
-                      {effectiveName
-                        ?.split(" ")
+                      {(effectiveName || 'U')
+                        .split(" ")
                         .map((n) => n[0])
-                        .join("")}
+                        .join("")
+                        .toUpperCase()
+                        .slice(0, 2)}
                     </AvatarFallback>
                   </Avatar>
                   <button className="absolute -bottom-1 -right-1 w-7 h-7 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform">
@@ -236,6 +244,11 @@ export function HealthcareLayout({
                   <h3 className="font-bold text-foreground truncate">
                     {effectiveName}
                   </h3>
+                  {clinicDisplay && (
+                    <p className="text-xs text-muted-foreground">
+                      {user?.clinicId}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground capitalize">
                     {effectiveRole}
                   </p>
@@ -321,10 +334,12 @@ export function HealthcareLayout({
                     <AvatarImage src={effectiveAvatar} alt={effectiveName} />
 
                     <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white text-lg font-semibold">
-                      {effectiveName
-                        ?.split(" ")
+                      {(effectiveName || 'U')
+                        .split(" ")
                         .map((n) => n[0])
-                        .join("")}
+                        .join("")
+                        .toUpperCase()
+                        .slice(0, 2)}
                     </AvatarFallback>
                   </Avatar>
                   <button className="absolute -bottom-1 -right-1 w-7 h-7 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center shadow-md">
@@ -335,6 +350,11 @@ export function HealthcareLayout({
                   <h3 className="font-bold text-foreground truncate">
                     {effectiveName}
                   </h3>
+                  {clinicDisplay && (
+                    <p className="text-xs text-muted-foreground">
+                      {user?.clinicId}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground capitalize">
                     {effectiveRole}
                   </p>

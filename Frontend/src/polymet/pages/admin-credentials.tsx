@@ -60,7 +60,7 @@ interface User {
   _id: string;
   firstName: string;
   lastName: string;
-  fullName: string;
+  fullName?: string; // Made optional as API might not always provide it
   email: string;
   role: "doctor" | "receptionist" | "admin";
   isActive: boolean;
@@ -73,6 +73,7 @@ interface User {
 
 export function AdminCredentials() {
   const { user: currentUser } = useAuth();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRole, setFilterRole] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -106,10 +107,11 @@ export function AdminCredentials() {
         setIsLoading(true);
         setError(null);
 
-        // Get all users (admin can see all users)
-        const response = await get<{ users: User[] }>("/api/admin/users");
-        if (response.success && response.data?.users) {
-          setUsers(response.data.users);
+        // Get all users (admin can see all users in their clinic)
+        const response = await get<User[]>("/api/admin/users");
+
+        if (response.success && Array.isArray(response.data)) {
+          setUsers(response.data);
         } else {
           setUsers([]);
         }
@@ -122,11 +124,16 @@ export function AdminCredentials() {
     };
 
     fetchUsers();
-  }, []);
+  }, [currentUser]);
 
-  // Filter users
+  // Filter users - exclude admin users from the list
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
+      // Don't show admin users to other admins
+      if (user.role === "admin") {
+        return false;
+      }
+
       const matchesSearch =
         searchQuery.trim() === "" ||
         user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -202,11 +209,23 @@ export function AdminCredentials() {
     setSelectedUser(null);
   };
 
-  const handleDeleteUser = () => {
+  const handleDeleteUser = async () => {
     if (!selectedUser) return;
-    setUsers(users.filter((u) => u.id !== selectedUser.id));
-    setDeleteDialogOpen(false);
-    setSelectedUser(null);
+
+    try {
+      const response = await del(`/api/admin/users/${selectedUser._id}`);
+
+      if (response.success) {
+        setUsers(users.filter((u) => u._id !== selectedUser._id));
+        setDeleteDialogOpen(false);
+        setSelectedUser(null);
+      } else {
+        setError(response.message ?? "Failed to delete user");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to delete user";
+      setError(message);
+    }
   };
 
   const handleSendPasswordReset = () => {
@@ -347,16 +366,6 @@ export function AdminCredentials() {
               <ShieldIcon className="w-5 h-5 text-[#00C4B3]" />
               User Credentials Management
             </CardTitle>
-            {currentUser?.clinicName && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Clinic: <span className="font-medium text-foreground">{currentUser.clinicName}</span>
-                {currentUser?.clinicId && (
-                  <span className="text-xs text-muted-foreground ml-2">
-                    (ID: {currentUser.clinicId})
-                  </span>
-                )}
-              </p>
-            )}
           </div>
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
@@ -611,15 +620,16 @@ export function AdminCredentials() {
                         <div className="flex items-center gap-3">
                           <Avatar className="w-10 h-10 border-2 border-border">
                             <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
-                              {user.fullName
+                              {(user.fullName || `${user.firstName} ${user.lastName}`)
                                 .split(" ")
                                 .map((n) => n[0])
-                                .join("")}
+                                .join("")
+                                .toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div>
                             <p className="font-medium text-foreground">
-                              {user.fullName}
+                              {user.fullName || `${user.firstName} ${user.lastName}`}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               ID: {user._id.slice(-8)}
@@ -791,20 +801,22 @@ export function AdminCredentials() {
               <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
                 <Avatar className="w-12 h-12 border-2 border-border">
                   <AvatarImage
-                    src={selectedUser.avatar}
-                    alt={selectedUser.name}
+                    src={selectedUser.profileImage}
+                    alt={selectedUser.fullName || `${selectedUser.firstName} ${selectedUser.lastName}`}
                   />
 
                   <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
-                    {selectedUser.name
+                    {(selectedUser.fullName || `${selectedUser.firstName} ${selectedUser.lastName}`)
                       .split(" ")
                       .map((n) => n[0])
-                      .join("")}
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2)}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-medium text-foreground">
-                    {selectedUser.name}
+                    {selectedUser.fullName || `${selectedUser.firstName} ${selectedUser.lastName}`}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {selectedUser.email}
