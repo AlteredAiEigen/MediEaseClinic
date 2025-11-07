@@ -23,6 +23,7 @@ import {
   ChevronLeftIcon,
   UploadIcon,
   FileTextIcon,
+  Loader2Icon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import {
@@ -36,69 +37,197 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-// import { patients, appointments } from "@/polymet/data/healthcare-data";
+import { get, post, put } from "@/lib/api-client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-type PatientStatus =
-  | "scheduled"
-  | "checked-in"
-  | "waiting"
-  | "in-consultation"
-  | "awaiting-checkout"
-  | "completed";
+interface QueueEntry {
+  _id: string;
+  queue_id: string;
+  patient: {
+    _id: string;
+    fullName: string;
+    patientId: string;
+    age?: string;
+    gender?: string;
+    phone?: string;
+  };
+  doctor: {
+    _id: string;
+    fullName?: string;
+    firstName?: string;
+    lastName?: string;
+  };
+  checked_in_at: string;
+  status: string;
+  queue_number: number;
+  priority: string;
+  reason: string;
+  notes: string;
+  wait_time: number;
+}
+
+interface Patient {
+  _id: string;
+  patientId: string;
+  fullName: string;
+  age?: string;
+  gender?: string;
+  phone?: string;
+}
+
+interface Doctor {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+}
+
+interface QueueStats {
+  total_patients: number;
+  waiting: number;
+  in_consultation: number;
+  completed: number;
+  checked_out: number;
+  average_wait_time: number;
+}
 
 export function ReceptionistDashboardNew() {
   const [queueTab, setQueueTab] = useState("all");
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [appointmentsList, setAppointmentsList] = useState(
-    appointments.filter((apt) => apt.date === "2024-01-20")
-  );
-  const [patientStatuses, setPatientStatuses] = useState<
-    Record<string, PatientStatus>
-  >(
-    patients.reduce(
-      (acc, p) => ({ ...acc, [p.id]: p.status as PatientStatus }),
-      {}
-    )
-  );
-  const [prescriptionDialog, setPrescriptionDialog] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
-  const [prescriptionFile, setPrescriptionFile] = useState<string>("");
-  const [prescriptionNotes, setPrescriptionNotes] = useState<string>("");
+  const [queueList, setQueueList] = useState<QueueEntry[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [checkInDialog, setCheckInDialog] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
+  const [checkInReason, setCheckInReason] = useState("");
+  const [checkInPriority, setCheckInPriority] = useState("medium");
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const queueList = patients.filter((p) => {
-    const status = patientStatuses[p.id];
-    return (
-      status === "checked-in" ||
-      status === "waiting" ||
-      status === "in-consultation" ||
-      status === "awaiting-checkout"
-    );
-  });
+  useEffect(() => {
+    fetchQueueData();
+    fetchPatients();
+    fetchDoctors();
+    fetchQueueStats();
+    
+    // Refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchQueueData();
+      fetchQueueStats();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
-  const checkedInPatients = queueList.filter(
-    (p) => patientStatuses[p.id] === "checked-in"
-  ).length;
-  const waitingPatients = queueList.filter(
-    (p) => patientStatuses[p.id] === "waiting"
-  ).length;
-  const inConsultation = queueList.filter(
-    (p) => patientStatuses[p.id] === "in-consultation"
-  ).length;
-  const awaitingCheckout = queueList.filter(
-    (p) => patientStatuses[p.id] === "awaiting-checkout"
-  ).length;
-  const completedToday = Object.values(patientStatuses).filter(
-    (s) => s === "completed"
-  ).length;
-
-  const changePatientStatus = (patientId: string, newStatus: PatientStatus) => {
-    setPatientStatuses((prev) => ({ ...prev, [patientId]: newStatus }));
+  const fetchQueueData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await get<{ queue: QueueEntry[] }>("/api/queue");
+      if (response.success && response.data?.queue) {
+        setQueueList(response.data.queue);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load queue");
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const fetchPatients = async () => {
+    try {
+      const response = await get<{ data: Patient[] }>("/api/patients?limit=100");
+      if (response.success && response.data?.data) {
+        setPatients(response.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to load patients:", err);
+    }
+  };
+
+  const fetchDoctors = async () => {
+    try {
+      const response = await get<{ doctors: Doctor[] }>("/api/doctors?limit=100");
+      if (response.success && response.data?.doctors) {
+        setDoctors(response.data.doctors);
+      }
+    } catch (err) {
+      console.error("Failed to load doctors:", err);
+    }
+  };
+
+  const fetchQueueStats = async () => {
+    try {
+      const response = await get<QueueStats>("/api/queue/stats");
+      if (response.success && response.data) {
+        setQueueStats(response.data);
+      }
+    } catch (err) {
+      console.error("Failed to load queue stats:", err);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!selectedPatientId || !selectedDoctorId) return;
+
+    try {
+      setIsCheckingIn(true);
+      const response = await post("/api/queue/check-in", {
+        patientId: selectedPatientId,
+        doctorId: selectedDoctorId,
+        reason: checkInReason || "General Consultation",
+        priority: checkInPriority,
+        notes: "",
+      });
+
+      if (response.success) {
+        setCheckInDialog(false);
+        setSelectedPatientId("");
+        setSelectedDoctorId("");
+        setCheckInReason("");
+        setCheckInPriority("medium");
+        fetchQueueData();
+        fetchQueueStats();
+      }
+    } catch (err) {
+      console.error("Failed to check in patient:", err);
+    } finally {
+      setIsCheckingIn(false);
+    }
+  };
+
+  const handleCheckOut = async (queueEntryId: string) => {
+    try {
+      const response = await post(`/api/queue/${queueEntryId}/check-out`, {});
+      if (response.success) {
+        fetchQueueData();
+        fetchQueueStats();
+      }
+    } catch (err) {
+      console.error("Failed to check out patient:", err);
+    }
+  };
+
+  const checkedInPatients = queueList.filter((q) => q.status === "waiting").length;
+  const waitingPatients = queueList.filter((q) => q.status === "waiting").length;
+  const inConsultation = queueList.filter((q) => q.status === "in-consultation").length;
+  const awaitingCheckout = queueList.filter((q) => q.status === "completed").length;
+  const completedToday = queueStats?.completed || 0;
 
   const moveStatusForward = (patientId: string) => {
     const currentStatus = patientStatuses[patientId];

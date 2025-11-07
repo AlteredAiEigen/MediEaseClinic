@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { AddPatientDialog } from "@/polymet/components/add-patient-dialog";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,23 @@ import {
 } from "lucide-react";
 import { get } from "@/lib/api-client";
 
+// Custom hook for debounced search
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 interface Patient {
   _id: string;
   patientId: string;
@@ -44,6 +61,7 @@ type PatientStatus = "in-clinic" | "remote";
 
 export function DoctorPatients() {
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [statusFilter, setStatusFilter] = useState("all");
   const [addPatientOpen, setAddPatientOpen] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -74,7 +92,7 @@ export function DoctorPatients() {
   }, []);
 
   const filteredPatients = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = debouncedSearchQuery.trim().toLowerCase();
     return patients.filter((patient) => {
       const matchesSearch =
         query.length === 0 ||
@@ -87,7 +105,7 @@ export function DoctorPatients() {
         (statusFilter === "remote" && !patient.presentInClinic);
       return matchesSearch && matchesStatus;
     });
-  }, [patients, searchQuery, statusFilter]);
+  }, [patients, debouncedSearchQuery, statusFilter]);
 
   const getStatusColor = (patient: Patient): string => {
     if (patient.presentInClinic) {

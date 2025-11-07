@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,23 +30,120 @@ import {
   SearchIcon,
   FilterIcon,
   TrendingUpIcon,
+  Loader2Icon,
+  AlertCircleIcon,
 } from "lucide-react";
-// import { appointments, patients } from "@/polymet/data/healthcare-data";
+import { get, post, put } from "@/lib/api-client";
+
+// Custom hook for debounced search
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+interface Appointment {
+  _id: string;
+  appointmentId: string;
+  patientId: string;
+  doctorId: string;
+  date: string;
+  time: string;
+  type: string;
+  status: string;
+  reason?: string;
+  notes?: string;
+  patientName?: string;
+  doctorName?: string;
+}
+
+interface Patient {
+  _id: string;
+  patientId: string;
+  fullName: string;
+}
+
+interface Doctor {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+}
 
 export function ReceptionistAppointments() {
-  const [selectedDate, setSelectedDate] = useState("2024-01-20");
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [statusFilter, setStatusFilter] = useState("all");
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [selectedPatient, setSelectedPatient] = useState("");
+  const [selectedDoctor, setSelectedDoctor] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
-  const [appointmentType, setAppointmentType] = useState("");
+  const [appointmentType, setAppointmentType] = useState("consultation");
   const [appointmentReason, setAppointmentReason] = useState("");
 
-  const todayAppointments = appointments.filter(
-    (apt) => apt.date === selectedDate
-  );
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchAppointments();
+    fetchPatients();
+    fetchDoctors();
+  }, [selectedDate]);
+
+  const fetchAppointments = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await get<{ data: Appointment[] }>(`/api/appointments?date=${selectedDate}`);
+      if (response.success && response.data?.data) {
+        setAppointments(response.data.data);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load appointments");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchPatients = async () => {
+    try {
+      const response = await get<{ data: Patient[] }>("/api/patients?limit=100");
+      if (response.success && response.data?.data) {
+        setPatients(response.data.data);
+      }
+    } catch (err) {
+      console.error("Failed to load patients:", err);
+    }
+  };
+
+  const fetchDoctors = async () => {
+    try {
+      const response = await get<{ doctors: Doctor[] }>("/api/doctors?limit=100");
+      if (response.success && response.data?.doctors) {
+        setDoctors(response.data.doctors);
+      }
+    } catch (err) {
+      console.error("Failed to load doctors:", err);
+    }
+  };
+
+  const todayAppointments = appointments;
 
   const filteredAppointments =
     statusFilter === "all"
@@ -54,7 +151,7 @@ export function ReceptionistAppointments() {
       : todayAppointments.filter((apt) => apt.status === statusFilter);
 
   const filteredPatients = patients.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    p.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
   );
 
   const getStatusColor = (status: string) => {
@@ -87,21 +184,54 @@ export function ReceptionistAppointments() {
     }
   };
 
-  const handleCreateAppointment = () => {
-    // Handle appointment creation logic here
-    console.log("Creating appointment:", {
-      patient: selectedPatient,
-      time: appointmentTime,
-      type: appointmentType,
-      reason: appointmentReason,
-    });
-    setIsNewAppointmentOpen(false);
-    // Reset form
-    setSelectedPatient("");
-    setAppointmentTime("");
-    setAppointmentType("");
-    setAppointmentReason("");
-    setSearchQuery("");
+  const handleCreateAppointment = async () => {
+    if (!selectedPatient || !selectedDoctor || !appointmentTime) {
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      const response = await post("/api/appointments", {
+        patientId: selectedPatient,
+        doctorId: selectedDoctor,
+        date: selectedDate,
+        time: appointmentTime,
+        type: appointmentType,
+        reason: appointmentReason,
+        status: "scheduled",
+      });
+
+      if (response.success) {
+        setIsNewAppointmentOpen(false);
+        // Reset form
+        setSelectedPatient("");
+        setSelectedDoctor("");
+        setAppointmentTime("");
+        setAppointmentType("consultation");
+        setAppointmentReason("");
+        setSearchQuery("");
+        // Refresh appointments
+        fetchAppointments();
+      }
+    } catch (err) {
+      console.error("Failed to create appointment:", err);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleUpdateAppointmentStatus = async (appointmentId: string, newStatus: string) => {
+    try {
+      const response = await put(`/api/appointments/${appointmentId}/status`, {
+        status: newStatus,
+      });
+
+      if (response.success) {
+        fetchAppointments();
+      }
+    } catch (err) {
+      console.error("Failed to update appointment status:", err);
+    }
   };
 
   return (
@@ -260,27 +390,29 @@ export function ReceptionistAppointments() {
                           <div className="max-h-48 overflow-y-auto border border-border rounded-md">
                             {filteredPatients.map((patient) => (
                               <div
-                                key={patient.id}
+                                key={patient._id}
                                 className="flex items-center gap-3 p-3 hover:bg-accent cursor-pointer border-b border-border last:border-0"
                                 onClick={() => {
-                                  setSelectedPatient(patient.name);
-                                  setSearchQuery("");
+                                  setSelectedPatient(patient._id);
+                                  setSearchQuery(patient.fullName);
                                 }}
                               >
                                 <Avatar className="h-10 w-10">
-                                  <AvatarImage src={patient.avatar} />
+                                  <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patient.fullName)}&background=random`} />
 
                                   <AvatarFallback>
-                                    {patient.name
+                                    {patient.fullName
                                       .split(" ")
                                       .map((n) => n[0])
-                                      .join("")}
+                                      .join("")
+                                      .toUpperCase()
+                                      .slice(0, 2)}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div>
-                                  <p className="font-medium">{patient.name}</p>
+                                  <p className="font-medium">{patient.fullName}</p>
                                   <p className="text-xs text-muted-foreground">
-                                    {patient.id}
+                                    {patient.patientId}
                                   </p>
                                 </div>
                               </div>
@@ -296,10 +428,27 @@ export function ReceptionistAppointments() {
                             Selected Patient:
                           </p>
                           <p className="text-lg font-semibold text-teal-700 dark:text-teal-400">
-                            {selectedPatient}
+                            {searchQuery || "Patient selected"}
                           </p>
                         </div>
                       )}
+
+                      {/* Doctor Selection */}
+                      <div className="space-y-2">
+                        <Label htmlFor="doctor-select">Select Doctor</Label>
+                        <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a doctor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {doctors.map((doctor) => (
+                              <SelectItem key={doctor._id} value={doctor._id}>
+                                {doctor.fullName || `${doctor.firstName} ${doctor.lastName}`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
                       {/* Appointment Details */}
                       <div className="space-y-2">
@@ -358,11 +507,20 @@ export function ReceptionistAppointments() {
                           onClick={handleCreateAppointment}
                           disabled={
                             !selectedPatient ||
+                            !selectedDoctor ||
                             !appointmentTime ||
-                            !appointmentType
+                            !appointmentType ||
+                            isCreating
                           }
                         >
-                          Schedule Appointment
+                          {isCreating ? (
+                            <>
+                              <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                              Scheduling...
+                            </>
+                          ) : (
+                            "Schedule Appointment"
+                          )}
                         </Button>
                       </div>
                     </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,23 @@ import {
 } from "lucide-react";
 import { get } from "@/lib/api-client";
 
+// Custom hook for debounced search
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 interface Patient {
   _id: string;
   patientId: string;
@@ -41,6 +58,7 @@ interface Patient {
 
 export function ReceptionistPatients() {
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [statusFilter, setStatusFilter] = useState("all");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +88,7 @@ export function ReceptionistPatients() {
   }, []);
 
   const filteredPatients = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = debouncedSearchQuery.trim().toLowerCase();
     return patients.filter((patient) => {
       const matchesSearch =
         query.length === 0 ||
@@ -83,7 +101,7 @@ export function ReceptionistPatients() {
         (statusFilter === "remote" && !patient.presentInClinic);
       return matchesSearch && matchesStatus;
     });
-  }, [patients, searchQuery, statusFilter]);
+  }, [patients, debouncedSearchQuery, statusFilter]);
 
   const getStatusColor = (patient: Patient): string => {
     if (patient.presentInClinic) {

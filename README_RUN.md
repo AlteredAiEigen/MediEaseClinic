@@ -14,7 +14,10 @@ The `run.sh` script provides a complete automated setup and launch solution for 
 3. **Frontend Setup**:
    - Installs all Node.js dependencies
    - Builds the React application for production
-4. **Service Launch**:
+4. **Port Management**:
+   - **Automatically kills any processes using ports 8000 and 5173**
+   - Ensures clean startup even if services are already running
+5. **Service Launch**:
    - Starts FastAPI backend on port 8000
    - Starts React frontend on port 5173
    - Waits for services to be ready
@@ -103,16 +106,17 @@ The script will keep running and show service status. To stop:
 
 3. **First Run**: The initial setup may take several minutes depending on your internet connection and system performance.
 
-4. **Ports**: Ensure ports 5173 (frontend) and 8000 (backend) are available.
+4. **Ports**: The script automatically kills any processes using ports 5173 (frontend) and 8000 (backend) before starting services. This ensures a clean startup every time.
 
 5. **Production**: This script is designed for development. For production deployment, use proper containerization (Docker) and orchestration.
 
 ### Troubleshooting:
 
 - **Permission denied**: Run `chmod +x run.sh` to make the script executable
-- **Port conflicts**: Kill processes using the ports or change port numbers in the script
+- **Port conflicts**: The script now automatically handles port conflicts by killing existing processes. If you see warnings about killing processes, this is normal behavior.
 - **MongoDB connection**: Ensure MongoDB is running and credentials are correct in `.env`
 - **Dependencies fail**: Check internet connection and try again
+- **Services won't start**: Check if the ports were successfully freed by running `lsof -ti:8000` and `lsof -ti:5173`
 
 ### Manual Alternative:
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,23 @@ import {
   CalendarIcon,
 } from "lucide-react";
 import { get, post } from "@/lib/api-client";
+
+// Custom hook for debounced search
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
 
 type ApiPatient = {
   _id: string;
@@ -96,6 +113,7 @@ const emptyNewPatientState = {
 
 export function AdminPatients() {
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
   const [patientsList, setPatientsList] = useState<UiPatient[]>([]);
@@ -141,7 +159,7 @@ export function AdminPatients() {
   }, []);
 
   const filteredPatients = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = debouncedSearchQuery.trim().toLowerCase();
     return patientsList.filter((patient) => {
       const matchesSearch =
         query.length === 0 ||
@@ -152,7 +170,7 @@ export function AdminPatients() {
         filterStatus === "all" || patient.status === filterStatus;
       return matchesSearch && matchesStatus;
     });
-  }, [patientsList, searchQuery, filterStatus]);
+  }, [patientsList, debouncedSearchQuery, filterStatus]);
 
   const handleAddPatient = async () => {
     setSubmissionError(null);

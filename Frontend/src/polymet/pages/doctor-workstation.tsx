@@ -19,51 +19,106 @@ import {
   GripVerticalIcon,
   ArrowUpIcon,
   ArrowDownIcon,
+  Loader2Icon,
 } from "lucide-react";
-// import { patients } from "@/polymet/data/healthcare-data";
+import { get, put } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
+
+interface QueuePatient {
+  id: string;
+  name: string;
+  age: string;
+  gender: string;
+  phone: string;
+  email: string;
+  appointmentTime: string;
+  reason: string;
+  priority: "low" | "normal" | "high" | "emergency";
+  waitTime: string;
+  avatar: string;
+  patientId: string;
+  status: string;
+}
+
+interface QueueEntry {
+  _id: string;
+  queue_id: string;
+  patient: {
+    _id: string;
+    fullName: string;
+    patientId: string;
+    age?: string;
+    gender?: string;
+    phone?: string;
+    email?: string;
+  };
+  doctor: {
+    _id: string;
+    fullName?: string;
+    firstName?: string;
+    lastName?: string;
+  };
+  checked_in_at: string;
+  status: string;
+  queue_number: number;
+  priority: string;
+  reason: string;
+  notes: string;
+  wait_time: number;
+}
 
 export function DoctorWorkstation() {
   const navigate = useNavigate();
-
-  const [queuePatients, setQueuePatients] = useState([
-    {
-      ...patients[0],
-      appointmentTime: "09:00 AM",
-      reason: "Regular Checkup",
-      priority: "normal" as const,
-      waitTime: "15 min",
-    },
-    {
-      ...patients[1],
-      appointmentTime: "09:30 AM",
-      reason: "Hypertension Follow-up",
-      priority: "high" as const,
-      waitTime: "5 min",
-    },
-    {
-      ...patients[2],
-      appointmentTime: "10:00 AM",
-      reason: "Flu Symptoms",
-      priority: "normal" as const,
-      waitTime: "Just now",
-    },
-    {
-      ...patients[3],
-      appointmentTime: "10:30 AM",
-      reason: "Diabetes Management",
-      priority: "low" as const,
-      waitTime: "Scheduled",
-    },
-    {
-      ...patients[4],
-      appointmentTime: "11:00 AM",
-      reason: "Routine Checkup",
-      priority: "normal" as const,
-      waitTime: "Scheduled",
-    },
-  ]);
+  const { user } = useAuth();
+  const [queuePatients, setQueuePatients] = useState<QueuePatient[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Fetch queue data
+  useEffect(() => {
+    const fetchQueue = async () => {
+      if (!user?._id) return;
+
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
+        if (response.success && response.data?.queue) {
+          const mappedQueue: QueuePatient[] = response.data.queue
+            .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
+            .map((entry) => ({
+              id: entry._id,
+              name: entry.patient.fullName,
+              age: entry.patient.age || "N/A",
+              gender: entry.patient.gender || "N/A",
+              phone: entry.patient.phone || "N/A",
+              email: entry.patient.email || "N/A",
+              appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              reason: entry.reason || "Consultation",
+              priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
+              waitTime: `${entry.wait_time} min`,
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+              patientId: entry.patient._id,
+              status: entry.status,
+            }));
+          setQueuePatients(mappedQueue);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load queue";
+        setError(message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchQueue();
+  }, [user]);
 
   // Auto-advance to next patient when returning from consultation
   useEffect(() => {
@@ -89,14 +144,28 @@ export function DoctorWorkstation() {
     }
   };
 
-  const handleComplete = () => {
-    // Remove current patient and automatically move to next
-    setQueuePatients((prev) => {
-      const newQueue = prev.filter((_, index) => index !== currentIndex);
-      // If there are more patients, current index stays the same (next patient moves up)
-      // If this was the last patient, index will be reduced automatically
-      return newQueue;
-    });
+  const handleComplete = async () => {
+    const currentPatient = queuePatients[currentIndex];
+    if (!currentPatient) return;
+
+    try {
+      // Mark consultation as completed
+      const response = await put(`/api/queue/${currentPatient.id}/status`, {
+        status: "completed",
+      });
+
+      if (response.success) {
+        // Remove current patient and automatically move to next
+        setQueuePatients((prev) => {
+          const newQueue = prev.filter((_, index) => index !== currentIndex);
+          // If there are more patients, current index stays the same (next patient moves up)
+          // If this was the last patient, index will be reduced automatically
+          return newQueue;
+        });
+      }
+    } catch (err) {
+      console.error("Failed to complete consultation:", err);
+    }
 
     // Don't change currentIndex - the next patient will automatically become current
     // Only adjust if we're beyond the new array length
@@ -138,6 +207,42 @@ export function DoctorWorkstation() {
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Queue</h2>
+          <p className="text-muted-foreground">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Error Loading Queue</h2>
+          <p className="text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (queuePatients.length === 0) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">No Patients in Queue</h2>
+          <p className="text-muted-foreground">All consultations are complete!</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

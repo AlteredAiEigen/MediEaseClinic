@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { LabReportsCard } from "@/polymet/components/lab-reports-card";
 import { DashboardStatsSection } from "@/polymet/components/dashboard-stats-section";
@@ -26,7 +26,11 @@ import {
   ChevronDownIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
+  Loader2Icon,
+  AlertCircleIcon,
 } from "lucide-react";
+import { get, put } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 
 interface QueuePatient {
   id: string;
@@ -35,6 +39,9 @@ interface QueuePatient {
   time: string;
   appointmentType: string;
   status: "waiting" | "in-progress";
+  queueNumber?: number;
+  priority?: string;
+  reason?: string;
 }
 
 interface UpcomingAppointment {
@@ -43,13 +50,55 @@ interface UpcomingAppointment {
   avatar: string;
   time: string;
   appointmentType: string;
+  patientId?: string;
+  doctorId?: string;
+}
+
+interface QueueEntry {
+  _id: string;
+  queue_id: string;
+  patient: {
+    _id: string;
+    fullName: string;
+    patientId: string;
+  };
+  doctor: {
+    _id: string;
+    fullName?: string;
+    firstName?: string;
+    lastName?: string;
+  };
+  checked_in_at: string;
+  status: string;
+  queue_number: number;
+  priority: string;
+  reason: string;
+  notes: string;
+  wait_time: number;
+}
+
+interface Appointment {
+  _id: string;
+  appointmentId: string;
+  patientId: string;
+  doctorId: string;
+  date: string;
+  time: string;
+  type: string;
+  status: string;
+  reason?: string;
+  patientName?: string;
+  doctorName?: string;
 }
 
 export function DoctorDashboard() {
-  const totalPatients = 156;
-  const todayAppointments = 8;
-  const inQueue = 3;
-  const completedToday = 2;
+  const { user } = useAuth();
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [todayAppointments, setTodayAppointments] = useState(0);
+  const [inQueue, setInQueue] = useState(0);
+  const [completedToday, setCompletedToday] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Dialog states
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
@@ -61,45 +110,92 @@ export function DoctorDashboard() {
   const [selectedLabReport, setSelectedLabReport] = useState<any>(null);
 
   // Queue patients state - can be moved to upcoming
-  const [queuePatients, setQueuePatients] = useState<QueuePatient[]>([
-    {
-      id: "Q-001",
-      name: "Rajesh Kumar Sharma",
-      avatar: "https://github.com/yusufhilmi.png",
-      time: "09:00 AM",
-      appointmentType: "Follow-up",
-      status: "waiting",
-    },
-    {
-      id: "Q-002",
-      name: "Priya Menon",
-      avatar: "https://github.com/kdrnp.png",
-      time: "09:30 AM",
-      appointmentType: "New Patient",
-      status: "waiting",
-    },
-    {
-      id: "Q-003",
-      name: "Mohammed Farhan Khan",
-      avatar: "https://github.com/denizbuyuktas.png",
-      time: "10:00 AM",
-      appointmentType: "Follow-up",
-      status: "in-progress",
-    },
-  ]);
+  const [queuePatients, setQueuePatients] = useState<QueuePatient[]>([]);
 
   // Upcoming appointments state - can receive from queue
   const [upcomingAppointments, setUpcomingAppointments] = useState<
     UpcomingAppointment[]
-  >([
-    {
-      id: "U-001",
-      name: "Arjun Desai",
-      avatar: "https://github.com/shoaibux1.png",
-      time: "10:30 AM",
-      appointmentType: "Routine Checkup",
-    },
-  ]);
+  >([]);
+
+  // Fetch queue and appointments data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user?._id) return;
+
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch doctor's queue
+        const queueResponse = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
+        if (queueResponse.success && queueResponse.data?.queue) {
+          const mappedQueue: QueuePatient[] = queueResponse.data.queue
+            .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
+            .map((entry) => ({
+              id: entry._id,
+              name: entry.patient.fullName,
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+              time: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              appointmentType: entry.reason || "Consultation",
+              status: entry.status === "in-consultation" ? "in-progress" : "waiting",
+              queueNumber: entry.queue_number,
+              priority: entry.priority,
+              reason: entry.reason,
+            }));
+          setQueuePatients(mappedQueue);
+          setInQueue(mappedQueue.length);
+        }
+
+        // Fetch upcoming appointments (scheduled status)
+        const today = new Date().toISOString().split("T")[0];
+        const appointmentsResponse = await get<{ data: Appointment[] }>(
+          `/api/appointments?doctorId=${user._id}&date=${today}&status=scheduled`
+        );
+        if (appointmentsResponse.success && appointmentsResponse.data?.data) {
+          const mappedAppointments: UpcomingAppointment[] = appointmentsResponse.data.data.map(
+            (apt) => ({
+              id: apt._id,
+              name: apt.patientName || "Unknown Patient",
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName || "Unknown")}&background=random`,
+              time: apt.time,
+              appointmentType: apt.type || "Consultation",
+              patientId: apt.patientId,
+              doctorId: apt.doctorId,
+            })
+          );
+          setUpcomingAppointments(mappedAppointments);
+          setTodayAppointments(mappedAppointments.length);
+        }
+
+        // Fetch queue stats for completed count
+        const statsResponse = await get<{
+          total_patients: number;
+          waiting: number;
+          in_consultation: number;
+          completed: number;
+          checked_out: number;
+          average_wait_time: number;
+        }>("/api/queue/stats");
+        if (statsResponse.success && statsResponse.data) {
+          setCompletedToday(statsResponse.data.completed);
+        }
+
+        // Fetch total patients count (this would be from a doctor stats endpoint if available)
+        setTotalPatients(156); // Placeholder - would need a dedicated endpoint
+
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load dashboard data";
+        setError(message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user]);
 
   // Lab reports data
   const [labReports] = useState([
@@ -185,12 +281,19 @@ export function DoctorDashboard() {
     }
   };
 
-  const startConsultation = (patientId: string) => {
-    setQueuePatients((prev) =>
-      prev.map((p) =>
-        p.id === patientId ? { ...p, status: "in-progress" as const } : p
-      )
-    );
+  const startConsultation = async (patientId: string) => {
+    try {
+      const response = await put(`/api/queue/${patientId}/start-consultation`, {});
+      if (response.success) {
+        setQueuePatients((prev) =>
+          prev.map((p) =>
+            p.id === patientId ? { ...p, status: "in-progress" as const } : p
+          )
+        );
+      }
+    } catch (err) {
+      console.error("Failed to start consultation:", err);
+    }
   };
 
   // Move appointment up/down
@@ -275,6 +378,30 @@ export function DoctorDashboard() {
     }
     setDraggedItem(null);
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Dashboard</h2>
+          <p className="text-muted-foreground">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Error Loading Dashboard</h2>
+          <p className="text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

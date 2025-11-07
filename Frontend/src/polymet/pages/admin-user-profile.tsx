@@ -1,5 +1,5 @@
 import { useParams, Link } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,41 +23,124 @@ import {
   CheckCircleIcon,
   SaveIcon,
   HistoryIcon,
+  Loader2Icon,
+  AlertCircleIcon,
 } from "lucide-react";
-// import { doctors, staff } from "@/polymet/data/healthcare-data";
+import { get, put } from "@/lib/api-client";
+
+interface User {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+  email: string;
+  phone?: string;
+  role: string;
+  isActive: boolean;
+  speciality?: string;
+  licenseNumber?: string;
+  experience?: string;
+  profileImage?: string;
+  createdAt?: string;
+}
 
 export function AdminUserProfile() {
   const { userId } = useParams();
   const [isEditing, setIsEditing] = useState(false);
-  const [editedUser, setEditedUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [editedUser, setEditedUser] = useState<Partial<User>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Find user in doctors or staff
-  const doctor = doctors.find((d) => d.id === userId);
-  const staffMember = staff.find((s) => s.id === userId);
-  const user = doctor || staffMember;
-  const userType = doctor ? "doctor" : "receptionist";
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (!userId) return;
 
-  // Initialize edited user when user is found
-  if (user && !editedUser && !isEditing) {
-    setEditedUser(user);
-  }
+      try {
+        setIsLoading(true);
+        setError(null);
 
-  if (!user) {
+        const response = await get<User>(`/api/admin/users/${userId}`);
+        if (response.success && response.data) {
+          setUser(response.data);
+          setEditedUser(response.data);
+        } else {
+          setError(response.message ?? "Failed to load user");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load user";
+        setError(message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUser();
+  }, [userId]);
+
+  const handleSave = async () => {
+    if (!userId || !editedUser) return;
+
+    try {
+      setIsSaving(true);
+      setError(null);
+
+      const response = await put(`/api/admin/users/${userId}`, {
+        firstName: editedUser.firstName,
+        lastName: editedUser.lastName,
+        email: editedUser.email,
+        phone: editedUser.phone,
+        speciality: editedUser.speciality,
+        licenseNumber: editedUser.licenseNumber,
+        experience: editedUser.experience,
+      });
+
+      if (response.success && response.data) {
+        setUser(response.data);
+        setEditedUser(response.data);
+        setIsEditing(false);
+      } else {
+        setError(response.message ?? "Failed to update user");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to update user";
+      setError(message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <UserIcon className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Profile</h2>
+          <p className="text-muted-foreground">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
 
+  if (error || !user) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-foreground mb-2">
-            User Not Found
+            {error ? "Error Loading Profile" : "User Not Found"}
           </h2>
           <p className="text-muted-foreground">
-            The requested user profile could not be found.
+            {error || "The requested user profile could not be found."}
           </p>
         </div>
       </div>
     );
   }
+
+  const userName = user.fullName || `${user.firstName} ${user.lastName}`;
+  const userType = user.role;
 
   return (
     <div className="space-y-6">
@@ -68,44 +151,57 @@ export function AdminUserProfile() {
         <CardContent className="relative pt-0 pb-6">
           <div className="flex flex-col md:flex-row gap-6 items-start -mt-16">
             <Avatar className="w-32 h-32 border-4 border-white dark:border-gray-900 shadow-xl flex-shrink-0">
-              <AvatarImage src={user.avatar} alt={user.name} />
+              <AvatarImage src={user.profileImage} alt={userName} />
 
               <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white text-3xl">
-                {user.name
+                {userName
                   .split(" ")
                   .map((n) => n[0])
-                  .join("")}
+                  .join("")
+                  .toUpperCase()
+                  .slice(0, 2)}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 md:mb-4 min-w-0">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                   {isEditing ? (
-                    <Input
-                      value={editedUser?.name || ""}
-                      onChange={(e) =>
-                        setEditedUser({ ...editedUser, name: e.target.value })
-                      }
-                      className="text-3xl font-bold h-auto py-2 mb-2"
-                    />
+                    <div className="space-y-2">
+                      <Input
+                        value={editedUser?.firstName || ""}
+                        onChange={(e) =>
+                          setEditedUser({ ...editedUser, firstName: e.target.value })
+                        }
+                        placeholder="First Name"
+                        className="text-xl font-bold h-auto py-2"
+                      />
+                      <Input
+                        value={editedUser?.lastName || ""}
+                        onChange={(e) =>
+                          setEditedUser({ ...editedUser, lastName: e.target.value })
+                        }
+                        placeholder="Last Name"
+                        className="text-xl font-bold h-auto py-2"
+                      />
+                    </div>
                   ) : (
                     <h1 className="text-3xl font-bold text-foreground">
-                      {user.name}
+                      {userName}
                     </h1>
                   )}
                   <p className="text-lg text-muted-foreground mt-1">
-                    {doctor ? doctor.specialization : staffMember?.role}
+                    {user.speciality || user.role}
                   </p>
                   <div className="flex items-center gap-2 mt-2">
                     <Badge
                       variant="outline"
                       className={
-                        user.status === "active"
+                        user.isActive
                           ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
                           : "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400"
                       }
                     >
-                      {user.status}
+                      {user.isActive ? "Active" : "Inactive"}
                     </Badge>
                     <Badge
                       variant="outline"
@@ -117,17 +213,35 @@ export function AdminUserProfile() {
                 </div>
                 <div className="flex gap-2">
                   {isEditing ? (
-                    <Button
-                      className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
-                      onClick={() => {
-                        // Save changes
-                        setIsEditing(false);
-                        // Here you would typically save to backend
-                      }}
-                    >
-                      <SaveIcon className="w-4 h-4 mr-2" />
-                      Save Changes
-                    </Button>
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditing(false);
+                          setEditedUser(user);
+                        }}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? (
+                          <>
+                            <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <SaveIcon className="w-4 h-4 mr-2" />
+                            Save Changes
+                          </>
+                        )}
+                      </Button>
+                    </>
                   ) : (
                     <Button
                       variant="outline"
@@ -200,10 +314,9 @@ export function AdminUserProfile() {
                 </div>
               </div>
 
-              {doctor && (
+              {user.role === "doctor" && (
                 <>
                   <Separator />
-
                   <div className="flex items-start gap-3">
                     <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-950/30 flex items-center justify-center flex-shrink-0">
                       <BriefcaseIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
@@ -212,9 +325,20 @@ export function AdminUserProfile() {
                       <p className="text-sm text-muted-foreground">
                         Experience
                       </p>
-                      <p className="text-sm font-medium text-foreground">
-                        {doctor.experience}
-                      </p>
+                      {isEditing ? (
+                        <Input
+                          value={editedUser?.experience || ""}
+                          onChange={(e) =>
+                            setEditedUser({ ...editedUser, experience: e.target.value })
+                          }
+                          placeholder="e.g., 10 years"
+                          className="text-sm font-medium h-8 mt-1"
+                        />
+                      ) : (
+                        <p className="text-sm font-medium text-foreground">
+                          {user.experience || "Not specified"}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -226,11 +350,49 @@ export function AdminUserProfile() {
                       <p className="text-sm text-muted-foreground">
                         Specialization
                       </p>
-                      <p className="text-sm font-medium text-foreground">
-                        {doctor.specialization}
-                      </p>
+                      {isEditing ? (
+                        <Input
+                          value={editedUser?.speciality || ""}
+                          onChange={(e) =>
+                            setEditedUser({ ...editedUser, speciality: e.target.value })
+                          }
+                          placeholder="e.g., Cardiology"
+                          className="text-sm font-medium h-8 mt-1"
+                        />
+                      ) : (
+                        <p className="text-sm font-medium text-foreground">
+                          {user.speciality || "Not specified"}
+                        </p>
+                      )}
                     </div>
                   </div>
+
+                  {user.licenseNumber && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-950/30 flex items-center justify-center flex-shrink-0">
+                        <AwardIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-muted-foreground">
+                          License Number
+                        </p>
+                        {isEditing ? (
+                          <Input
+                            value={editedUser?.licenseNumber || ""}
+                            onChange={(e) =>
+                              setEditedUser({ ...editedUser, licenseNumber: e.target.value })
+                            }
+                            placeholder="License number"
+                            className="text-sm font-medium h-8 mt-1"
+                          />
+                        ) : (
+                          <p className="text-sm font-medium text-foreground">
+                            {user.licenseNumber}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
             </CardContent>
@@ -244,8 +406,8 @@ export function AdminUserProfile() {
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">User ID</span>
-                <span className="text-sm font-medium text-foreground">
-                  {user.id}
+                <span className="text-sm font-medium text-foreground font-mono text-xs">
+                  {user._id}
                 </span>
               </div>
               <Separator />
@@ -257,12 +419,12 @@ export function AdminUserProfile() {
                 <Badge
                   variant="outline"
                   className={
-                    user.status === "active"
+                    user.isActive
                       ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
                       : "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400"
                   }
                 >
-                  {user.status}
+                  {user.isActive ? "Active" : "Inactive"}
                 </Badge>
               </div>
               <Separator />
@@ -277,20 +439,15 @@ export function AdminUserProfile() {
 
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  Last Login
-                </span>
-                <span className="text-sm font-medium text-foreground">
-                  2 hours ago
-                </span>
-              </div>
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">
                   Member Since
                 </span>
                 <span className="text-sm font-medium text-foreground">
-                  Jan 2023
+                  {user.createdAt
+                    ? new Date(user.createdAt).toLocaleDateString("en-US", {
+                        year: "numeric",
+                        month: "short",
+                      })
+                    : "N/A"}
                 </span>
               </div>
             </CardContent>
@@ -299,195 +456,81 @@ export function AdminUserProfile() {
 
         {/* Right Column - Stats & Activity */}
         <div className="lg:col-span-2 space-y-6">
-          {doctor && (
-            <>
-              {/* Performance Stats */}
-              <div className="grid md:grid-cols-3 gap-6">
-                <Card className="border-border shadow-sm">
-                  <CardContent className="p-6">
+          {/* Professional Information */}
+          {user.role === "doctor" && (
+            <Card className="border-border shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BriefcaseIcon className="w-5 h-5 text-[#00C4B3]" />
+                  Professional Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Specialization</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {user.speciality || "Not specified"}
+                  </span>
+                </div>
+                <Separator />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Experience</span>
+                  <span className="text-sm font-medium text-foreground">
+                    {user.experience || "Not specified"}
+                  </span>
+                </div>
+                {user.licenseNumber && (
+                  <>
+                    <Separator />
                     <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Total Patients
-                        </p>
-                        <h3 className="text-2xl font-bold text-foreground mt-1">
-                          {doctor.patients}
-                        </h3>
-                      </div>
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center">
-                        <UsersIcon className="w-6 h-6 text-white" />
-                      </div>
+                      <span className="text-sm text-muted-foreground">License Number</span>
+                      <span className="text-sm font-medium text-foreground font-mono text-xs">
+                        {user.licenseNumber}
+                      </span>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">
-                          Consultations
-                        </p>
-                        <h3 className="text-2xl font-bold text-foreground mt-1">
-                          342
-                        </h3>
-                      </div>
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                        <ActivityIcon className="w-6 h-6 text-white" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-border shadow-sm">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Rating</p>
-                        <h3 className="text-2xl font-bold text-foreground mt-1 flex items-center gap-1">
-                          4.8
-                          <StarIcon className="w-5 h-5 text-yellow-500 fill-yellow-500" />
-                        </h3>
-                      </div>
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-yellow-500 to-orange-500 flex items-center justify-center">
-                        <TrendingUpIcon className="w-6 h-6 text-white" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Schedule & Availability */}
-              <Card className="border-border shadow-sm">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClockIcon className="w-5 h-5 text-[#00C4B3]" />
-                    Schedule & Availability
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {[
-                      {
-                        day: "Monday",
-                        time: "9:00 AM - 5:00 PM",
-                        status: "Available",
-                      },
-                      {
-                        day: "Tuesday",
-                        time: "9:00 AM - 5:00 PM",
-                        status: "Available",
-                      },
-                      {
-                        day: "Wednesday",
-                        time: "9:00 AM - 5:00 PM",
-                        status: "Available",
-                      },
-                      {
-                        day: "Thursday",
-                        time: "9:00 AM - 5:00 PM",
-                        status: "Available",
-                      },
-                      {
-                        day: "Friday",
-                        time: "9:00 AM - 3:00 PM",
-                        status: "Available",
-                      },
-                      { day: "Saturday", time: "Closed", status: "Off" },
-                      { day: "Sunday", time: "Closed", status: "Off" },
-                    ].map((schedule) => (
-                      <div
-                        key={schedule.day}
-                        className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-2 rounded-full bg-[#00C4B3]" />
-
-                          <span className="font-medium text-foreground">
-                            {schedule.day}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="text-sm text-muted-foreground">
-                            {schedule.time}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className={
-                              schedule.status === "Available"
-                                ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
-                                : "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400"
-                            }
-                          >
-                            {schedule.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+                  </>
+                )}
+              </CardContent>
+            </Card>
           )}
 
-          {/* Recent Activity */}
+          {/* User Information Summary */}
           <Card className="border-border shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <HistoryIcon className="w-5 h-5 text-[#00C4B3]" />
-                Recent Activity
+                <UserIcon className="w-5 h-5 text-[#00C4B3]" />
+                User Summary
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {[
-                  {
-                    action: "Completed consultation",
-                    details: "Patient: Sarah Johnson",
-                    time: "2 hours ago",
-                    icon: CheckCircleIcon,
-                    color: "text-emerald-500",
-                  },
-                  {
-                    action: "Updated patient records",
-                    details: "Patient: Michael Chen",
-                    time: "5 hours ago",
-                    icon: EditIcon,
-                    color: "text-blue-500",
-                  },
-                  {
-                    action: "Scheduled appointment",
-                    details: "Patient: Emily Rodriguez",
-                    time: "1 day ago",
-                    icon: CalendarIcon,
-                    color: "text-purple-500",
-                  },
-                ].map((activity, index) => {
-                  const Icon = activity.icon;
-                  return (
-                    <div
-                      key={index}
-                      className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/30 transition-colors"
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-full bg-muted flex items-center justify-center flex-shrink-0 ${activity.color}`}
-                      >
-                        <Icon className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">
-                          {activity.action}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {activity.details}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {activity.time}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground mb-2">Full Name</p>
+                  <p className="text-base font-medium text-foreground">{userName}</p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground mb-2">Email Address</p>
+                  <p className="text-base font-medium text-foreground break-all">{user.email}</p>
+                </div>
+                {user.phone && (
+                  <div className="p-4 rounded-lg bg-muted/30">
+                    <p className="text-sm text-muted-foreground mb-2">Phone Number</p>
+                    <p className="text-base font-medium text-foreground">{user.phone}</p>
+                  </div>
+                )}
+                <div className="p-4 rounded-lg bg-muted/30">
+                  <p className="text-sm text-muted-foreground mb-2">Account Status</p>
+                  <Badge
+                    variant="outline"
+                    className={
+                      user.isActive
+                        ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
+                        : "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400"
+                    }
+                  >
+                    {user.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
               </div>
             </CardContent>
           </Card>

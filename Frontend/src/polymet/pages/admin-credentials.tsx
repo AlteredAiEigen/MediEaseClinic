@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +56,23 @@ import {
 import { get, post, del, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 
+// Custom hook for debounced search
+const useDebounce = (value: string, delay: number) => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
 interface User {
   _id: string;
   firstName: string;
@@ -75,6 +92,7 @@ export function AdminCredentials() {
   const { user: currentUser } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [filterRole, setFilterRole] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -134,10 +152,13 @@ export function AdminCredentials() {
         return false;
       }
 
+      const searchTerm = debouncedSearchQuery.trim().toLowerCase();
       const matchesSearch =
-        searchQuery.trim() === "" ||
-        user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        user.email.toLowerCase().includes(searchQuery.toLowerCase());
+        searchTerm === "" ||
+        user.fullName?.toLowerCase().includes(searchTerm) ||
+        user.firstName?.toLowerCase().includes(searchTerm) ||
+        user.lastName?.toLowerCase().includes(searchTerm) ||
+        user.email.toLowerCase().includes(searchTerm);
       const matchesRole = filterRole === "all" || user.role === filterRole;
       const matchesStatus =
         filterStatus === "all" ||
@@ -145,7 +166,7 @@ export function AdminCredentials() {
         (filterStatus === "inactive" && !user.isActive);
       return matchesSearch && matchesRole && matchesStatus;
     });
-  }, [users, searchQuery, filterRole, filterStatus]);
+  }, [users, debouncedSearchQuery, filterRole, filterStatus]);
 
   const handleCreateUser = async () => {
     if (!newUser.firstName.trim() || !newUser.lastName.trim() || !newUser.email.trim() || !newUser.password.trim()) {

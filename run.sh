@@ -34,6 +34,23 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Function to kill process using a specific port
+kill_port() {
+    local port=$1
+    local service_name=$2
+    
+    # Find process using the port
+    local pid=$(lsof -ti:$port 2>/dev/null)
+    
+    if [ ! -z "$pid" ]; then
+        print_warning "Port $port is already in use by PID $pid ($service_name)"
+        print_step "Killing process on port $port..."
+        kill -9 $pid 2>/dev/null || true
+        sleep 1
+        print_success "Freed port $port"
+    fi
+}
+
 # Function to wait for service to be ready
 wait_for_service() {
     local url=$1
@@ -170,6 +187,13 @@ echo ""
 
 # Launch Services
 print_step "Starting MediEase Clinic services..."
+
+# Kill any processes using our ports
+print_step "Checking for processes using required ports..."
+kill_port 8000 "Backend"
+kill_port 5173 "Frontend"
+
+echo ""
 
 # Start Backend in background
 print_step "Starting FastAPI backend..."
