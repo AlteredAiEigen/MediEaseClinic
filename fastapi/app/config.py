@@ -31,8 +31,6 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     refresh_token_expire_days: int = 7
-    access_token_expire_minutes: int = 30
-    refresh_token_expire_days: int = 7
     
     # AWS Configuration
     aws_access_key_id: str
@@ -42,8 +40,14 @@ class Settings(BaseSettings):
     s3_transcripts_bucket: str = ""  # Optional separate bucket for transcripts
     
     # AWS Transcribe Configuration
+    aws_transcribe_region: str = ""  # Optional, defaults to aws_region if not set
     aws_transcribe_language_options: str = "en-US,hi-IN"
     aws_transcribe_media_format: str = "mp3"
+    
+    @property
+    def effective_transcribe_region(self) -> str:
+        """Get the effective Transcribe region, defaulting to aws_region if not set."""
+        return self.aws_transcribe_region or self.aws_region
     
     # OpenAI Configuration
     openai_api_key: str = ""
@@ -92,6 +96,8 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra fields in environment to prevent validation errors
+        populate_by_name = True  # Pydantic v2: allow population by field name
     
     @property
     def cors_origins_list(self) -> List[str]:

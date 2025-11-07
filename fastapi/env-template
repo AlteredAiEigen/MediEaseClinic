@@ -26,6 +26,8 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 AWS_ACCESS_KEY_ID=your-aws-access-key-id
 AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
 AWS_REGION=us-east-1
+AWS_TRANSCRIBE_REGION=us-east-1
+# Note: AWS_TRANSCRIBE_REGION is optional - defaults to AWS_REGION if not set
 S3_BUCKET_NAME=mediease-recordings
 S3_TRANSCRIPTS_BUCKET=mediease-transcripts
 

@@ -10,9 +10,19 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, BinaryIO
 from botocore.exceptions import ClientError
-from pydub import AudioSegment
-from pydub.effects import normalize
 import numpy as np
+
+# Try to import pydub, but handle Python 3.13 compatibility issues
+try:
+    from pydub import AudioSegment
+    from pydub.effects import normalize
+    PYDUB_AVAILABLE = True
+except (ImportError, ModuleNotFoundError) as e:
+    # Python 3.13 removed audioop module, pydub may not work
+    print(f"Warning: pydub not available ({e}). Audio amplification will be skipped.")
+    AudioSegment = None
+    normalize = None
+    PYDUB_AVAILABLE = False
 
 from ..config import settings
 
@@ -22,22 +32,25 @@ class AWSService:
 
     def __init__(self):
         """Initialize AWS clients."""
+        # Use lowercase attribute names for Pydantic settings
+        aws_region = settings.effective_transcribe_region if hasattr(settings, 'effective_transcribe_region') else settings.aws_region
+        
         self.s3_client = boto3.client(
             's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            region_name=aws_region
         )
 
         self.transcribe_client = boto3.client(
             'transcribe',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_REGION
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            region_name=aws_region
         )
 
-        self.bucket_name = settings.S3_BUCKET_NAME
-        self.transcripts_bucket = settings.S3_TRANSCRIPTS_BUCKET or self.bucket_name
+        self.bucket_name = settings.s3_bucket_name
+        self.transcripts_bucket = settings.s3_transcripts_bucket or self.bucket_name
 
     def _generate_systematic_filename(
         self,
@@ -65,6 +78,11 @@ class AWSService:
         Returns:
             Amplified audio bytes
         """
+        if not PYDUB_AVAILABLE:
+            # If pydub is not available (e.g., Python 3.13), return original audio
+            print("Warning: Audio amplification skipped (pydub not available)")
+            return audio_data
+
         try:
             # Load audio from bytes
             audio = AudioSegment.from_file(audio_data, format="wav")
