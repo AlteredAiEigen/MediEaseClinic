@@ -397,7 +397,7 @@ export function DoctorWorkstation() {
                         className="hover:bg-blue-50 dark:hover:bg-blue-950/20"
                         asChild
                       >
-                        <Link to={`/patient-details/${currentPatient.id}`}>
+                        <Link to={`/patient-overview/${currentPatient.patientId}`}>
                           <FileTextIcon className="w-4 h-4 mr-2" />
                           View History
                         </Link>
@@ -579,7 +579,7 @@ export function DoctorWorkstation() {
                         className="hover:bg-blue-50 dark:hover:bg-blue-950/20"
                         asChild
                       >
-                        <Link to={`/patient-details/${patient.id}`}>View</Link>
+                        <Link to={`/patient-overview/${patient.patientId}`}>View</Link>
                       </Button>
                     </div>
                   </div>

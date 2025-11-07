@@ -10,7 +10,6 @@ import { WritePrescriptionDialog } from "@/polymet/components/write-prescription
 import { ViewReportsDialog } from "@/polymet/components/view-reports-dialog";
 import { MessagesDialog } from "@/polymet/components/messages-dialog";
 import { LabReportViewerDialog } from "@/polymet/components/lab-report-viewer-dialog";
-import { getLabReportsForPatient } from "@/polymet/data/lab-reports-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -226,11 +225,8 @@ export function DoctorDashboard() {
   const handleViewLabReport = (reportId: string) => {
     const report = labReports.find((r) => r.id === reportId);
     if (report) {
-      const patientReports = getLabReportsForPatient(report.patientId);
-      if (patientReports.length > 0) {
-        setSelectedLabReport(patientReports[0]);
-        setLabReportViewerOpen(true);
-      }
+      // Open the ViewReportsDialog for this patient
+      setViewReportsOpen(true);
     }
   };
 

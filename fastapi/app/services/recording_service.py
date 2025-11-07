@@ -9,8 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from app.models.recording import RecordingUpdate, recording_helper
-from app.services.s3_service import s3_service
-from app.services.transcribe_service import transcribe_service
+from app.services.aws_service import aws_service
 from app.config import settings
 
 
@@ -103,20 +102,37 @@ class RecordingService:
                 detail=f"File size exceeds {settings.max_upload_size_mb}MB limit"
             )
         
-        # Upload to S3
-        s3_result = await s3_service.upload_file(
-            file_content=file_content,
-            file_name=file.filename,
-            content_type=file.content_type,
-            folder="recordings"
+        # Get clinic ID from doctor (assuming doctor belongs to clinic)
+        clinic_id = doctor.get("clinicId", "default")
+
+        # Upload to S3 with systematic naming and amplification
+        s3_result = await aws_service.upload_recording_to_s3(
+            file_data=file_content,
+            patient_id=patient_id,
+            clinic_id=str(clinic_id),
+            appointment_id=appointment_id,
+            amplify=True
         )
-        
+
+        if not s3_result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"S3 upload failed: {s3_result['error']}"
+            )
+
         # Generate recording ID
         recording_id = await self.generate_recording_id()
-        
+
         # Calculate expiration
         expires_at = await self.calculate_expiration_date(retention_policy)
-        
+
+        # Start transcription job
+        job_name = f"{recording_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        transcription_result = await aws_service.start_transcription_job(
+            recording_url=f"https://{settings.S3_BUCKET_NAME}.s3.{settings.AWS_REGION}.amazonaws.com/{s3_result['file_path']}",
+            job_name=job_name
+        )
+
         # Create recording document
         recording_dict = {
             "recordingId": recording_id,
@@ -124,15 +140,16 @@ class RecordingService:
             "appointmentId": appointment_id,
             "doctorId": doctor_id,
             "duration": duration,
-            "filePath": s3_result["s3_key"],
-            "fileName": file.filename,
-            "fileSize": file_size,
-            "mimeType": file.content_type,
-            "status": "completed",
+            "filePath": s3_result["file_path"],
+            "fileName": s3_result["file_name"],
+            "fileSize": s3_result["file_size"],
+            "mimeType": "audio/wav",  # Converted to WAV during amplification
+            "status": "processing",  # Start as processing since transcription is initiated
             "transcription": "",
             "isEncrypted": True,  # S3 SSE encryption
             "retentionPolicy": retention_policy,
             "expiresAt": expires_at,
+            "processingStartedAt": datetime.utcnow(),
             "createdAt": datetime.utcnow(),
             "updatedAt": datetime.utcnow()
         }
@@ -145,7 +162,132 @@ class RecordingService:
         created_recording = await self.recordings_collection.find_one({"_id": result.inserted_id})
         
         return await recording_helper(created_recording)
-    
+
+    async def process_transcription_result(self, recording_id: str) -> dict:
+        """Process completed transcription and extract structured notes."""
+        if not ObjectId.is_valid(recording_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+
+        recording = await self.recordings_collection.find_one({"_id": ObjectId(recording_id)})
+        if not recording:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+
+        job_name = recording.get("transcriptionJobName")
+        if not job_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No transcription job found")
+
+        # Get transcription result from AWS
+        transcription_result = await aws_service.get_transcription_result(job_name)
+
+        if not transcription_result["success"]:
+            # Update recording with error
+            await self.recordings_collection.update_one(
+                {"_id": ObjectId(recording_id)},
+                {"$set": {
+                    "status": "error",
+                    "errorMessage": transcription_result.get("error", "Transcription failed"),
+                    "updatedAt": datetime.utcnow()
+                }}
+            )
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                              detail=f"Transcription failed: {transcription_result.get('error')}")
+
+        if transcription_result["status"] == "completed":
+            transcript = transcription_result["transcript"]
+            confidence = transcription_result.get("confidence", 0)
+
+            # Get patient context for better note extraction
+            patient_context = {}
+            if recording.get("patientId"):
+                patient = await self.patients_collection.find_one({"_id": ObjectId(recording["patientId"])})
+                if patient:
+                    patient_context = {
+                        "age": patient.get("age"),
+                        "gender": patient.get("gender"),
+                        "medicalHistory": patient.get("medicalHistory", []),
+                        "allergies": patient.get("allergies", []),
+                        "chiefComplaint": patient.get("chiefComplaint")
+                    }
+
+            # Extract structured notes using LLM
+            notes_result = await aws_service.extract_structured_notes(transcript, patient_context)
+
+            update_data = {
+                "status": "processed",
+                "transcription": transcript,
+                "transcriptionConfidence": confidence,
+                "processingCompletedAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow(),
+                "aiProcessing": {
+                    "model": "gpt-4",
+                    "version": "1.0",
+                    "processingTime": None,  # Could calculate this
+                    "language": "en-US",
+                    "transcriptionModel": "AWS Transcribe",
+                    "notesExtractionModel": "GPT-4",
+                    "notesConfidence": notes_result.get("structured_notes") and 0.85 or 0.0
+                }
+            }
+
+            if notes_result["success"] and notes_result.get("structured_notes"):
+                update_data["aiProcessing"]["structuredNotes"] = notes_result["structured_notes"]
+
+            # Update recording with transcription and structured notes
+            await self.recordings_collection.update_one(
+                {"_id": ObjectId(recording_id)},
+                {"$set": update_data}
+            )
+
+            # Update appointment with structured notes if appointment exists
+            if recording.get("appointmentId"):
+                appointment_notes = self._format_notes_for_appointment(notes_result.get("structured_notes", {}))
+                await self.appointments_collection.update_one(
+                    {"_id": ObjectId(recording["appointmentId"])},
+                    {"$set": {
+                        "consultationNotes": appointment_notes,
+                        "transcription": transcript,
+                        "structuredNotes": notes_result.get("structured_notes"),
+                        "updatedAt": datetime.utcnow()
+                    }}
+                )
+
+            updated_recording = await self.recordings_collection.find_one({"_id": ObjectId(recording_id)})
+            return await recording_helper(updated_recording)
+
+        elif transcription_result["status"] == "failed":
+            # Update recording with failure
+            await self.recordings_collection.update_one(
+                {"_id": ObjectId(recording_id)},
+                {"$set": {
+                    "status": "error",
+                    "errorMessage": transcription_result.get("error", "Transcription job failed"),
+                    "updatedAt": datetime.utcnow()
+                }}
+            )
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                              detail=f"Transcription failed: {transcription_result.get('error')}")
+
+        else:
+            # Still processing
+            return await recording_helper(recording)
+
+    def _format_notes_for_appointment(self, structured_notes: dict) -> str:
+        """Format structured notes for appointment display."""
+        if not structured_notes:
+            return ""
+
+        formatted = []
+        if structured_notes.get("chiefComplaint"):
+            formatted.append(f"**Chief Complaint:** {structured_notes['chiefComplaint']}")
+        if structured_notes.get("assessment"):
+            formatted.append(f"**Assessment:** {structured_notes['assessment']}")
+        if structured_notes.get("plan"):
+            formatted.append(f"**Plan:** {structured_notes['plan']}")
+        if structured_notes.get("followUpInstructions"):
+            formatted.append(f"**Follow-up:** {structured_notes['followUpInstructions']}")
+
+        return "\n\n".join(formatted)
+
     async def start_transcription(self, recording_id: str) -> dict:
         """Start transcription job for recording."""
         if not ObjectId.is_valid(recording_id):

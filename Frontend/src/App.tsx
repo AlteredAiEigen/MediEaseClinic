@@ -23,7 +23,6 @@ import { ReceptionistAppointments } from "@/polymet/pages/receptionist-appointme
 import { ReceptionistSettings } from "@/polymet/pages/receptionist-settings";
 import { RegisterPatient } from "@/polymet/pages/register-patient";
 import { PatientOverview } from "@/polymet/pages/patient-overview";
-import { PatientDetails } from "@/polymet/pages/patient-details";
 import { ConsultationSession } from "@/polymet/pages/consultation-session-new";
 import { HealthcareLayout } from "@/polymet/layouts/healthcare-layout";
 import { RequireAuth } from "@/components/require-auth";
@@ -182,34 +181,11 @@ export default function MediEaseClinicPrototype() {
         />
 
         <Route
-          path="/patient-details/:patientId"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <PatientDetails />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
-
-        <Route
           path="/consultation/:patientId"
           element={
             <RequireAuth role="doctor">
               <HealthcareLayout>
                 <ConsultationSession />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
-
-        {/* Admin Patient Details Route */}
-        <Route
-          path="/admin/patient-details/:patientId"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <PatientDetails />
               </HealthcareLayout>
             </RequireAuth>
           }
@@ -255,17 +231,6 @@ export default function MediEaseClinicPrototype() {
             <RequireAuth role="receptionist">
               <HealthcareLayout>
                 <RegisterPatient />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
-
-        <Route
-          path="/receptionist/patient-details/:patientId"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <PatientDetails />
               </HealthcareLayout>
             </RequireAuth>
           }

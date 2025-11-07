@@ -350,7 +350,7 @@ export function DoctorPatients() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Link to={`/patient-details/${patient._id}`}>
+                    <Link to={`/patient-overview/${patient._id}`}>
                       <Button
                         variant="outline"
                         size="sm"

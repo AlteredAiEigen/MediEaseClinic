@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   ActivityIcon,
   HeartPulseIcon,
@@ -12,13 +14,31 @@ import {
 
 interface ConsultationSidebarProps {
   notes: string;
+  diagnosis: string;
+  treatment: string;
+  followUp: string;
+  transcriptionStatus?: string;
+  transcriptionText?: string;
+  structuredNotes?: any;
   onNotesChange: (notes: string) => void;
+  onDiagnosisChange: (diagnosis: string) => void;
+  onTreatmentChange: (treatment: string) => void;
+  onFollowUpChange: (followUp: string) => void;
   className?: string;
 }
 
 export function ConsultationSidebar({
   notes,
+  diagnosis,
+  treatment,
+  followUp,
+  transcriptionStatus,
+  transcriptionText,
+  structuredNotes,
   onNotesChange,
+  onDiagnosisChange,
+  onTreatmentChange,
+  onFollowUpChange,
   className = "",
 }: ConsultationSidebarProps) {
   return (
@@ -143,22 +163,119 @@ export function ConsultationSidebar({
         </CardContent>
       </Card>
 
-      {/* Consultation Notes */}
+      {/* AI Transcription Results */}
+      {transcriptionStatus === "completed" && transcriptionText && (
+        <Card className="border-border shadow-md">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <FileTextIcon className="w-5 h-5 text-[#00C4B3]" />
+              AI Analysis
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Raw Transcription */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Transcription</Label>
+              <div className="p-3 bg-muted/50 rounded-lg max-h-24 overflow-y-auto">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {transcriptionText}
+                </p>
+              </div>
+            </div>
+
+            {/* Structured Notes */}
+            {structuredNotes && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Extracted Notes</Label>
+                <div className="space-y-2">
+                  {structuredNotes.chiefComplaint && (
+                    <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded text-xs">
+                      <span className="font-medium text-blue-700 dark:text-blue-400">Chief Complaint: </span>
+                      <span className="text-blue-800 dark:text-blue-300">{structuredNotes.chiefComplaint}</span>
+                    </div>
+                  )}
+                  {structuredNotes.assessment && (
+                    <div className="p-2 bg-emerald-50 dark:bg-emerald-950/20 rounded text-xs">
+                      <span className="font-medium text-emerald-700 dark:text-emerald-400">Assessment: </span>
+                      <span className="text-emerald-800 dark:text-emerald-300">{structuredNotes.assessment}</span>
+                    </div>
+                  )}
+                  {structuredNotes.plan && (
+                    <div className="p-2 bg-purple-50 dark:bg-purple-950/20 rounded text-xs">
+                      <span className="font-medium text-purple-700 dark:text-purple-400">Plan: </span>
+                      <span className="text-purple-800 dark:text-purple-300">{structuredNotes.plan}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Clinical Notes */}
       <Card className="border-border shadow-md">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Consultation Notes</CardTitle>
+          <CardTitle className="text-lg">Clinical Notes</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Textarea
-            placeholder="Enter consultation notes, observations, and treatment plan..."
-            value={notes}
-            onChange={(e) => onNotesChange(e.target.value)}
-            className="min-h-[200px] resize-none"
-          />
+        <CardContent className="space-y-4">
+          {/* Diagnosis */}
+          <div className="space-y-2">
+            <Label htmlFor="diagnosis" className="text-sm font-medium">
+              Diagnosis
+            </Label>
+            <Input
+              id="diagnosis"
+              placeholder="Primary diagnosis..."
+              value={diagnosis}
+              onChange={(e) => onDiagnosisChange(e.target.value)}
+            />
+          </div>
 
-          <div className="flex items-center justify-between mt-3">
+          {/* Treatment Plan */}
+          <div className="space-y-2">
+            <Label htmlFor="treatment" className="text-sm font-medium">
+              Treatment Plan
+            </Label>
+            <Textarea
+              id="treatment"
+              placeholder="Treatment recommendations and medications..."
+              value={treatment}
+              onChange={(e) => onTreatmentChange(e.target.value)}
+              className="min-h-[80px] resize-none"
+            />
+          </div>
+
+          {/* Follow-up */}
+          <div className="space-y-2">
+            <Label htmlFor="followUp" className="text-sm font-medium">
+              Follow-up Instructions
+            </Label>
+            <Input
+              id="followUp"
+              placeholder="When to follow up, what to monitor..."
+              value={followUp}
+              onChange={(e) => onFollowUpChange(e.target.value)}
+            />
+          </div>
+
+          {/* Detailed Notes */}
+          <div className="space-y-2">
+            <Label htmlFor="notes" className="text-sm font-medium">
+              Detailed Notes
+            </Label>
+            <Textarea
+              id="notes"
+              placeholder="Additional observations, patient concerns, and clinical details..."
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              className="min-h-[120px] resize-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
             <p className="text-xs text-muted-foreground">
-              {notes.length} characters
+              {notes.length + diagnosis.length + treatment.length + followUp.length} characters total
             </p>
             <Button size="sm" variant="outline">
               Save Draft

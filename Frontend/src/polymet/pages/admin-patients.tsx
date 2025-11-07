@@ -526,7 +526,7 @@ export function AdminPatients() {
                 {filteredPatients.map((patient) => (
                   <Link
                     key={patient.recordId}
-                    to={`/admin/patient-details/${patient.patientId}`}
+                    to={`/patient-overview/${patient.patientId}`}
                     className="block"
                   >
                     <Card className="border-border hover:shadow-lg transition-all hover:border-[#00C4B3]/30 cursor-pointer">

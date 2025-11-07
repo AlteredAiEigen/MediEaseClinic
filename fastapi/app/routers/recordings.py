@@ -213,3 +213,72 @@ async def delete_recording(
             detail=f"Recording deletion failed: {str(e)}"
         )
 
+
+@router.post("/{recording_id}/process-transcription", status_code=status.HTTP_200_OK)
+async def process_transcription(
+    recording_id: str,
+    current_user: dict = Depends(require_doctor_or_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """
+    Process completed transcription and extract structured notes.
+
+    This endpoint is called after AWS Transcribe completes transcription.
+    It extracts structured clinical notes using LLM and updates the recording.
+    """
+    try:
+        recording_service = RecordingService(db)
+        recording = await recording_service.process_transcription_result(recording_id)
+
+        return success_response(
+            message="Transcription processed successfully",
+            data={"recording": recording}
+        )
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Transcription processing failed: {str(e)}"
+        )
+
+
+@router.get("/{recording_id}/transcription-status", status_code=status.HTTP_200_OK)
+async def get_transcription_status(
+    recording_id: str,
+    current_user: dict = Depends(require_doctor_or_admin),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """
+    Get transcription status for a recording.
+
+    Returns current transcription status and results if completed.
+    """
+    try:
+        recording_service = RecordingService(db)
+        recording = await recording_service.get_recording(recording_id)
+
+        transcription_status = {
+            "recordingId": recording["recordingId"],
+            "status": recording["status"],
+            "transcriptionAvailable": bool(recording.get("transcription")),
+            "structuredNotesAvailable": bool(recording.get("aiProcessing", {}).get("structuredNotes")),
+            "processingStartedAt": recording.get("processingStartedAt"),
+            "processingCompletedAt": recording.get("processingCompletedAt"),
+            "errorMessage": recording.get("errorMessage")
+        }
+
+        return success_response(
+            message="Transcription status retrieved",
+            data={"transcription": transcription_status}
+        )
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get transcription status: {str(e)}"
+        )
+

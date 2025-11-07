@@ -39,8 +39,7 @@ class Settings(BaseSettings):
     aws_secret_access_key: str
     aws_region: str = "us-east-1"
     s3_bucket_name: str
-    aws_transcribe_region: str = "us-east-1"
-    aws_s3_presigned_url_expiration: int = 900  # 15 minutes
+    s3_transcripts_bucket: str = ""  # Optional separate bucket for transcripts
     
     # AWS Transcribe Configuration
     aws_transcribe_language_options: str = "en-US,hi-IN"

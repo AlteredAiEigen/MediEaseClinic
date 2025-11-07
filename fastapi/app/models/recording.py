@@ -36,12 +36,30 @@ class AudioQuality(BaseModel):
     format: Optional[str] = None
 
 
+class StructuredNotes(BaseModel):
+    """Structured clinical notes extracted from transcription."""
+    chiefComplaint: Optional[str] = None
+    historyOfPresentIllness: Optional[str] = None
+    reviewOfSystems: Optional[str] = None
+    physicalExamination: Optional[str] = None
+    assessment: Optional[str] = None
+    plan: Optional[str] = None
+    medications: Optional[list] = None
+    followUpInstructions: Optional[str] = None
+    differentialDiagnosis: Optional[list] = None
+    clinicalImpression: Optional[str] = None
+
+
 class AIProcessing(BaseModel):
     """AI processing metadata."""
     model: Optional[str] = None
     version: Optional[str] = None
     processingTime: Optional[float] = None
     language: str = "en-US"
+    structuredNotes: Optional[StructuredNotes] = None
+    notesConfidence: Optional[float] = Field(None, ge=0, le=1)
+    transcriptionModel: Optional[str] = None
+    notesExtractionModel: Optional[str] = None
 
 
 class RecordingBase(BaseModel):

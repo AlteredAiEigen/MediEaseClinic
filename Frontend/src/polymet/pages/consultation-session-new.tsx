@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,134 +16,153 @@ import {
   SparklesIcon,
   BotIcon,
   XIcon,
+  Loader2Icon,
+  UploadIcon,
+  FileAudioIcon,
 } from "lucide-react";
-// import { patients } from "@/polymet/data/healthcare-data";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
+import { get, post } from "@/lib/api-client";
+
+interface Patient {
+  _id: string;
+  patientId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  address?: string;
+  bloodGroup?: string;
+  age?: string;
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
+    relationship?: string;
+  };
+  medicalHistory?: string[];
+  allergies?: string[];
+  presentInClinic?: boolean;
+  chiefComplaint?: string;
+}
+
+interface Recording {
+  _id: string;
+  patientId: string;
+  doctorId: string;
+  fileUrl: string;
+  duration: number;
+  transcription?: string;
+  aiNotes?: string;
+  recordedAt: string;
+}
 
 export function ConsultationSession() {
   const { patientId } = useParams();
+  const [patient, setPatient] = useState<Patient | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState("00:00");
   const [finalRecordingDuration, setFinalRecordingDuration] = useState("");
+  const [recordingInterval, setRecordingInterval] = useState<NodeJS.Timeout | null>(null);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  // Clinical notes
   const [notes, setNotes] = useState("");
+  const [diagnosis, setDiagnosis] = useState("");
+  const [treatment, setTreatment] = useState("");
+  const [followUp, setFollowUp] = useState("");
+
+  // AI Chat
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
-  const [recordingInterval, setRecordingInterval] =
-    useState<NodeJS.Timeout | null>(null);
+  const [aiResponse, setAiResponse] = useState("");
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // Find patient data
-  const patient = patients.find((p) => p.id === patientId) || patients[0];
+  // Session state
+  const [sessionCompleted, setSessionCompleted] = useState(false);
 
-  // Mock appointment timeline data
-  const appointmentTimeline = [
-    {
-      id: "1",
-      date: "Today",
-      time: "09:00 AM",
-      type: "current" as const,
-      title: "Hypertension Management",
-      description:
-        "Regular follow-up for blood pressure monitoring and medication adjustment",
-      doctor: "Dr. Robert Smith",
-      status: "active" as const,
-      prescription: [
-        "Lisinopril 10mg - Once daily",
-        "Atorvastatin 20mg - Once daily at bedtime",
-      ],
+  // Transcription state
+  const [transcriptionStatus, setTranscriptionStatus] = useState<string>("not_started");
+  const [transcriptionText, setTranscriptionText] = useState<string>("");
+  const [structuredNotes, setStructuredNotes] = useState<any>(null);
+  const [transcriptionPolling, setTranscriptionPolling] = useState<NodeJS.Timeout | null>(null);
+  const [uploadedRecordingId, setUploadedRecordingId] = useState<string | null>(null);
 
-      clinicalNotes:
-        "Patient reports occasional headaches. Blood pressure reading: 145/95 mmHg. Discussed lifestyle modifications including reduced sodium intake and regular exercise. Medication dosage maintained. Follow-up in 2 weeks.",
-    },
-    {
-      id: "2",
-      date: "Dec 20, 2023",
-      time: "10:30 AM",
-      type: "past" as const,
-      title: "Hypertension Follow-up",
-      description: "Blood pressure monitoring and medication review",
-      doctor: "Dr. Robert Smith",
-      status: "completed" as const,
-      relativeTime: "3 weeks ago",
-      prescription: [
-        "Lisinopril 10mg - Once daily",
-        "Metformin 500mg - Twice daily",
-      ],
+  // Fetch patient data on component mount
+  useEffect(() => {
+    const fetchPatientData = async () => {
+      if (!patientId) return;
 
-      clinicalNotes:
-        "BP: 142/92 mmHg. Patient showing good compliance with medication. Discussed importance of regular monitoring. Continue current medication regimen.",
-    },
-    {
-      id: "3",
-      date: "Nov 15, 2023",
-      time: "02:00 PM",
-      type: "past" as const,
-      title: "Routine Checkup",
-      description: "Annual physical examination and health assessment",
-      doctor: "Dr. Robert Smith",
-      status: "completed" as const,
-      relativeTime: "2 months ago",
-      prescription: ["Multivitamin - Once daily"],
-      clinicalNotes:
-        "Complete physical examination performed. All vitals within normal range. Lab work ordered for cholesterol and glucose levels. Patient advised to maintain healthy lifestyle.",
-    },
-    {
-      id: "4",
-      date: "Oct 10, 2023",
-      time: "11:00 AM",
-      type: "past" as const,
-      title: "Lab Work Review",
-      description: "Review of blood test results and cholesterol levels",
-      doctor: "Dr. Emily Davis",
-      status: "completed" as const,
-      relativeTime: "3 months ago",
-      prescription: ["Atorvastatin 20mg - Once daily"],
-      clinicalNotes:
-        "Lab results show elevated cholesterol (245 mg/dL). Started patient on Atorvastatin. Discussed dietary modifications and exercise recommendations. Recheck labs in 3 months.",
-    },
-    {
-      id: "5",
-      date: "Sep 5, 2023",
-      time: "09:30 AM",
-      type: "past" as const,
-      title: "Medication Adjustment",
-      description: "Review and adjustment of current medications",
-      doctor: "Dr. Robert Smith",
-      status: "completed" as const,
-      relativeTime: "4 months ago",
-      prescription: ["Lisinopril 10mg - Once daily (increased from 5mg)"],
-      clinicalNotes:
-        "Patient's blood pressure not adequately controlled on current dose. Increased Lisinopril from 5mg to 10mg. Advised to monitor BP at home and report any side effects.",
-    },
-  ];
+      try {
+        setIsLoading(true);
+        setError(null);
 
-  // Mock AI analysis data
-  const aiAnalysis = {
-    riskLevel: "moderate",
-    keyFindings: [
-      "Blood pressure trending upward over last 3 visits",
-      "Patient compliance with medication: 85%",
-      "Recent lab results show elevated cholesterol",
-      "No significant weight changes in past 6 months",
-    ],
+        // Fetch patient details
+        const patientResponse = await get<Patient>(`/api/patients/${patientId}`);
+        if (patientResponse.success && patientResponse.data) {
+          setPatient(patientResponse.data);
+        } else {
+          setError("Patient not found");
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load patient data";
+        setError(message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    recommendations: [
-      "Consider adjusting hypertension medication dosage",
-      "Schedule follow-up lipid panel in 3 months",
-      "Recommend dietary consultation",
-      "Monitor blood pressure daily for next 2 weeks",
-    ],
+    fetchPatientData();
+  }, [patientId]);
 
-    similarCases: 12,
-    successRate: "87%",
-  };
+  // Cleanup transcription polling on unmount
+  useEffect(() => {
+    return () => {
+      if (transcriptionPolling) {
+        clearInterval(transcriptionPolling);
+      }
+    };
+  }, [transcriptionPolling]);
 
-  const toggleRecording = () => {
-    if (!isRecording) {
-      // Start recording
+  // Recording functionality
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        setAudioBlob(audioBlob);
+        const audioUrl = URL.createObjectURL(audioBlob);
+        setRecordingUrl(audioUrl);
+
+        // Stop all tracks to release microphone
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
       setIsRecording(true);
       setRecordingDuration("00:00");
+
       let seconds = 0;
       const interval = setInterval(() => {
         seconds++;
@@ -154,8 +173,14 @@ export function ConsultationSession() {
         );
       }, 1000);
       setRecordingInterval(interval);
-    } else {
-      // Stop recording
+    } catch (err) {
+      console.error("Error starting recording:", err);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
       if (recordingInterval) {
         clearInterval(recordingInterval);
@@ -165,10 +190,197 @@ export function ConsultationSession() {
     }
   };
 
-  const handleEndConsultation = () => {
+  const uploadRecording = async () => {
+    if (!audioBlob || !patientId) return;
+
+    try {
+      setIsUploading(true);
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append("recording", audioBlob, "consultation-recording.wav");
+      formData.append("patientId", patientId);
+
+      const response = await post("/api/recordings/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      if (response.success && response.data) {
+        console.log("Recording uploaded successfully:", response.data);
+        const recordingId = response.data.recording.id;
+        setUploadedRecordingId(recordingId);
+        setTranscriptionStatus("processing");
+
+        // Start polling for transcription status
+        startTranscriptionPolling(recordingId);
+      }
+    } catch (err) {
+      console.error("Error uploading recording:", err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const generateAiNotes = async (recordingId: string) => {
+    try {
+      const response = await post("/api/clinical-notes/generate", {
+        recordingId,
+        patientId,
+      });
+
+      if (response.success && response.data) {
+        setNotes(response.data.notes || "");
+        setDiagnosis(response.data.diagnosis || "");
+        setTreatment(response.data.treatment || "");
+        setFollowUp(response.data.followUp || "");
+      }
+    } catch (err) {
+      console.error("Error generating AI notes:", err);
+    }
+  };
+
+  const saveClinicalNotes = async () => {
+    if (!patientId) return;
+
+    try {
+      const response = await post("/api/clinical-notes", {
+        patientId,
+        note: notes,
+        diagnosis,
+        treatment,
+        followUp,
+      });
+
+      if (response.success) {
+        console.log("Clinical notes saved successfully");
+        setSessionCompleted(true);
+      }
+    } catch (err) {
+      console.error("Error saving clinical notes:", err);
+    }
+  };
+
+  const checkTranscriptionStatus = async (recordingId?: string) => {
+    if (!recordingId && !uploadedRecordingId) return;
+
+    try {
+      const id = recordingId || uploadedRecordingId;
+      const response = await get(`/api/recordings/${id}/transcription-status`);
+
+      if (response.success && response.data?.transcription) {
+        const status = response.data.transcription.status;
+
+        if (status === "processed") {
+          // Get the full recording details to access transcription
+          const recordingResponse = await get(`/api/recordings/${id}`);
+          if (recordingResponse.success && recordingResponse.data?.recording) {
+            const recording = recordingResponse.data.recording;
+            setTranscriptionText(recording.transcription || "");
+            setStructuredNotes(recording.aiProcessing?.structuredNotes || null);
+            setTranscriptionStatus("completed");
+
+            // Auto-fill clinical notes from structured notes
+            if (recording.aiProcessing?.structuredNotes) {
+              const notes = recording.aiProcessing.structuredNotes;
+              if (notes.chiefComplaint && !notes) setNotes(`Chief Complaint: ${notes.chiefComplaint}`);
+              if (notes.assessment && !diagnosis) setDiagnosis(notes.assessment);
+              if (notes.plan && !treatment) setTreatment(notes.plan);
+            }
+          }
+
+          // Stop polling
+          if (transcriptionPolling) {
+            clearInterval(transcriptionPolling);
+            setTranscriptionPolling(null);
+          }
+        } else if (status === "processing") {
+          setTranscriptionStatus("processing");
+        } else if (status === "error") {
+          setTranscriptionStatus("error");
+          if (transcriptionPolling) {
+            clearInterval(transcriptionPolling);
+            setTranscriptionPolling(null);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Error checking transcription status:", err);
+    }
+  };
+
+  const startTranscriptionPolling = (recordingId: string) => {
+    // Check immediately
+    checkTranscriptionStatus(recordingId);
+
+    // Then poll every 30 seconds
+    const interval = setInterval(() => {
+      checkTranscriptionStatus(recordingId);
+    }, 30000);
+
+    setTranscriptionPolling(interval);
+  };
+
+  const askAI = async () => {
+    if (!aiQuery.trim()) return;
+
+    try {
+      setIsAiLoading(true);
+      const response = await post("/api/ai/chat", {
+        query: aiQuery,
+        patientId,
+        context: {
+          notes,
+          diagnosis,
+          treatment,
+        },
+      });
+
+      if (response.success && response.data) {
+        setAiResponse(response.data.response);
+      }
+    } catch (err) {
+      console.error("Error getting AI response:", err);
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleEndConsultation = async () => {
+    // Save clinical notes first
+    await saveClinicalNotes();
     // Set flag to indicate consultation completed
     sessionStorage.setItem("consultationCompleted", "true");
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Consultation Session</h2>
+          <p className="text-muted-foreground">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !patient) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">
+            {error ? "Error Loading Session" : "Patient Not Found"}
+          </h2>
+          <p className="text-muted-foreground">
+            {error || "The requested patient could not be found."}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-6">
@@ -176,17 +388,24 @@ export function ConsultationSession() {
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <Avatar className="w-16 h-16 border-2 border-border">
-            <AvatarImage src={patient.avatar} alt={patient.name} />
+            <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patient.fullName)}&background=random&color=ffffff&size=64`} alt={patient.fullName} />
 
-            <AvatarFallback>{patient.name.charAt(0)}</AvatarFallback>
+            <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
+              {patient.fullName
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .toUpperCase()
+                .slice(0, 2)}
+            </AvatarFallback>
           </Avatar>
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              {patient.name}
+              {patient.fullName}
             </h1>
             <div className="flex items-center gap-3 mt-1">
               <p className="text-sm text-muted-foreground">
-                {patient.age} years • {patient.gender} • ID: {patient.id}
+                {patient.age} years • {patient.gender} • ID: {patient.patientId}
               </p>
               <Badge
                 variant="outline"
@@ -202,8 +421,9 @@ export function ConsultationSession() {
         <div className="flex items-center gap-3">
           <Button
             variant={isRecording ? "destructive" : "default"}
-            onClick={toggleRecording}
+            onClick={isRecording ? stopRecording : startRecording}
             className="gap-2"
+            disabled={isUploading}
           >
             {isRecording ? (
               <>
@@ -217,24 +437,90 @@ export function ConsultationSession() {
               </>
             )}
           </Button>
+
           {isRecording && (
             <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg">
               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-
               <span className="text-sm font-mono text-red-700 dark:text-red-400">
                 {recordingDuration}
               </span>
             </div>
           )}
-          {!isRecording && finalRecordingDuration && (
-            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg">
-              <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
 
-              <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                Recorded: {finalRecordingDuration}
-              </span>
+          {!isRecording && audioBlob && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg">
+                <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  Recorded: {finalRecordingDuration}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={uploadRecording}
+                disabled={isUploading}
+                className="gap-2"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2Icon className="w-4 h-4 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <UploadIcon className="w-4 h-4" />
+                    Upload & Generate Notes
+                  </>
+                )}
+              </Button>
+              {recordingUrl && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const audio = new Audio(recordingUrl);
+                    audio.play();
+                  }}
+                  className="gap-2"
+                >
+                  <FileAudioIcon className="w-4 h-4" />
+                  Play
+                </Button>
+              )}
             </div>
           )}
+
+          {/* Transcription Status */}
+          {transcriptionStatus !== "not_started" && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+              {transcriptionStatus === "processing" && (
+                <>
+                  <Loader2Icon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                    Transcribing & Analyzing...
+                  </span>
+                </>
+              )}
+              {transcriptionStatus === "completed" && (
+                <>
+                  <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                    Transcription Complete
+                  </span>
+                </>
+              )}
+              {transcriptionStatus === "error" && (
+                <>
+                  <AlertCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
+                  <span className="text-sm font-medium text-red-700 dark:text-red-400">
+                    Transcription Failed
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
           <Link to="/doctor-workstation">
             <Button
               onClick={handleEndConsultation}
@@ -332,7 +618,19 @@ export function ConsultationSession() {
         </div>
 
         {/* Right Column - Vitals & Quick Info (Compact) */}
-        <ConsultationSidebar notes={notes} onNotesChange={setNotes} />
+        <ConsultationSidebar
+          notes={notes}
+          diagnosis={diagnosis}
+          treatment={treatment}
+          followUp={followUp}
+          transcriptionStatus={transcriptionStatus}
+          transcriptionText={transcriptionText}
+          structuredNotes={structuredNotes}
+          onNotesChange={setNotes}
+          onDiagnosisChange={setDiagnosis}
+          onTreatmentChange={setTreatment}
+          onFollowUpChange={setFollowUp}
+        />
       </div>
 
       {/* Patient Visit History Section - Bottom */}

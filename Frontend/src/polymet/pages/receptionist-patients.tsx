@@ -339,7 +339,7 @@ export function ReceptionistPatients() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Link to={`/receptionist/patient-details/${patient._id}`}>
+                    <Link to={`/patient-overview/${patient._id}`}>
                       <Button
                         variant="outline"
                         size="sm"
