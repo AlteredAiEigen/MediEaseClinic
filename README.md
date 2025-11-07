@@ -90,7 +90,7 @@ MediEaseClinic/
 - Database passwords
 - JWT secrets
 
-Use the provided template (`fastapi/.env.template`) and fill in your own credentials.
+Use the provided template (`fastapi/env-template`) and fill in your own credentials.
 
 ### Prerequisites
 - **Node.js** (v18 or higher) - https://nodejs.org/
