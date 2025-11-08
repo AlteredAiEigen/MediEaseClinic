@@ -75,9 +75,41 @@ async function parseResponse<T>(response: Response, parseJson: boolean) {
   }
 
   if (!response.ok) {
+    const backendDetail = (() => {
+      const detail = (payload as any)?.detail;
+      if (!detail) return undefined;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item) => {
+            if (!item) return "";
+            if (typeof item === "string") return item;
+            if (typeof item === "object" && "msg" in item) {
+              return (item as { msg?: string }).msg ?? "";
+            }
+            return JSON.stringify(item);
+          })
+          .filter(Boolean)
+          .join(", ");
+      }
+      if (typeof detail === "object") {
+        if ("msg" in detail && typeof detail.msg === "string") {
+          return detail.msg;
+        }
+        if ("message" in detail && typeof detail.message === "string") {
+          return detail.message;
+        }
+        return JSON.stringify(detail);
+      }
+      return String(detail);
+    })();
+
     const errorMessage =
       payload?.message ||
-      (payload?.errors as string) ||
+      backendDetail ||
+      (typeof payload?.errors === "string"
+        ? payload.errors
+        : undefined) ||
       `Request failed with status ${response.status}`;
     throw new Error(errorMessage);
   }
