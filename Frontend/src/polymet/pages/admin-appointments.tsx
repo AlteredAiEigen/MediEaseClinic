@@ -80,6 +80,13 @@ export function AdminAppointments() {
     reason: "",
   });
 
+  const sortAppointments = (items: Appointment[]) =>
+    [...items].sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.time}`);
+      const dateB = new Date(`${b.date}T${b.time}`);
+      return dateA.getTime() - dateB.getTime();
+    });
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -87,21 +94,29 @@ export function AdminAppointments() {
         setError(null);
 
         // Fetch appointments
-        const appointmentsResponse = await get<{ data: Appointment[] }>("/api/appointments?limit=50");
-        if (appointmentsResponse.success && appointmentsResponse.data?.data) {
-          setAppointmentsList(appointmentsResponse.data.data);
+        const appointmentsResponse = await get<Appointment[]>("/api/appointments?limit=50");
+        if (appointmentsResponse.success && Array.isArray(appointmentsResponse.data)) {
+          setAppointmentsList(sortAppointments(appointmentsResponse.data));
         }
 
         // Fetch patients for dropdown
-        const patientsResponse = await get<{ data: Patient[] }>("/api/patients?limit=100");
-        if (patientsResponse.success && patientsResponse.data?.data) {
-          setPatients(patientsResponse.data.data);
+        const patientsResponse = await get<Patient[]>("/api/patients?limit=100");
+        if (patientsResponse.success && Array.isArray(patientsResponse.data)) {
+          setPatients(
+            [...patientsResponse.data].sort((a, b) =>
+              a.fullName.localeCompare(b.fullName)
+            )
+          );
         }
 
         // Fetch doctors for dropdown
-        const doctorsResponse = await get<{ doctors: Doctor[] }>("/api/doctors?limit=50");
-        if (doctorsResponse.success && doctorsResponse.data?.doctors) {
-          setDoctors(doctorsResponse.data.doctors);
+        const doctorsResponse = await get<Doctor[]>("/api/doctors?limit=50");
+        if (doctorsResponse.success && Array.isArray(doctorsResponse.data)) {
+          setDoctors(
+            [...doctorsResponse.data].sort((a, b) =>
+              `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+            )
+          );
         }
 
       } catch (err) {
@@ -148,7 +163,10 @@ export function AdminAppointments() {
       const response = await post<{ appointment: Appointment }>("/api/appointments", payload);
 
       if (response.success && response.data?.appointment) {
-        setAppointmentsList((prev) => [response.data!.appointment, ...prev]);
+        setError(null);
+        setAppointmentsList((prev) =>
+          sortAppointments([...prev, response.data!.appointment])
+        );
         setAddAppointmentDialogOpen(false);
         setNewAppointment({
           patientId: "",

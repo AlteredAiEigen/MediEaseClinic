@@ -69,15 +69,23 @@ export function NewAppointmentDialog({
           setError(null);
 
           // Fetch patients
-          const patientsResponse = await get<{ data: Patient[] }>("/api/patients?limit=100");
-          if (patientsResponse.success && patientsResponse.data?.data) {
-            setPatients(patientsResponse.data.data);
+          const patientsResponse = await get<Patient[]>("/api/patients?limit=100");
+          if (patientsResponse.success && Array.isArray(patientsResponse.data)) {
+            setPatients(
+              [...patientsResponse.data].sort((a, b) =>
+                a.fullName.localeCompare(b.fullName)
+              )
+            );
           }
 
           // Fetch doctors
-          const doctorsResponse = await get<{ doctors: Doctor[] }>("/api/doctors?limit=50");
-          if (doctorsResponse.success && doctorsResponse.data?.doctors) {
-            setDoctors(doctorsResponse.data.doctors);
+          const doctorsResponse = await get<Doctor[]>("/api/doctors?limit=50");
+          if (doctorsResponse.success && Array.isArray(doctorsResponse.data)) {
+            setDoctors(
+              [...doctorsResponse.data].sort((a, b) =>
+                `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+              )
+            );
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : "Failed to load data";
@@ -132,9 +140,13 @@ export function NewAppointmentDialog({
         reason: notes || "General appointment",
       };
 
-      const response = await post<{ appointment: any }>("/api/appointments", payload);
+      const response = await post<{ appointment: unknown }>(
+        "/api/appointments",
+        payload
+      );
 
-      if (response.success) {
+      if (response.success && response.data?.appointment) {
+        setError(null);
         onOpenChange(false);
       } else {
         setError(response.message ?? "Failed to create appointment");

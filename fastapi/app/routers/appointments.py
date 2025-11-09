@@ -13,6 +13,7 @@ from app.schemas.appointment import (
     AppointmentStatusUpdate,
     AppointmentCheckIn
 )
+from app.models.appointment import AppointmentCreate
 from app.services.appointment_service import AppointmentService
 from app.middleware.auth import get_current_active_user, require_any_role
 from app.utils.response import success_response, paginated_response
@@ -33,9 +34,15 @@ async def create_appointment(
     """
     try:
         appointment_service = AppointmentService(db)
+        appointment_payload = appointment_data.model_dump()
+        appointment_model = AppointmentCreate(**appointment_payload)
+        clinic_id = current_user.get("clinicId")
+        clinic_name = current_user.get("clinicName")
         appointment = await appointment_service.create_appointment(
-            appointment_data,
-            scheduled_by=current_user["_id"]
+            appointment_model,
+            scheduled_by=str(current_user["_id"]),
+            clinic_id=clinic_id,
+            clinic_name=clinic_name
         )
         
         return success_response(
@@ -71,13 +78,26 @@ async def list_appointments(
     """
     try:
         appointment_service = AppointmentService(db)
+
+        clinic_id = current_user.get("clinicId")
+        user_role = current_user.get("role")
+
+        doctor_filter = doctor_id
+        if user_role == "doctor":
+            doctor_filter = str(current_user["_id"])
+        elif doctor_filter:
+            doctor_filter = str(doctor_filter)
+
+        patient_filter = str(patient_id) if patient_id else None
+
         appointments, total = await appointment_service.list_appointments(
             page=page,
             limit=limit,
-            patient_id=patient_id,
-            doctor_id=doctor_id,
+            patient_id=patient_filter,
+            doctor_id=doctor_filter,
             date=date,
-            status=status
+            status=status,
+            clinic_id=clinic_id
         )
         
         return paginated_response(

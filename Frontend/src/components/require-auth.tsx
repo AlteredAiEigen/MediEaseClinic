@@ -2,9 +2,11 @@ import { Navigate, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
 import { useAuth, UserRole } from "@/context/auth-context";
 
+type RoleRequirement = UserRole | UserRole[];
+
 interface RequireAuthProps {
   children: ReactNode;
-  role?: UserRole;
+  role?: RoleRequirement;
 }
 
 const roleDefaultRoutes: Record<UserRole, string> = {
@@ -16,6 +18,7 @@ const roleDefaultRoutes: Record<UserRole, string> = {
 export function RequireAuth({ children, role }: RequireAuthProps) {
   const { user, initialized, loading } = useAuth();
   const location = useLocation();
+  const allowedRoles = Array.isArray(role) ? role : role ? [role] : null;
 
   if (!initialized || loading) {
     return (
@@ -29,7 +32,8 @@ export function RequireAuth({ children, role }: RequireAuthProps) {
   }
 
   if (!user) {
-    const targetRole = role ?? "doctor";
+    const targetRole =
+      Array.isArray(role) ? role[0] ?? "doctor" : role ?? "doctor";
     return (
       <Navigate
         to={`/auth?role=${targetRole}`}
@@ -39,7 +43,7 @@ export function RequireAuth({ children, role }: RequireAuthProps) {
     );
   }
 
-  if (role && user.role !== role) {
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     const defaultRoute = roleDefaultRoutes[user.role] ?? "/";
     return <Navigate to={defaultRoute} replace />;
   }

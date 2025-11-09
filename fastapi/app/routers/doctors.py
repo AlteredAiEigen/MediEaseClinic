@@ -39,6 +39,9 @@ async def get_doctors(
             query["speciality"] = speciality
         if is_active is not None:
             query["isActive"] = is_active
+        clinic_id = current_user.get("clinicId")
+        if clinic_id:
+            query["clinicId"] = clinic_id
         
         # Get total count
         total = await get_users_collection(db).count_documents(query)
@@ -79,12 +82,22 @@ async def get_doctor_stats(
     """Get doctor statistics."""
     try:
         # Total and active doctors
-        total_doctors = await get_users_collection(db).count_documents({"role": "doctor"})
-        active_doctors = await get_users_collection(db).count_documents({"role": "doctor", "isActive": True})
+        clinic_id = current_user.get("clinicId")
+        base_query = {"role": "doctor"}
+        if clinic_id:
+            base_query["clinicId"] = clinic_id
+        total_doctors = await get_users_collection(db).count_documents(base_query)
+        active_query = base_query.copy()
+        active_query["isActive"] = True
+        active_doctors = await get_users_collection(db).count_documents(active_query)
 
         # Doctors by speciality
+        match_stage = {"role": "doctor"}
+        if clinic_id:
+            match_stage["clinicId"] = clinic_id
+
         pipeline = [
-            {"$match": {"role": "doctor"}},
+            {"$match": match_stage},
             {"$group": {"_id": "$speciality", "count": {"$sum": 1}}}
         ]
         cursor = get_users_collection(db).aggregate(pipeline)
@@ -92,7 +105,10 @@ async def get_doctor_stats(
         doctors_by_speciality = {item["_id"]: item["count"] for item in speciality_results}
 
         # Average appointments per doctor
-        total_appointments = await get_appointments_collection(db).count_documents({})
+        appointment_query = {}
+        if clinic_id:
+            appointment_query["clinicId"] = clinic_id
+        total_appointments = await get_appointments_collection(db).count_documents(appointment_query)
         avg_appointments = total_appointments / total_doctors if total_doctors > 0 else 0
         
         return success_response(

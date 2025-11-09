@@ -2,12 +2,13 @@
 Admin management API endpoints.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, Query, status
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel, Field, EmailStr
 
 from app.database import get_db
 from app.schemas.auth import UserCreate
@@ -15,8 +16,17 @@ from app.services.auth_service import auth_service
 from app.services.queue_service import QueueService
 from app.middleware.auth import require_roles
 from app.utils.response import success_response, error_response, paginated_response
+from app.models.user import user_helper
 
 router = APIRouter()
+
+
+class ProfileUpdate(BaseModel):
+    firstName: Optional[str] = Field(None, min_length=1, max_length=50)
+    lastName: Optional[str] = Field(None, min_length=1, max_length=50)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = Field(None, pattern=r"^[\d\s\-\+\(\)]+$")
+    profileImage: Optional[str | None] = None
 
 def get_users_collection(db: AsyncIOMotorDatabase):
     """Get users collection."""
@@ -64,34 +74,71 @@ async def get_dashboard_stats(
 ):
     """Get admin dashboard statistics."""
     try:
+        clinic_id = current_user.get("clinicId")
+
+        def user_filter(extra: dict | None = None, *, require_active: bool | None = None):
+            query = dict(extra or {})
+            if clinic_id:
+                query["clinicId"] = clinic_id
+            if require_active is True:
+                query["isActive"] = True
+            elif require_active is False:
+                query["isActive"] = False
+            return query
+
         # Today's date range
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow = today + timedelta(days=1)
         
         # This month's date range
         first_day_of_month = today.replace(day=1)
         
         # Get counts
-        total_patients = await get_patients_collection(db).count_documents({})
-        total_appointments = await get_appointments_collection(db).count_documents({})
-        total_doctors = await get_users_collection(db).count_documents({"role": "doctor"})
-        total_receptionists = await get_users_collection(db).count_documents({"role": "receptionist"})
+        patient_query: Dict[str, object] = {}
+        appointment_query: Dict[str, object] = {}
+        if clinic_id:
+            patient_query["clinicId"] = clinic_id
+            appointment_query["clinicId"] = clinic_id
+
+        total_patients = await get_patients_collection(db).count_documents(patient_query)
+        total_appointments = await get_appointments_collection(db).count_documents(appointment_query)
+        total_doctors = await get_users_collection(db).count_documents(
+            user_filter({"role": "doctor"}, require_active=True)
+        )
+        total_receptionists = await get_users_collection(db).count_documents(
+            user_filter({"role": "receptionist"}, require_active=True)
+        )
         total_clinical_notes = await get_clinical_notes_collection(db).count_documents({})
         total_recordings = await get_recordings_collection(db).count_documents({})
 
         # Today's appointments
-        appointments_today = await get_appointments_collection(db).count_documents({
-            "date": {"$gte": today.isoformat().split('T')[0]}
-        })
+        appointments_today_query = {"date": today.strftime("%Y-%m-%d")}
+        if clinic_id:
+            appointments_today_query["clinicId"] = clinic_id
+        appointments_today = await get_appointments_collection(db).count_documents(
+            appointments_today_query
+        )
 
         # Patients this month
-        patients_this_month = await get_patients_collection(db).count_documents({
-            "createdAt": {"$gte": first_day_of_month}
-        })
+        patients_this_month_query = {"createdAt": {"$gte": first_day_of_month}}
+        if clinic_id:
+            patients_this_month_query["clinicId"] = clinic_id
+        patients_this_month = await get_patients_collection(db).count_documents(patients_this_month_query)
 
         # Recent activity (last 10 appointments and patients)
-        recent_appointments = await get_appointments_collection(db).find({}).sort("createdAt", -1).limit(5).to_list(length=5)
-        recent_patients = await get_patients_collection(db).find({}).sort("createdAt", -1).limit(5).to_list(length=5)
+        recent_appointments = await (
+            get_appointments_collection(db)
+            .find(appointment_query)
+            .sort("createdAt", -1)
+            .limit(5)
+            .to_list(length=5)
+        )
+        recent_patients = await (
+            get_patients_collection(db)
+            .find(patient_query)
+            .sort("createdAt", -1)
+            .limit(5)
+            .to_list(length=5)
+        )
         
         recent_activity = []
         for apt in recent_appointments:
@@ -136,6 +183,88 @@ async def get_dashboard_stats(
         )
 
 
+@router.put("/profile", response_model=dict)
+async def update_admin_profile(
+    update_data: ProfileUpdate,
+    current_user: dict = Depends(require_roles(["admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update the current admin's profile details."""
+    try:
+        update_doc = update_data.model_dump(exclude_unset=True)
+
+        if not update_doc:
+            return error_response(
+                message="No profile fields provided for update",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        if "firstName" in update_doc:
+            update_doc["firstName"] = update_doc["firstName"].strip()
+            if not update_doc["firstName"]:
+                return error_response(
+                    message="First name cannot be empty",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+        if "lastName" in update_doc:
+            update_doc["lastName"] = update_doc["lastName"].strip()
+            if not update_doc["lastName"]:
+                return error_response(
+                    message="Last name cannot be empty",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+        if "email" in update_doc:
+            email_lower = update_doc["email"].lower()
+            existing = await get_users_collection(db).find_one({
+                "email": email_lower,
+                "_id": {"$ne": ObjectId(current_user["_id"])}
+            })
+            if existing:
+                return error_response(
+                    message="Another account already uses this email address",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+            update_doc["email"] = email_lower
+
+        if "phone" in update_doc and update_doc["phone"] is not None:
+            update_doc["phone"] = update_doc["phone"].strip()
+            if update_doc["phone"] == "":
+                update_doc["phone"] = None
+
+        if "profileImage" in update_doc and update_doc["profileImage"] == "":
+            update_doc["profileImage"] = None
+
+        update_doc["updatedAt"] = datetime.utcnow()
+
+        result = await get_users_collection(db).find_one_and_update(
+            {"_id": ObjectId(current_user["_id"])},
+            {"$set": update_doc},
+            return_document=True,
+            projection={"password": 0}
+        )
+
+        if not result:
+            return error_response(
+                message="User not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        formatted_user = await user_helper(result)
+
+        return success_response(
+            message="Profile updated successfully",
+            data={"user": formatted_user}
+        )
+
+    except Exception as exc:
+        return error_response(
+            message=f"Failed to update profile: {str(exc)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 @router.get("/stats", response_model=dict)
 async def get_system_stats(
     current_user: dict = Depends(require_roles(["admin"])),
@@ -143,13 +272,33 @@ async def get_system_stats(
 ):
     """Get system statistics."""
     try:
-        # User stats
-        total_users = await get_users_collection(db).count_documents({})
-        active_users = await get_users_collection(db).count_documents({"isActive": True})
+        clinic_id = current_user.get("clinicId")
+
+        def staff_filter(extra: dict | None = None, *, require_active: bool | None = None):
+            query = {"role": {"$in": ["doctor", "receptionist"]}}
+            if extra:
+                query.update(extra)
+            if clinic_id:
+                query["clinicId"] = clinic_id
+            if require_active is True:
+                query["isActive"] = True
+            elif require_active is False:
+                query["isActive"] = False
+            return query
+
+        # User stats (exclude admins from staff metrics)
+        total_users = await get_users_collection(db).count_documents(staff_filter())
+        active_users = await get_users_collection(db).count_documents(staff_filter(require_active=True))
 
         # Collection counts
-        total_patients = await get_patients_collection(db).count_documents({})
-        total_appointments = await get_appointments_collection(db).count_documents({})
+        patient_query: Dict[str, object] = {}
+        appointment_query: Dict[str, object] = {}
+        if clinic_id:
+            patient_query["clinicId"] = clinic_id
+            appointment_query["clinicId"] = clinic_id
+
+        total_patients = await get_patients_collection(db).count_documents(patient_query)
+        total_appointments = await get_appointments_collection(db).count_documents(appointment_query)
         total_clinical_notes = await get_clinical_notes_collection(db).count_documents({})
         total_recordings = await get_recordings_collection(db).count_documents({})
         
@@ -192,14 +341,15 @@ async def get_users(
     """Get all users in the admin's clinic."""
     try:
         # Build query - only users from the same clinic
-        query = {
-            "clinicId": current_user.get("clinicId")
-        }
+        query = {}
+        clinic_id = current_user.get("clinicId")
+        if clinic_id:
+            query["clinicId"] = clinic_id
         if role:
             query["role"] = role
         if is_active is not None:
             query["isActive"] = is_active
-        
+
         # Get total count
         total = await get_users_collection(db).count_documents(query)
 
@@ -328,10 +478,21 @@ async def get_patients(
 ):
     """Get all patients."""
     try:
-        total = await get_patients_collection(db).count_documents({})
+        clinic_id = current_user.get("clinicId")
+        query = {}
+        if clinic_id:
+            query["clinicId"] = clinic_id
+
+        total = await get_patients_collection(db).count_documents(query)
         skip = (page - 1) * limit
 
-        cursor = get_patients_collection(db).find({}).sort("createdAt", -1).skip(skip).limit(limit)
+        cursor = (
+            get_patients_collection(db)
+            .find(query)
+            .sort("createdAt", -1)
+            .skip(skip)
+            .limit(limit)
+        )
         patients = await cursor.to_list(length=limit)
         
         for patient in patients:
@@ -366,10 +527,22 @@ async def get_appointments(
 ):
     """Get all appointments."""
     try:
-        total = await get_appointments_collection(db).count_documents({})
+        clinic_id = current_user.get("clinicId")
+        query = {}
+        if clinic_id:
+            query["clinicId"] = clinic_id
+
+        total = await get_appointments_collection(db).count_documents(query)
         skip = (page - 1) * limit
 
-        cursor = get_appointments_collection(db).find({}).sort("createdAt", -1).skip(skip).limit(limit)
+        cursor = (
+            get_appointments_collection(db)
+            .find(query)
+            .sort("date", 1)
+            .sort("time", 1)
+            .skip(skip)
+            .limit(limit)
+        )
         appointments = await cursor.to_list(length=limit)
         
         for appointment in appointments:
@@ -512,6 +685,15 @@ async def get_summary_metrics(
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Provide quick stats for dashboard widgets."""
+    clinic_id = current_user.get("clinicId")
+
+    def doctor_filter(extra: dict | None = None):
+        query = dict(extra or {})
+        if clinic_id:
+            query["clinicId"] = clinic_id
+        query["role"] = "doctor"
+        return query
+
     total_patients = await get_patients_collection(db).count_documents({})
     active_patients = await get_patients_collection(db).count_documents({"presentInClinic": True})
 
@@ -519,8 +701,8 @@ async def get_summary_metrics(
     upcoming_appointments = await get_appointments_collection(db).count_documents({"status": {"$in": ["scheduled", "in-progress"]}})
     completed_appointments = await get_appointments_collection(db).count_documents({"status": "completed"})
 
-    total_doctors = await get_users_collection(db).count_documents({"role": "doctor"})
-    active_doctors = await get_users_collection(db).count_documents({"role": "doctor", "isActive": True})
+    total_doctors = await get_users_collection(db).count_documents(doctor_filter())
+    active_doctors = await get_users_collection(db).count_documents(doctor_filter({"isActive": True}))
 
     queue_service = QueueService(db)
     queue_stats = await queue_service.get_queue_stats()

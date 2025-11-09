@@ -44,6 +44,7 @@ class AppointmentBase(BaseModel):
     followUpRequired: bool = False
     followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
+    clinicId: Optional[str] = None
 
 
 class AppointmentCreate(AppointmentBase):
@@ -155,6 +156,7 @@ async def appointment_helper(appointment: dict) -> dict:
         "followUpRequired": appointment.get("followUpRequired", False),
         "followUpDate": appointment.get("followUpDate"),
         "followUpNotes": appointment.get("followUpNotes"),
+        "clinicId": appointment.get("clinicId"),
         "createdAt": appointment.get("createdAt"),
         "updatedAt": appointment.get("updatedAt"),
     }

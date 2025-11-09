@@ -95,7 +95,9 @@ class AppointmentService:
     async def create_appointment(
         self,
         appointment_data: AppointmentCreate,
-        scheduled_by: str
+        scheduled_by: str,
+        clinic_id: Optional[str] = None,
+        clinic_name: Optional[str] = None
     ) -> dict:
         """Create new appointment with conflict checking."""
         # Validate patient exists
@@ -119,6 +121,52 @@ class AppointmentService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Selected user is not a doctor"
             )
+
+        patient_clinic = patient.get("clinicId")
+        doctor_clinic = doctor.get("clinicId")
+
+        # Infer clinic scope
+        effective_clinic = clinic_id or doctor_clinic or patient_clinic
+
+        # Validate clinic alignment
+        if clinic_id:
+            if patient_clinic and patient_clinic != clinic_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected patient does not belong to your clinic"
+                )
+            if doctor_clinic and doctor_clinic != clinic_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected doctor does not belong to your clinic"
+                )
+        if patient_clinic and doctor_clinic and patient_clinic != doctor_clinic:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Patient and doctor belong to different clinics"
+            )
+
+        # Normalize patient clinic if missing but determinable
+        if not patient_clinic and effective_clinic:
+            update_fields: Dict[str, object] = {"clinicId": effective_clinic}
+            if clinic_name:
+                update_fields["clinicName"] = clinic_name
+            await self.patients_collection.update_one(
+                {"_id": patient["_id"]},
+                {"$set": update_fields}
+            )
+            patient_clinic = effective_clinic
+
+        # Normalize doctor clinic if missing but determinable
+        if not doctor_clinic and effective_clinic:
+            update_fields: Dict[str, object] = {"clinicId": effective_clinic}
+            if clinic_name:
+                update_fields["clinicName"] = clinic_name
+            await self.users_collection.update_one(
+                {"_id": doctor["_id"]},
+                {"$set": update_fields}
+            )
+            doctor_clinic = effective_clinic
         
         # Check for time slot conflicts
         has_conflict = await self.check_time_slot_conflict(
@@ -143,6 +191,8 @@ class AppointmentService:
         appointment_dict["scheduledBy"] = scheduled_by
         appointment_dict["createdAt"] = datetime.utcnow()
         appointment_dict["updatedAt"] = datetime.utcnow()
+        if effective_clinic:
+            appointment_dict["clinicId"] = effective_clinic
         
         # Populate names
         appointment_dict = await self.populate_names(appointment_dict)
@@ -174,7 +224,8 @@ class AppointmentService:
         patient_id: Optional[str] = None,
         doctor_id: Optional[str] = None,
         date: Optional[str] = None,
-        status: Optional[str] = None
+        status: Optional[str] = None,
+        clinic_id: Optional[str] = None
     ) -> tuple[List[dict], int]:
         """List appointments with filtering and pagination."""
         # Build query
@@ -192,6 +243,9 @@ class AppointmentService:
         if status:
             query["status"] = status
         
+        if clinic_id:
+            query["clinicId"] = clinic_id
+        
         # Calculate skip
         skip = (page - 1) * limit
         
@@ -199,12 +253,19 @@ class AppointmentService:
         total = await self.appointments_collection.count_documents(query)
         
         # Get appointments
-        cursor = self.appointments_collection.find(query).sort("date", -1).sort("time", 1).skip(skip).limit(limit)
+        cursor = (
+            self.appointments_collection.find(query)
+            .sort("date", 1)
+            .sort("time", 1)
+            .skip(skip)
+            .limit(limit)
+        )
         appointments = await cursor.to_list(length=limit)
         
         # Format appointments
         formatted_appointments = []
         for appointment in appointments:
+            appointment = await self.populate_names(appointment)
             formatted_appointments.append(await appointment_helper(appointment))
         
         return formatted_appointments, total

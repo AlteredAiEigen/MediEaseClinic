@@ -9,6 +9,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.schemas.patient import PatientCreateRequest, PatientUpdateRequest
+from app.models.patient import PatientCreate
 from app.services.patient_service import PatientService
 from app.middleware.auth import get_current_active_user, require_any_role
 from app.utils.response import success_response, paginated_response
@@ -31,7 +32,24 @@ async def create_patient(
     """
     try:
         patient_service = PatientService(db)
-        patient = await patient_service.create_patient(patient_data)
+
+        patient_payload = patient_data.model_dump()
+
+        clinic_id = current_user.get("clinicId")
+        clinic_name = current_user.get("clinicName")
+
+        if clinic_id:
+            patient_payload["clinicId"] = clinic_id
+        if clinic_name:
+            patient_payload["clinicName"] = clinic_name
+
+        patient_model = PatientCreate(**patient_payload)
+
+        patient = await patient_service.create_patient(
+            patient_model,
+            clinic_id=clinic_id,
+            clinic_name=clinic_name
+        )
         
         return success_response(
             message="Patient created successfully",
@@ -67,12 +85,15 @@ async def list_patients(
     """
     try:
         patient_service = PatientService(db)
+        clinic_id = current_user.get("clinicId")
+
         patients, total = await patient_service.list_patients(
             page=page,
             limit=limit,
             search=search,
             gender=gender,
-            present_in_clinic=present_in_clinic
+            present_in_clinic=present_in_clinic,
+            clinic_id=clinic_id
         )
         
         return paginated_response(
@@ -103,7 +124,8 @@ async def search_patients(
     """
     try:
         patient_service = PatientService(db)
-        patients = await patient_service.search_patients(q)
+        clinic_id = current_user.get("clinicId")
+        patients = await patient_service.search_patients(q, clinic_id=clinic_id)
         
         return success_response(
             message=f"Found {len(patients)} matching patients",

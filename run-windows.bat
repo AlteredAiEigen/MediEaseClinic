@@ -3,7 +3,7 @@ REM MediEase Clinic - Windows Setup & Launch Script
 REM This script sets up and launches both the FastAPI backend and React frontend
 
 echo ================================================
-echo 🏥 MediEase Clinic - Complete Setup & Launch
+echo 🏥 MediEase Clinic - Complete Setup ^& Launch
 echo ================================================
 echo.
 
@@ -30,14 +30,33 @@ if %errorlevel% neq 0 (
 for /f "tokens=*" %%i in ('npm --version') do set NPM_VERSION=%%i
 echo [SUCCESS] npm %NPM_VERSION% found
 
-REM Check Python
-where python >nul 2>nul
-if %errorlevel% neq 0 (
+REM Check Python (python.exe or py launcher)
+set "PYTHON_CMD="
+
+python --version >nul 2>nul
+if not errorlevel 1 (
+    set "PYTHON_CMD=python"
+)
+
+if not defined PYTHON_CMD (
+    py -3 --version >nul 2>nul
+    if not errorlevel 1 (
+        set "PYTHON_CMD=py -3"
+    ) else (
+        py --version >nul 2>nul
+        if not errorlevel 1 (
+            set "PYTHON_CMD=py"
+        )
+    )
+)
+
+if not defined PYTHON_CMD (
     echo [ERROR] Python not found. Please install Python from https://python.org/
     pause
     exit /b 1
 )
-for /f "tokens=*" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
+
+for /f "tokens=*" %%i in ('%PYTHON_CMD% --version 2^>^&1') do set PYTHON_VERSION=%%i
 echo [SUCCESS] %PYTHON_VERSION% found
 
 REM Check MongoDB (optional - will warn if not found)
@@ -56,7 +75,7 @@ echo [STEP] Setting up FastAPI Backend...
 
 if not exist "fastapi\venv" (
     echo [STEP] Creating Python virtual environment...
-    python -m venv fastapi\venv
+    call %PYTHON_CMD% -m venv fastapi\venv
     if %errorlevel% neq 0 (
         echo [ERROR] Failed to create virtual environment
         pause

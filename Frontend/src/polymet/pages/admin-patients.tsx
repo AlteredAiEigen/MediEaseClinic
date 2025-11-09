@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,7 +100,26 @@ const mapApiPatientToUi = (patient: ApiPatient): UiPatient => {
   };
 };
 
-const emptyNewPatientState = {
+type NewPatientForm = {
+  name: string;
+  age: string;
+  gender: "Male" | "Female" | "Other";
+  phone: string;
+  email: string;
+  bloodGroup:
+    | "A+"
+    | "A-"
+    | "B+"
+    | "B-"
+    | "AB+"
+    | "AB-"
+    | "O+"
+    | "O-";
+  address: string;
+  dateOfBirth: string;
+};
+
+const emptyNewPatientState: NewPatientForm = {
   name: "",
   age: "",
   gender: "Male",
@@ -109,9 +128,10 @@ const emptyNewPatientState = {
   bloodGroup: "O+",
   address: "",
   dateOfBirth: "",
-} as const;
+};
 
 export function AdminPatients() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -234,9 +254,14 @@ export function AdminPatients() {
         return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400";
       case "remote":
       default:
-        return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400";
+      return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400";
     }
   };
+
+const statusLabels: Record<PatientStatus, string> = {
+  "in-clinic": "In Clinic",
+  remote: "Remote Follow-up",
+};
 
   return (
     <div className="space-y-6">
@@ -288,6 +313,9 @@ export function AdminPatients() {
                 <h3 className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 dark:from-cyan-400 dark:to-blue-400 bg-clip-text text-transparent mt-1">
                   {patientsList.filter((p) => p.status === "remote").length}
                 </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Patients completing care virtually or not currently in clinic.
+                </p>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/50">
                 <MailIcon className="w-7 h-7 text-white" />
@@ -343,14 +371,14 @@ export function AdminPatients() {
                 Add Patient
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-[650px]">
               <DialogHeader>
                 <DialogTitle>Add New Patient</DialogTitle>
                 <DialogDescription>
                   Register a new patient in the system
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-4 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Full Name</Label>
                   <Input
@@ -379,7 +407,10 @@ export function AdminPatients() {
                   <Select
                     value={newPatient.gender}
                     onValueChange={(value) =>
-                      setNewPatient({ ...newPatient, gender: value })
+                      setNewPatient({
+                        ...newPatient,
+                        gender: value as NewPatientForm["gender"],
+                      })
                     }
                   >
                     <SelectTrigger>
@@ -408,7 +439,10 @@ export function AdminPatients() {
                   <Select
                     value={newPatient.bloodGroup}
                     onValueChange={(value) =>
-                      setNewPatient({ ...newPatient, bloodGroup: value })
+                      setNewPatient({
+                        ...newPatient,
+                        bloodGroup: value as NewPatientForm["bloodGroup"],
+                      })
                     }
                   >
                     <SelectTrigger>
@@ -462,11 +496,11 @@ export function AdminPatients() {
                 </div>
               </div>
               {submissionError && (
-                <div className="col-span-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
                   {submissionError}
                 </div>
               )}
-              <DialogFooter>
+              <DialogFooter className="gap-2">
                 <Button
                   variant="outline"
                   onClick={() => setAddPatientDialogOpen(false)}
@@ -524,72 +558,104 @@ export function AdminPatients() {
               {/* Patients Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredPatients.map((patient) => (
-                  <Link
+                  <div
                     key={patient.recordId}
-                    to={`/patient-overview/${patient.patientId}`}
-                    className="block"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() =>
+                      navigate(`/patient-overview/${patient.recordId}`)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        navigate(`/patient-overview/${patient.recordId}`);
+                      }
+                    }}
+                    className="border-border hover:shadow-lg transition-all hover:border-[#00C4B3]/30 cursor-pointer rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00C4B3] bg-card"
                   >
-                    <Card className="border-border hover:shadow-lg transition-all hover:border-[#00C4B3]/30 cursor-pointer">
-                      <CardContent className="p-6">
-                        <div className="flex items-start gap-4">
-                          <Avatar className="w-16 h-16 border-2 border-[#00C4B3]/20">
-                            <AvatarImage src={patient.avatar} alt={patient.name} />
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-4">
+                        <Avatar className="w-16 h-16 border-2 border-[#00C4B3]/20">
+                          <AvatarImage src={patient.avatar} alt={patient.name} />
 
-                            <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
-                              {patient.name
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                <h3 className="font-semibold text-foreground truncate">
-                                  {patient.name}
-                                </h3>
-                                <p className="text-xs text-muted-foreground">
-                                  ID: {patient.patientId}
-                                </p>
-                              </div>
-                              <Badge
-                                variant="outline"
-                                className={getStatusBadge(patient.status)}
-                              >
-                                {patient.status === "in-clinic" ? "In Clinic" : "Remote"}
-                              </Badge>
+                          <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
+                            {patient.name
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-foreground truncate">
+                                {patient.name}
+                              </h3>
+                              <p className="text-xs text-muted-foreground">
+                                ID: {patient.patientId}
+                              </p>
                             </div>
-                            <div className="mt-3 space-y-2">
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <CalendarIcon className="w-3 h-3" />
+                            <Badge
+                              variant="outline"
+                              className={getStatusBadge(patient.status)}
+                            >
+                              {statusLabels[patient.status]}
+                            </Badge>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <CalendarIcon className="w-3 h-3" />
 
-                                <span>Age: {patient.age} years</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <PhoneIcon className="w-3 h-3" />
-
-                                <span className="truncate">{patient.phone}</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <MailIcon className="w-3 h-3" />
-
-                                <span className="truncate">{patient.email}</span>
-                              </div>
-                              {patient.chiefComplaint && (
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <ActivityIcon className="w-3 h-3" />
-
-                                  <span className="truncate">
-                                    Complaint: {patient.chiefComplaint}
-                                  </span>
-                                </div>
-                              )}
+                              <span>Age: {patient.age} years</span>
                             </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <PhoneIcon className="w-3 h-3" />
+
+                              <span className="truncate">{patient.phone}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <MailIcon className="w-3 h-3" />
+
+                              <span className="truncate">{patient.email}</span>
+                            </div>
+                            {patient.chiefComplaint && (
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <ActivityIcon className="w-3 h-3" />
+
+                                <span className="truncate">
+                                  Complaint: {patient.chiefComplaint}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  </Link>
+                      </div>
+                      <div className="mt-4 flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="hover:bg-blue-50 dark:hover:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/patient-overview/${patient.recordId}`);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="hover:bg-emerald-50 dark:hover:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate("/admin-appointments");
+                          }}
+                        >
+                          Schedule
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </div>
                 ))}
               </div>
 

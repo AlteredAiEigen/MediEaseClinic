@@ -85,6 +85,8 @@ class PatientBase(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    clinicId: Optional[str] = None
+    clinicName: Optional[str] = None
 
 
 class PatientCreate(PatientBase):
@@ -201,12 +203,30 @@ async def patient_helper(patient: dict) -> dict:
     # encrypted_fields = ["insuranceNumber"]  # Add other fields as needed
     # patient = field_encryption.decrypt_dict_fields(patient, encrypted_fields)
     
+    medical_history = patient.get("medicalHistory")
+    if isinstance(medical_history, str):
+        medical_history_value = [medical_history] if medical_history.strip() else []
+    elif isinstance(medical_history, list):
+        medical_history_value = medical_history
+    else:
+        medical_history_value = []
+
+    allergies = patient.get("allergies")
+    if isinstance(allergies, str):
+        allergy_value = [allergies] if allergies.strip() else []
+    elif isinstance(allergies, list):
+        allergy_value = allergies
+    else:
+        allergy_value = []
+
     return {
         "_id": str(patient["_id"]),
         "patientId": patient.get("patientId", ""),
         "firstName": patient["firstName"],
         "lastName": patient["lastName"],
         "fullName": f"{patient['firstName']} {patient['lastName']}",
+        "clinicId": patient.get("clinicId"),
+        "clinicName": patient.get("clinicName"),
         "gender": patient["gender"],
         "age": patient["age"],
         "bloodGroup": patient["bloodGroup"],
@@ -215,8 +235,8 @@ async def patient_helper(patient: dict) -> dict:
         "phone": patient["phone"],
         "address": patient["address"],
         "vitals": patient.get("vitals", {}),
-        "medicalHistory": patient.get("medicalHistory", ""),
-        "allergies": patient.get("allergies", ""),
+        "medicalHistory": medical_history_value,
+        "allergies": allergy_value,
         "familyHistory": patient.get("familyHistory", ""),
         "previousSurgeries": patient.get("previousSurgeries", ""),
         "currentMedication": patient.get("currentMedication", ""),

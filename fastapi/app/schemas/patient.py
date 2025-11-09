@@ -42,6 +42,10 @@ class PatientCreateRequest(BaseModel):
     # Insurance
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    
+    # Clinic association (injected server-side)
+    clinicId: Optional[str] = None
+    clinicName: Optional[str] = None
 
 
 class PatientUpdateRequest(BaseModel):
@@ -68,6 +72,8 @@ class PatientUpdateRequest(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    clinicId: Optional[str] = None
+    clinicName: Optional[str] = None
 
 
 class PatientSearchQuery(BaseModel):

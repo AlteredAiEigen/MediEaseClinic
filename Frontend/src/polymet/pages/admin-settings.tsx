@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,14 +24,25 @@ import {
   PaletteIcon,
   SaveIcon,
 } from "lucide-react";
+import { put } from "@/lib/api-client";
+import { useAuth, type User } from "@/context/auth-context";
 
 export function AdminSettings() {
+  const { user, refreshUser } = useAuth();
   const [profileData, setProfileData] = useState({
-    name: "Ravi Shankar",
-    email: "ravi.shankar@mediease.com",
-    phone: "+91 98765 12345",
-    role: "System Administrator",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    role: "",
+    profileImage: null as string | null,
   });
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSaveStatus, setProfileSaveStatus] = useState<
+    { type: "success" | "error"; message: string } | null
+  >(null);
 
   const [notifications, setNotifications] = useState({
     emailNotifications: true,
@@ -48,9 +59,107 @@ export function AdminSettings() {
     dateFormat: "MM/DD/YYYY",
   });
 
-  const handleSaveProfile = () => {
-    // Save profile logic
-    console.log("Profile saved:", profileData);
+  useEffect(() => {
+    if (user) {
+      setProfileData({
+        firstName: user.firstName ?? "",
+        lastName: user.lastName ?? "",
+        email: user.email ?? "",
+        phone: user.phone ?? "",
+        role: user.role ?? "",
+        profileImage: user.profileImage ?? null,
+      });
+    }
+  }, [user]);
+
+  const initials = useMemo(() => {
+    const first = profileData.firstName?.trim().charAt(0) ?? "";
+    const last = profileData.lastName?.trim().charAt(0) ?? "";
+    const fallback = (first + last).toUpperCase();
+    return fallback || "AD";
+  }, [profileData.firstName, profileData.lastName]);
+
+  const roleLabel = useMemo(() => {
+    switch (profileData.role) {
+      case "admin":
+        return "Administrator";
+      case "doctor":
+        return "Doctor";
+      case "receptionist":
+        return "Receptionist";
+      default:
+        return profileData.role || "Administrator";
+    }
+  }, [profileData.role]);
+
+  const handleSaveProfile = async () => {
+    if (!profileData.firstName.trim() || !profileData.lastName.trim()) {
+      setProfileSaveStatus({
+        type: "error",
+        message: "First and last name are required.",
+      });
+      return;
+    }
+
+    if (!profileData.email.trim()) {
+      setProfileSaveStatus({
+        type: "error",
+        message: "Email address is required.",
+      });
+      return;
+    }
+
+    setIsSavingProfile(true);
+    setProfileSaveStatus(null);
+
+    try {
+      const phoneValue = profileData.phone.trim();
+      const payload: Record<string, unknown> = {
+        firstName: profileData.firstName.trim(),
+        lastName: profileData.lastName.trim(),
+        email: profileData.email.trim(),
+        profileImage: profileData.profileImage,
+      };
+
+      payload.phone = phoneValue ? phoneValue : null;
+
+      const response = await put<{ user: User }>(
+        "/api/admin/profile",
+        payload
+      );
+
+      if (!(response.success && response.data?.user)) {
+        throw new Error(response.message ?? "Failed to update profile");
+      }
+
+      const updatedUser = response.data.user;
+      setProfileData({
+        firstName: updatedUser.firstName ?? "",
+        lastName: updatedUser.lastName ?? "",
+        email: updatedUser.email ?? "",
+        phone: updatedUser.phone ?? "",
+        role: updatedUser.role ?? profileData.role,
+        profileImage: updatedUser.profileImage ?? null,
+      });
+
+      await refreshUser();
+
+      setProfileSaveStatus({
+        type: "success",
+        message: response.message ?? "Profile updated successfully.",
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update profile. Please try again.";
+      setProfileSaveStatus({
+        type: "error",
+        message,
+      });
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   const handleSaveNotifications = () => {
@@ -88,43 +197,111 @@ export function AdminSettings() {
               <div className="flex items-center gap-6">
                 <Avatar className="w-24 h-24 border-4 border-[#00C4B3]/20">
                   <AvatarImage
-                    src="https://github.com/yusufhilmi.png"
-                    alt="Ravi Shankar"
+                    src={profileData.profileImage ?? undefined}
+                    alt={`${profileData.firstName} ${profileData.lastName}`.trim()}
                   />
 
                   <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white text-2xl">
-                    RS
+                    {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div className="space-y-2">
                   <Button
                     variant="outline"
                     className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                    onClick={() => fileInputRef.current?.click()}
                   >
                     Change Photo
                   </Button>
+                  {profileData.profileImage && (
+                    <Button
+                      variant="ghost"
+                      className="text-sm px-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setProfileData((prev) => ({
+                          ...prev,
+                          profileImage: null,
+                        }));
+                        setPhotoError(null);
+                      }}
+                    >
+                      Remove Photo
+                    </Button>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     JPG, PNG or GIF. Max size 2MB
                   </p>
+                  {photoError && (
+                    <p className="text-xs text-red-500">{photoError}</p>
+                  )}
                 </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      return;
+                    }
+
+                    if (file.size > 2 * 1024 * 1024) {
+                      setPhotoError("Image must be smaller than 2MB.");
+                      return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      setProfileData((prev) => ({
+                        ...prev,
+                        profileImage:
+                          typeof reader.result === "string"
+                            ? reader.result
+                            : prev.profileImage,
+                      }));
+                      setPhotoError(null);
+                    };
+                    reader.onerror = () => {
+                      setPhotoError("Unable to read the selected file.");
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
               </div>
 
               <Separator />
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="firstName">First Name</Label>
                   <Input
-                    id="name"
-                    value={profileData.name}
+                    id="firstName"
+                    value={profileData.firstName}
                     onChange={(e) =>
-                      setProfileData({ ...profileData, name: e.target.value })
+                      setProfileData({
+                        ...profileData,
+                        firstName: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="lastName">Last Name</Label>
+                  <Input
+                    id="lastName"
+                    value={profileData.lastName}
+                    onChange={(e) =>
+                      setProfileData({
+                        ...profileData,
+                        lastName: e.target.value,
+                      })
                     }
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
-                  <Input id="role" value={profileData.role} disabled />
+                  <Input id="role" value={roleLabel} disabled />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email Address</Label>
@@ -168,10 +345,22 @@ export function AdminSettings() {
               <Button
                 onClick={handleSaveProfile}
                 className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
+                disabled={isSavingProfile}
               >
                 <SaveIcon className="w-4 h-4 mr-2" />
-                Save Profile
+                {isSavingProfile ? "Saving..." : "Save Profile"}
               </Button>
+              {profileSaveStatus && (
+                <p
+                  className={`text-sm ${
+                    profileSaveStatus.type === "success"
+                      ? "text-emerald-600"
+                      : "text-red-500"
+                  }`}
+                >
+                  {profileSaveStatus.message}
+                </p>
+              )}
             </CardContent>
           </Card>
 

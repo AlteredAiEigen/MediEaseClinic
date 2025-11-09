@@ -20,7 +20,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import { LabReportViewerDialog } from "@/polymet/components/lab-report-viewer-dialog";
-import { get, post } from "@/lib/api-client";
+import { get } from "@/lib/api-client";
 
 interface Patient {
   _id: string;
@@ -44,6 +44,8 @@ interface Patient {
   allergies?: string[];
   presentInClinic?: boolean;
   chiefComplaint?: string;
+  condition?: string;
+  lastVisit?: string;
 }
 
 interface PatientVitals {
@@ -125,6 +127,7 @@ export function PatientOverview() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasAnyData, setHasAnyData] = useState(false);
 
   // Lab report viewer state
   const [labReportViewerOpen, setLabReportViewerOpen] = useState(false);
@@ -140,43 +143,67 @@ export function PatientOverview() {
         setError(null);
 
         // Fetch patient details
-        const patientResponse = await get<Patient>(`/api/patients/${patientId}`);
-        if (patientResponse.success && patientResponse.data) {
-          setPatient(patientResponse.data);
+        const patientResponse = await get<{ patient: Patient }>(
+          `/api/patients/${patientId}`
+        );
+        const patientData = patientResponse.data?.patient;
+        if (patientResponse.success && patientData) {
+          setPatient(patientData);
+          setHasAnyData(true);
+        } else if (patientResponse.message) {
+          setError(patientResponse.message);
         }
 
         // Fetch patient vitals
         const vitalsResponse = await get<{ vitals: PatientVitals[] }>(`/api/patient-vitals/patient/${patientId}`);
         if (vitalsResponse.success && vitalsResponse.data?.vitals) {
           setVitals(vitalsResponse.data.vitals);
+          if (vitalsResponse.data.vitals.length > 0) {
+            setHasAnyData(true);
+          }
         }
 
         // Fetch prescriptions
         const prescriptionsResponse = await get<{ prescriptions: Prescription[] }>(`/api/prescriptions?patient_id=${patientId}`);
         if (prescriptionsResponse.success && prescriptionsResponse.data?.prescriptions) {
           setPrescriptions(prescriptionsResponse.data.prescriptions);
+          if (prescriptionsResponse.data.prescriptions.length > 0) {
+            setHasAnyData(true);
+          }
         }
 
         // Fetch lab reports
         const labReportsResponse = await get<{ reports: LabReport[] }>(`/api/lab-reports?patient_id=${patientId}`);
         if (labReportsResponse.success && labReportsResponse.data?.reports) {
           setLabReports(labReportsResponse.data.reports);
+          if (labReportsResponse.data.reports.length > 0) {
+            setHasAnyData(true);
+          }
         }
 
         // Fetch clinical notes
         const notesResponse = await get<{ notes: ClinicalNote[] }>(`/api/clinical-notes?patient_id=${patientId}`);
         if (notesResponse.success && notesResponse.data?.notes) {
           setClinicalNotes(notesResponse.data.notes);
+          if (notesResponse.data.notes.length > 0) {
+            setHasAnyData(true);
+          }
         }
 
         // Fetch appointment history
         const appointmentsResponse = await get<{ data: Appointment[] }>(`/api/appointments?patientId=${patientId}`);
         if (appointmentsResponse.success && appointmentsResponse.data?.data) {
           setAppointments(appointmentsResponse.data.data);
+          if (appointmentsResponse.data.data.length > 0) {
+            setHasAnyData(true);
+          }
         }
 
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load patient data";
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Failed to load patient data";
         setError(message);
       } finally {
         setIsLoading(false);
@@ -190,27 +217,6 @@ export function PatientOverview() {
     if (labReports[reportIndex]) {
       setSelectedLabReport(labReports[reportIndex]);
       setLabReportViewerOpen(true);
-    }
-  };
-
-  const handleAddVitals = async (vitalsData: Partial<PatientVitals>) => {
-    if (!patientId) return;
-
-    try {
-      const response = await post("/api/patient-vitals", {
-        patientId: patientId,
-        ...vitalsData,
-      });
-
-      if (response.success) {
-        // Refresh vitals data
-        const vitalsResponse = await get<{ vitals: PatientVitals[] }>(`/api/patient-vitals/patient/${patientId}`);
-        if (vitalsResponse.success && vitalsResponse.data?.vitals) {
-          setVitals(vitalsResponse.data.vitals);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to add vitals:", err);
     }
   };
 
@@ -229,21 +235,49 @@ export function PatientOverview() {
     );
   }
 
-  if (error || !patient) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            {error ? "Error Loading Patient" : "Patient Not Found"}
-          </h2>
-          <p className="text-muted-foreground">
-            {error || "The requested patient could not be found."}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const displayPatient: Patient = patient ?? {
+    _id: patientId ?? "",
+    patientId: patientId ?? "",
+    firstName: "Unknown",
+    lastName: "Patient",
+    fullName: "Unknown Patient",
+    email: "",
+    phone: "",
+    dateOfBirth: "",
+    gender: "",
+    address: "",
+    bloodGroup: "",
+    age: "",
+    presentInClinic: false,
+    chiefComplaint: "",
+    medicalHistory: [],
+    allergies: [],
+  };
+  const showLimitedDataNotice = !hasAnyData;
+
+  const allergyEntries: string[] = (() => {
+    const value = (displayPatient as unknown as Record<string, unknown>).allergies;
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map((entry) => String(entry));
+    }
+    if (typeof value === "string") {
+      return value.trim() ? [value] : [];
+    }
+    return [];
+  })();
+
+  const medicalHistoryEntries: string[] = (() => {
+    const value = (displayPatient as unknown as Record<string, unknown>).medicalHistory;
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value.map((entry) => String(entry));
+    }
+    if (typeof value === "string") {
+      return value.trim() ? [value] : [];
+    }
+    return [];
+  })();
 
   return (
     <div className="space-y-6">
@@ -254,15 +288,38 @@ export function PatientOverview() {
         reportData={selectedLabReport}
       />
 
+      {error && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800">
+          <p className="text-sm">
+            We couldn’t retrieve all patient details ({error}). Showing any available
+            information below.
+          </p>
+        </div>
+      )}
+
+      {showLimitedDataNotice && !error && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-800">
+          <p className="text-sm">
+            Basic patient information is displayed. Additional clinical records
+            will appear once they are recorded.
+          </p>
+        </div>
+      )}
+
       {/* Patient Header */}
       <Card className="border-border shadow-sm bg-gradient-to-br from-[#00C4B3]/5 to-[#10b981]/5">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
             <Avatar className="w-24 h-24 border-4 border-[#00C4B3]/20">
-              <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patient.fullName)}&background=random&color=ffffff&size=96`} alt={patient.fullName} />
+              <AvatarImage
+                src={`https://ui-avatars.com/api/?name=${encodeURIComponent(
+                  displayPatient.fullName
+                )}&background=random&color=ffffff&size=96`}
+                alt={displayPatient.fullName}
+              />
 
               <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white text-2xl">
-                {patient.fullName
+                {displayPatient.fullName
                   .split(" ")
                   .map((n) => n[0])
                   .join("")
@@ -274,17 +331,17 @@ export function PatientOverview() {
             <div className="flex-1 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center gap-3">
                 <h1 className="text-3xl font-bold text-foreground">
-                  {patient.fullName}
+                  {displayPatient.fullName}
                 </h1>
                 <Badge
                   variant="outline"
                   className={
-                    patient.presentInClinic
+                    displayPatient.presentInClinic
                       ? "bg-[#00C4B3]/10 text-[#00C4B3] border-[#00C4B3]/20"
                       : "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
                   }
                 >
-                  {patient.presentInClinic ? "In Clinic" : "Remote"}
+                  {displayPatient.presentInClinic ? "In Clinic" : "Remote Follow-up"}
                 </Badge>
               </div>
 
@@ -292,34 +349,40 @@ export function PatientOverview() {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <UserIcon className="w-4 h-4" />
 
-                  <span>ID: {patient.patientId}</span>
+                  <span>ID: {displayPatient.patientId}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <CalendarIcon className="w-4 h-4" />
 
                   <span>
-                    {patient.age} years • {patient.gender}
+                    {displayPatient.age || "—"}{" "}
+                    {displayPatient.age ? "years" : ""}
+                    {displayPatient.gender ? ` • ${displayPatient.gender}` : ""}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <ActivityIcon className="w-4 h-4" />
 
-                  <span>Blood Type: {patient.bloodType}</span>
+                  <span>
+                    Blood Type: {displayPatient.bloodGroup || "Not recorded"}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <PhoneIcon className="w-4 h-4" />
 
-                  <span>{patient.phone}</span>
+                  <span>{displayPatient.phone || "Not provided"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MailIcon className="w-4 h-4" />
 
-                  <span>{patient.email}</span>
+                  <span>{displayPatient.email || "Not provided"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <CalendarIcon className="w-4 h-4" />
 
-                  <span>Last Visit: {patient.lastVisit}</span>
+                  <span>
+                    Last Visit: {displayPatient.lastVisit || "Not available"}
+                  </span>
                 </div>
               </div>
             </div>
@@ -463,9 +526,9 @@ export function PatientOverview() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {patient.allergies && patient.allergies.length > 0 ? (
+                  {allergyEntries.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
-                      {patient.allergies.map((allergy, index) => (
+                      {allergyEntries.map((allergy, index) => (
                         <Badge
                           key={index}
                           variant="outline"
@@ -493,7 +556,7 @@ export function PatientOverview() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-foreground">
-                    {patient.condition || "No current conditions"}
+                    {displayPatient.condition || "No current conditions"}
                   </p>
                 </CardContent>
               </Card>
@@ -507,29 +570,25 @@ export function PatientOverview() {
               <CardTitle>Medical History</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {medicalHistory.map((record, index) => (
-                  <div
-                    key={index}
-                    className="flex items-start justify-between p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
-                  >
-                    <div className="space-y-1">
-                      <h4 className="font-semibold text-foreground">
-                        {record.condition}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        {record.doctor}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {record.date}
+              {medicalHistoryEntries.length > 0 ? (
+                <div className="space-y-3">
+                  {medicalHistoryEntries.map((entry, index) => (
+                    <div
+                      key={index}
+                      className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
+                    >
+                      <p className="font-semibold text-foreground">
+                        {entry}
                       </p>
                     </div>
-                    <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                      {record.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <ClipboardListIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No medical history recorded</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -545,7 +604,7 @@ export function PatientOverview() {
             <CardContent>
               {prescriptions.length > 0 ? (
                 <div className="space-y-4">
-                  {prescriptions.map((prescription, index) => (
+                  {prescriptions.map((prescription) => (
                     <div
                       key={prescription._id}
                       className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"

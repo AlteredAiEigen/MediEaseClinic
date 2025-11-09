@@ -51,7 +51,12 @@ class PatientService:
         except:
             return "P001"
     
-    async def create_patient(self, patient_data: PatientCreate) -> dict:
+    async def create_patient(
+        self,
+        patient_data: PatientCreate,
+        clinic_id: Optional[str] = None,
+        clinic_name: Optional[str] = None
+    ) -> dict:
         """
         Create a new patient with encrypted sensitive fields.
         
@@ -84,6 +89,10 @@ class PatientService:
         patient_dict["email"] = patient_dict["email"].lower()
         patient_dict["createdAt"] = datetime.utcnow()
         patient_dict["updatedAt"] = datetime.utcnow()
+        if clinic_id:
+            patient_dict["clinicId"] = clinic_id
+        if clinic_name:
+            patient_dict["clinicName"] = clinic_name
         
         # Encrypt sensitive fields
         patient_dict = field_encryption.encrypt_dict_fields(
@@ -160,7 +169,8 @@ class PatientService:
         limit: int = 10,
         search: Optional[str] = None,
         gender: Optional[str] = None,
-        present_in_clinic: Optional[bool] = None
+        present_in_clinic: Optional[bool] = None,
+        clinic_id: Optional[str] = None
     ) -> tuple[List[dict], int]:
         """
         List patients with pagination and filtering.
@@ -192,6 +202,9 @@ class PatientService:
         
         if present_in_clinic is not None:
             query["presentInClinic"] = present_in_clinic
+        
+        if clinic_id:
+            query["clinicId"] = clinic_id
         
         # Calculate skip
         skip = (page - 1) * limit
@@ -315,7 +328,7 @@ class PatientService:
         
         return True
     
-    async def search_patients(self, query: str) -> List[dict]:
+    async def search_patients(self, query: str, clinic_id: Optional[str] = None) -> List[dict]:
         """
         Search patients by multiple fields.
         
@@ -334,6 +347,9 @@ class PatientService:
                 {"patientId": {"$regex": query, "$options": "i"}},
             ]
         }
+        
+        if clinic_id:
+            search_query["clinicId"] = clinic_id
         
         cursor = self.patients_collection.find(search_query).limit(20)
         patients = await cursor.to_list(length=20)

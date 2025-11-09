@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,7 @@ interface User {
   speciality?: string | null;
   licenseNumber?: string | null;
   experience?: number;
+  profileImage?: string | null;
 }
 
 export function AdminCredentials() {
@@ -219,10 +220,23 @@ export function AdminCredentials() {
 
   const handleUpdateUser = () => {
     if (!selectedUser) return;
+
+    const fullName =
+      selectedUser.fullName ||
+      `${selectedUser.firstName} ${selectedUser.lastName}`.trim();
+    const [firstNameUpdate, ...rest] = fullName.trim().split(" ");
+    const lastNameUpdate = rest.length > 0 ? rest.join(" ") : firstNameUpdate;
+
     setUsers(
       users.map((u) =>
-        u.id === selectedUser.id
-          ? { ...u, name: selectedUser.name, email: selectedUser.email }
+        u._id === selectedUser._id
+          ? {
+              ...u,
+              firstName: firstNameUpdate,
+              lastName: lastNameUpdate,
+              fullName,
+              email: selectedUser.email,
+            }
           : u
       )
     );
@@ -289,18 +303,10 @@ export function AdminCredentials() {
     }
   };
 
-  const getStatusBadgeColor = (status: string) => {
-    switch (status) {
-      case "active":
-        return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400";
-      case "inactive":
-        return "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400";
-      case "suspended":
-        return "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400";
-      default:
-        return "";
-    }
-  };
+  const staffUsers = useMemo(
+    () => users.filter((user) => user.role !== "admin"),
+    [users]
+  );
 
   return (
     <div className="space-y-6">
@@ -314,7 +320,7 @@ export function AdminCredentials() {
                   Total Users
                 </p>
                 <h3 className="text-3xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 dark:from-violet-400 dark:to-purple-400 bg-clip-text text-transparent mt-1">
-                  {users.length}
+                  {staffUsers.length}
                 </h3>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/50">
@@ -332,7 +338,7 @@ export function AdminCredentials() {
                   Active Users
                 </p>
                 <h3 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent mt-1">
-                  {users.filter((u) => u.status === "active").length}
+                  {staffUsers.filter((u) => u.isActive).length}
                 </h3>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/50">
@@ -772,9 +778,15 @@ export function AdminCredentials() {
                 <Label htmlFor="edit-name">Full Name</Label>
                 <Input
                   id="edit-name"
-                  value={selectedUser.name}
+                  value={
+                    selectedUser.fullName ||
+                    `${selectedUser.firstName} ${selectedUser.lastName}`.trim()
+                  }
                   onChange={(e) =>
-                    setSelectedUser({ ...selectedUser, name: e.target.value })
+                    setSelectedUser({
+                      ...selectedUser,
+                      fullName: e.target.value,
+                    })
                   }
                 />
               </div>
@@ -822,8 +834,11 @@ export function AdminCredentials() {
               <div className="flex items-center gap-3 p-4 bg-muted rounded-lg">
                 <Avatar className="w-12 h-12 border-2 border-border">
                   <AvatarImage
-                    src={selectedUser.profileImage}
-                    alt={selectedUser.fullName || `${selectedUser.firstName} ${selectedUser.lastName}`}
+                    src={selectedUser.profileImage ?? undefined}
+                    alt={
+                      selectedUser.fullName ||
+                      `${selectedUser.firstName} ${selectedUser.lastName}`
+                    }
                   />
 
                   <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
@@ -884,7 +899,8 @@ export function AdminCredentials() {
                 </div>
                 <div>
                   <p className="font-medium text-foreground">
-                    {selectedUser.name}
+                    {selectedUser.fullName ||
+                      `${selectedUser.firstName} ${selectedUser.lastName}`}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     {selectedUser.email}
