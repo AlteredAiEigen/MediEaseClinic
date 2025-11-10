@@ -186,13 +186,8 @@ export function HealthcareLayout({
     receptionist: [
       {
         icon: LayoutDashboardIcon,
-        label: "Dashboard",
-        path: "/receptionist-dashboard",
-      },
-      {
-        icon: ActivityIcon,
         label: "Work Station",
-        path: "/receptionist-workstation",
+        path: "/receptionist-dashboard",
       },
       { icon: UsersIcon, label: "Patients", path: "/receptionist-patients" },
       {
@@ -434,7 +429,9 @@ export function HealthcareLayout({
               {location.pathname.includes("-dashboard") && (
                 <div>
                   <h1 className="text-2xl font-bold text-foreground">
-                    Dashboard
+                    {location.pathname === "/receptionist-dashboard"
+                      ? "Work Station"
+                      : "Dashboard"}
                   </h1>
                 </div>
               )}

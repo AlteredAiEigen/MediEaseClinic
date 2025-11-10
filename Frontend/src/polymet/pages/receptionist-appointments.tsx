@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,9 +29,9 @@ import {
   UserIcon,
   SearchIcon,
   FilterIcon,
-  TrendingUpIcon,
   Loader2Icon,
   AlertCircleIcon,
+  CheckCircleIcon,
 } from "lucide-react";
 import { get, post, put, del } from "@/lib/api-client";
 
@@ -93,6 +93,9 @@ const extractList = <T,>(rawData: any): T[] => {
   if (rawData && Array.isArray(rawData.results)) {
     return rawData.results as T[];
   }
+  if (rawData && Array.isArray(rawData.appointments)) {
+    return rawData.appointments as T[];
+  }
   if (rawData && Array.isArray(rawData.patients)) {
     return rawData.patients as T[];
   }
@@ -100,6 +103,66 @@ const extractList = <T,>(rawData: any): T[] => {
     return rawData.doctors as T[];
   }
   return [];
+};
+
+const formatAppointmentTime = (date?: string, time?: string) => {
+  if (!time) return "—";
+  const trimmed = time.trim();
+  if (/[AP]M$/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  if (!date) return trimmed;
+  const parsed = new Date(`${date}T${trimmed}`);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  return parsed.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const normalizeDate = (value?: string) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const startOfWeek = (reference: Date) => {
+  const start = new Date(reference);
+  start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  start.setDate(start.getDate() - day);
+  return start;
+};
+
+const endOfWeek = (reference: Date) => {
+  const end = startOfWeek(reference);
+  end.setDate(end.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
+
+const endOfDay = (reference: Date) => {
+  const end = new Date(reference);
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
+
+const isSameDay = (target: Date, comparison: Date) =>
+  target.toDateString() === comparison.toDateString();
+
+const isWithinRange = (target: Date, start: Date, end: Date) =>
+  target >= start && target <= end;
+
+const formatLabel = (value?: string) => {
+  if (!value) return "";
+  return value
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
 };
 
 export function ReceptionistAppointments() {
@@ -130,6 +193,61 @@ export function ReceptionistAppointments() {
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [isRescheduling, setIsRescheduling] = useState(false);
 
+  const doctorNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    doctors.forEach((doc) => {
+      const fullName =
+        doc.fullName || [doc.firstName, doc.lastName].filter(Boolean).join(" ").trim();
+      if (doc._id && fullName) {
+        map.set(doc._id, fullName);
+      }
+    });
+    return map;
+  }, [doctors]);
+
+  const selectedDateObj = useMemo(() => {
+    const parsed = normalizeDate(selectedDate);
+    return parsed ?? new Date();
+  }, [selectedDate]);
+
+  const weekStart = useMemo(() => startOfWeek(selectedDateObj), [selectedDateObj]);
+  const weekEnd = useMemo(() => endOfWeek(selectedDateObj), [selectedDateObj]);
+
+  const sourceAppointments = useMemo(
+    () => (allAppointments.length > 0 ? allAppointments : appointments),
+    [allAppointments, appointments]
+  );
+
+  const weekAppointments = useMemo(() => {
+    return sourceAppointments.filter((apt) => {
+      const dateValue = normalizeDate(apt.date);
+      if (!dateValue) return false;
+      return isWithinRange(dateValue, weekStart, weekEnd);
+    });
+  }, [sourceAppointments, weekStart, weekEnd]);
+
+  const weekAppointmentsCount = weekAppointments.length;
+
+  const completedThisWeek = useMemo(
+    () => weekAppointments.filter((apt) => apt.status === "completed").length,
+    [weekAppointments]
+  );
+
+  const scheduledThisWeek = useMemo(
+    () => weekAppointments.filter((apt) => apt.status === "scheduled").length,
+    [weekAppointments]
+  );
+
+  const todayCompleted = useMemo(
+    () => todayAppointments.filter((apt) => apt.status === "completed").length,
+    [todayAppointments]
+  );
+
+  const todayScheduled = useMemo(
+    () => todayAppointments.filter((apt) => apt.status === "scheduled").length,
+    [todayAppointments]
+  );
+
   useEffect(() => {
     fetchAppointments();
     fetchPatients();
@@ -144,13 +262,19 @@ export function ReceptionistAppointments() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await get(`/api/appointments?date=${selectedDate}`);
+      const response = await get(`/api/appointments?date=${selectedDate}&limit=100`);
       if (response.success) {
         const appointmentsData = extractList<Appointment>(response.data);
         setAppointments(appointmentsData);
+      } else {
+        setAppointments([]);
+        if (response.message) {
+          setError(response.message);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load appointments");
+      setAppointments([]);
     } finally {
       setIsLoading(false);
     }
@@ -175,7 +299,7 @@ export function ReceptionistAppointments() {
       for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split("T")[0];
         try {
-          const response = await get(`/api/appointments?date=${dateStr}`);
+          const response = await get(`/api/appointments?date=${dateStr}&limit=100`);
           if (response.success) {
             const dayAppointments = extractList<Appointment>(response.data);
             monthAppointments.push(...dayAppointments);
@@ -262,21 +386,6 @@ export function ReceptionistAppointments() {
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
       case "cancelled":
         return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
-      default:
-        return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
-    }
-  };
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "consultation":
-        return "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400";
-      case "follow-up":
-        return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
-      case "emergency":
-        return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
-      case "checkup":
-        return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
       default:
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
     }
@@ -400,23 +509,43 @@ export function ReceptionistAppointments() {
     <div className="space-y-6">
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card className="border-border shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-cyan-50 to-cyan-100/50 dark:from-cyan-950/20 dark:to-cyan-900/10 border-cyan-200 dark:border-cyan-800">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Appointments This Week
+                </p>
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {weekAppointmentsCount}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Week of {weekStart.toLocaleDateString()} – {weekEnd.toLocaleDateString()}
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-cyan-500 flex items-center justify-center">
+                <CalendarIcon className="w-6 h-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="border-border shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-teal-50 to-teal-100/50 dark:from-teal-950/20 dark:to-teal-900/10 border-teal-200 dark:border-teal-800">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Today's Total
+                  Appointments Today
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
                   {todayAppointments.length}
                 </h3>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1">
-                  <TrendingUpIcon className="w-3 h-3" />
-                  +8% vs yesterday
+                <p className="text-xs text-muted-foreground mt-2">
+                  {selectedDateObj.toLocaleDateString()}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-teal-500 flex items-center justify-center">
-                <CalendarIcon className="w-6 h-6 text-white" />
+                <ClockIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>
@@ -427,17 +556,17 @@ export function ReceptionistAppointments() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Completed
+                  Completed This Week
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {
-                    todayAppointments.filter((a) => a.status === "completed")
-                      .length
-                  }
+                  {completedThisWeek}
                 </h3>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Today: {todayCompleted}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
-                <ClockIcon className="w-6 h-6 text-white" />
+                <CheckCircleIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>
@@ -448,33 +577,17 @@ export function ReceptionistAppointments() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Scheduled
+                  Scheduled This Week
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {
-                    todayAppointments.filter((a) => a.status === "scheduled")
-                      .length
-                  }
+                  {scheduledThisWeek}
                 </h3>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Today: {todayScheduled}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
                 <UserIcon className="w-6 h-6 text-white" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border shadow-sm hover:shadow-md transition-shadow bg-gradient-to-br from-cyan-50 to-cyan-100/50 dark:from-cyan-950/20 dark:to-cyan-900/10 border-cyan-200 dark:border-cyan-800">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  This Week
-                </p>
-                <h3 className="text-3xl font-bold text-foreground mt-2">42</h3>
-              </div>
-              <div className="w-12 h-12 rounded-xl bg-cyan-500 flex items-center justify-center">
-                <CalendarIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>
@@ -701,73 +814,87 @@ export function ReceptionistAppointments() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {filteredAppointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-border hover:shadow-md transition-all duration-200 bg-card"
-                >
-                  <div className="flex flex-col items-center justify-center px-4 py-2 bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20 rounded-lg border border-teal-200 dark:border-teal-800">
-                    <span className="text-2xl font-bold text-foreground">
-                      {appointment.time.split(":")[0]}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {appointment.time.split(" ")[1]}
-                    </span>
-                  </div>
+              {filteredAppointments.map((appointment) => {
+                const doctorName =
+                  appointment.doctorName ||
+                  doctorNameMap.get(appointment.doctorId) ||
+                  (appointment as any).doctor?.fullName ||
+                  [(appointment as any).doctor?.firstName, (appointment as any).doctor?.lastName]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() ||
+                  "Doctor not assigned";
+                const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
 
-                  <Avatar className="w-12 h-12 border-2 border-background shadow-sm">
-                    <AvatarImage
-                      src={appointment.avatar}
-                      alt={appointment.patientName}
-                    />
-
-                    <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white font-semibold">
-                      {appointment.patientName
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-foreground">
-                      {appointment.patientName}
-                    </h4>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {appointment.reason}
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge className={getTypeColor(appointment.type)}>
-                        {appointment.type}
-                      </Badge>
-                      <Badge className={getStatusColor(appointment.status)}>
-                        {appointment.status}
-                      </Badge>
+                return (
+                  <div
+                    key={appointment.id}
+                    className="flex flex-col gap-4 rounded-2xl border border-border bg-white/80 p-4 shadow-sm transition-all duration-200 hover:shadow-md dark:bg-slate-900/80"
+                  >
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div className="flex items-start gap-4">
+                        <Avatar className="w-12 h-12 border border-border shadow-sm">
+                          <AvatarImage
+                            src={appointment.avatar}
+                            alt={appointment.patientName}
+                          />
+                          <AvatarFallback className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            <UserIcon className="w-5 h-5" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="space-y-1">
+                          <h4 className="font-semibold text-foreground">
+                            {appointment.patientName}
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            {appointment.reason || "General consultation"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Doctor: {doctorName}
+                            {appointment.type
+                              ? ` • ${formatLabel(appointment.type)}`
+                              : ""}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <span className="text-sm font-semibold text-foreground">
+                          {formattedTime}
+                        </span>
+                        <Badge className={`${getStatusColor(appointment.status)} capitalize`}>
+                          {appointment.status?.replace("-", " ") || "scheduled"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-border hover:bg-teal-50 dark:hover:bg-teal-950/20"
+                        onClick={() => handleRescheduleClick(appointment)}
+                        disabled={
+                          appointment.status === "cancelled" || appointment.status === "completed"
+                        }
+                      >
+                        Reschedule
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20"
+                        onClick={() =>
+                          handleCancelAppointment(appointment._id || appointment.appointmentId)
+                        }
+                        disabled={
+                          appointment.status === "cancelled" || appointment.status === "completed"
+                        }
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   </div>
-
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="hover:bg-teal-50 dark:hover:bg-teal-950/20 border-teal-200 dark:border-teal-800"
-                      onClick={() => handleRescheduleClick(appointment)}
-                      disabled={appointment.status === "cancelled" || appointment.status === "completed"}
-                    >
-                      Reschedule
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="hover:bg-red-50 dark:hover:bg-red-950/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"
-                      onClick={() => handleCancelAppointment(appointment._id || appointment.appointmentId)}
-                      disabled={appointment.status === "cancelled" || appointment.status === "completed"}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

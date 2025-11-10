@@ -163,8 +163,6 @@ export function ReceptionistWorkstation() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
   }, [fetchData]);
 
   const fetchPatients = async () => {

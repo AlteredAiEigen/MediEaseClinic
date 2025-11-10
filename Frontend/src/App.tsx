@@ -248,16 +248,6 @@ export default function MediEaseClinicPrototype() {
           }
         />
 
-        <Route
-          path="/receptionist-workstation"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <ReceptionistWorkstation />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
       </Routes>
     </Router>
   );

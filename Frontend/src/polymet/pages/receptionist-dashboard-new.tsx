@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import {
   CalendarIcon,
@@ -10,21 +9,16 @@ import {
   UserPlusIcon,
   AlertCircleIcon,
   ActivityIcon,
-  DollarSignIcon,
-  ArrowRightIcon,
-  ArrowLeftIcon,
-  XIcon,
+  SearchIcon,
+  FilterIcon,
   UsersIcon,
   ClockIcon,
   BellIcon,
   TrendingUpIcon,
-  ChevronRightIcon,
-  ChevronLeftIcon,
-  UploadIcon,
   FileTextIcon,
   Loader2Icon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { get, post, put, del } from "@/lib/api-client";
+import { get, post } from "@/lib/api-client";
 import {
   Select,
   SelectContent,
@@ -44,6 +37,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toast } from "@/components/ui/use-toast";
+
+interface Patient {
+  _id: string;
+  patientId?: string;
+  fullName: string;
+  firstName?: string;
+  lastName?: string;
+  age?: string;
+  gender?: string;
+  phone?: string;
+  email?: string;
+}
 
 interface QueueEntry {
   _id: string;
@@ -69,22 +75,6 @@ interface QueueEntry {
   reason: string;
   notes: string;
   wait_time: number;
-}
-
-interface Patient {
-  _id: string;
-  patientId: string;
-  fullName: string;
-  age?: string;
-  gender?: string;
-  phone?: string;
-}
-
-interface Doctor {
-  _id: string;
-  firstName: string;
-  lastName: string;
-  fullName?: string;
 }
 
 interface QueueStats {
@@ -121,26 +111,33 @@ const extractList = <T,>(rawData: any): T[] => {
   return [];
 };
 
+const normalizeId = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.$oid === "string") return record.$oid;
+    if (typeof record._id === "string") return record._id;
+  }
+  try {
+    return String(value);
+  } catch {
+    return undefined;
+  }
+};
+
 export function ReceptionistDashboardNew() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [queueList, setQueueList] = useState<QueueEntry[]>([]);
-  const [patients, setPatients] = useState<Patient[]>([]);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [queueStats, setQueueStats] = useState<QueueStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
   
   const [checkInDialog, setCheckInDialog] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [checkInReason, setCheckInReason] = useState("");
   const [checkInPriority, setCheckInPriority] = useState("medium");
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [appointmentsList, setAppointmentsList] = useState<any[]>([]);
-  const [prescriptionDialog, setPrescriptionDialog] = useState(false);
-  const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
-  const [prescriptionFile, setPrescriptionFile] = useState("");
-  const [prescriptionNotes, setPrescriptionNotes] = useState("");
   const [addPatientDialog, setAddPatientDialog] = useState(false);
   const [isAddingPatient, setIsAddingPatient] = useState(false);
   const [newPatient, setNewPatient] = useState({
@@ -153,6 +150,13 @@ export function ReceptionistDashboardNew() {
     address: "",
     bloodGroup: "",
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFilter, setSearchFilter] =
+    useState<"patients" | "appointments">("patients");
+  const [queueDetailTab, setQueueDetailTab] =
+    useState<"checked-in" | "consultation">("checked-in");
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [processingAppointmentId, setProcessingAppointmentId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -161,9 +165,9 @@ export function ReceptionistDashboardNew() {
 
   useEffect(() => {
     fetchQueueData();
-    fetchPatients();
-    fetchDoctors();
     fetchQueueStats();
+    fetchPatients();
+    fetchTodayAppointments();
     
     // Refresh every 30 seconds
     const interval = setInterval(() => {
@@ -176,8 +180,6 @@ export function ReceptionistDashboardNew() {
 
   const fetchQueueData = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
       const response = await get<{ queue?: QueueEntry[]; data?: QueueEntry[] | QueueEntry }>("/api/queue");
       if (response.success) {
         // Handle different response formats - queue can be directly in data or nested
@@ -197,37 +199,21 @@ export function ReceptionistDashboardNew() {
       }
     } catch (err) {
       console.error("Queue fetch error:", err);
-      setError(err instanceof Error ? err.message : "Failed to load queue");
       setQueueList([]);
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const fetchPatients = async () => {
     try {
-      const response = await get("/api/patients?limit=100");
+    const response = await get<{ data?: Patient[]; patients?: Patient[] }>(
+      "/api/patients?limit=100"
+    );
       if (response.success) {
         const patientsData = extractList<Patient>(response.data);
         setPatients(patientsData);
       }
     } catch (err) {
       console.error("Failed to load patients:", err);
-    }
-  };
-
-  const fetchDoctors = async () => {
-    try {
-      const response = await get("/api/doctors?limit=100");
-      if (response.success) {
-        const doctorsData = extractList<Doctor>(response.data);
-        setDoctors(doctorsData);
-      } else {
-        setDoctors([]);
-      }
-    } catch (err) {
-      console.error("Failed to load doctors:", err);
-      setDoctors([]);
     }
   };
 
@@ -264,10 +250,6 @@ export function ReceptionistDashboardNew() {
       const response = await post<{ patient: any }>("/api/patients", payload);
 
       if (response.success && response.data?.patient) {
-        // Refresh patients list
-        await fetchPatients();
-        
-        // Auto-open check-in dialog with the new patient
         setSelectedPatientId(response.data.patient._id);
         setAddPatientDialog(false);
         setNewPatient({
@@ -302,16 +284,24 @@ export function ReceptionistDashboardNew() {
       setIsCheckingIn(true);
       // Use appointment-based check-in
       const response = await post("/api/queue/check-in", {
-        appointmentId: selectedPatientId, // Reusing this state for appointmentId
+        appointmentId: selectedPatientId, // normalized appointment id
         reason: checkInReason || "General Consultation",
         priority: checkInPriority,
         notes: "",
       });
 
       if (response.success) {
+        setAppointmentsList((prev) =>
+          prev.map((apt) => {
+            const key = apt.mongoId ?? apt.id ?? apt.appointmentId;
+            if (key === selectedPatientId) {
+              return { ...apt, status: "checked-in" };
+            }
+            return apt;
+          })
+        );
         setCheckInDialog(false);
         setSelectedPatientId("");
-        setSelectedDoctorId("");
         setCheckInReason("");
         setCheckInPriority("medium");
         fetchQueueData();
@@ -329,15 +319,61 @@ export function ReceptionistDashboardNew() {
     }
   };
 
-  const handleCheckOut = async (queueEntryId: string) => {
+  const handleCheckInFromAppointment = async (appointment: any) => {
+    const appointmentMongoId =
+      appointment?.mongoId || appointment?.id || appointment?.appointmentId;
+    if (!appointmentMongoId) {
+      toast({
+        variant: "destructive",
+        title: "Check-in unavailable",
+        description: "Unable to identify the selected appointment.",
+      });
+      return;
+    }
+
     try {
-      const response = await post(`/api/queue/${queueEntryId}/check-out`, {});
+      setProcessingAppointmentId(appointmentMongoId);
+      const response = await post("/api/queue/check-in", {
+        appointmentId: appointmentMongoId,
+        reason: appointment.reason || "General Consultation",
+        priority: "medium",
+        notes: "",
+      });
+
       if (response.success) {
+        setAppointmentsList((prev) =>
+          prev.map((apt) => {
+            const key = apt.mongoId ?? apt.id ?? apt.appointmentId;
+            if (key === appointmentMongoId) {
+              return { ...apt, status: "checked-in" };
+            }
+            return apt;
+          })
+        );
+        toast({
+          title: "Patient checked in",
+          description: `${appointment.patientName} has been moved to the queue.`,
+        });
         fetchQueueData();
         fetchQueueStats();
+        fetchTodayAppointments();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Unable to check in",
+          description: response.message || "Please try again in a moment.",
+        });
       }
-    } catch (err) {
-      console.error("Failed to check out patient:", err);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to check in appointment.";
+      toast({
+        variant: "destructive",
+        title: "Unable to check in",
+        description: message,
+      });
+    } finally {
+      setProcessingAppointmentId(null);
     }
   };
 
@@ -350,21 +386,34 @@ export function ReceptionistDashboardNew() {
   // Fetch appointments for today
   const fetchTodayAppointments = async () => {
     try {
-      const today = new Date().toISOString().split("T")[0];
-      const response = await get(`/api/appointments?date=${today}&limit=50`);
+      const response = await get(`/api/appointments?limit=100`);
       if (response.success) {
         const rawAppointments = extractList<any>(response.data);
-        const mappedAppointments = rawAppointments.map((apt: any) => ({
-          id: apt._id || apt.appointmentId,
-          patientId: apt.patientId,
-          patientName: apt.patientName || "Unknown Patient",
-          time: apt.time,
+        const mappedAppointments = rawAppointments.map((apt: any) => {
+          const mongoId =
+            normalizeId(apt._id) ?? normalizeId(apt.id) ?? normalizeId(apt.appointmentId);
+          const appointmentIdentifier = normalizeId(apt.appointmentId);
+          const fallbackId =
+            mongoId ?? appointmentIdentifier ?? Math.random().toString(36).slice(2);
+
+          return {
+            id: fallbackId,
+            mongoId: mongoId ?? fallbackId,
+            appointmentId: appointmentIdentifier ?? fallbackId,
+            patientId: normalizeId(apt.patientId) ?? apt.patientId,
+            patientName: apt.patientName || apt.patient?.fullName || "Unknown Patient",
+            time: apt.time ?? "—",
+            date: apt.date ?? new Date().toISOString().split("T")[0],
           reason: apt.reason || "General Consultation",
-          status: apt.status,
-          avatar: apt.patientName 
-            ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
-            : undefined,
-        }));
+            status: apt.status ?? "scheduled",
+            type: apt.type || apt.appointmentType,
+            doctorId: normalizeId(apt.doctorId) ?? normalizeId(apt.doctor?._id),
+            doctorName:
+              apt.doctorName ||
+              apt.doctor?.fullName ||
+              [apt.doctor?.firstName, apt.doctor?.lastName].filter(Boolean).join(" "),
+          };
+        });
         setAppointmentsList(mappedAppointments);
       }
     } catch (err) {
@@ -376,89 +425,123 @@ export function ReceptionistDashboardNew() {
     fetchTodayAppointments();
   }, []);
 
-  const handleUploadPrescription = (patientId: string) => {
-    setSelectedPatient(patientId);
-    setPrescriptionDialog(true);
-  };
-
-  const handleSavePrescription = () => {
-    if (selectedPatient) {
-      // In a real app, this would upload the file and save the prescription
-      console.log("Prescription saved for patient:", selectedPatient);
-      setPrescriptionDialog(false);
-      setPrescriptionFile("");
-      setPrescriptionNotes("");
-      setSelectedPatient(null);
-    }
-  };
-
-  const handleCompleteCheckout = async (queueEntryId: string) => {
-    await handleCheckOut(queueEntryId);
-  };
-
-  const moveToQueue = async (appointmentId: string) => {
-    const appointment = appointmentsList.find(
-      (apt) => apt.id === appointmentId
-    );
-    if (!appointment) {
-      alert("Appointment not found");
-      return;
-    }
-    
-    // Check in the patient from appointment using appointment-based check-in
-    try {
-      const response = await post("/api/queue/check-in", {
-        appointmentId: appointment.id,
-        reason: appointment.reason || "General Consultation",
-        priority: "medium",
-        notes: "",
-      });
-      
-      if (response.success) {
-        setAppointmentsList((prev) =>
-          prev.filter((apt) => apt.id !== appointmentId)
-        );
-        fetchQueueData();
-        fetchQueueStats();
-        fetchTodayAppointments();
-      } else {
-        alert(response.message || "Failed to check in patient");
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to check in patient";
-      alert(message);
-      console.error("Failed to check in from appointment:", err);
-    }
-  };
-
-  const removeFromAppointments = async (appointmentId: string) => {
-    if (!confirm("Are you sure you want to cancel this appointment?")) {
-      return;
-    }
-
-    try {
-      const response = await del(`/api/appointments/${appointmentId}`);
-      if (response.success) {
-        setAppointmentsList((prev) =>
-          prev.filter((apt) => apt.id !== appointmentId)
-        );
-        fetchTodayAppointments();
-        alert("Appointment cancelled successfully");
-      } else {
-        alert(response.message || "Failed to cancel appointment");
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to cancel appointment";
-      alert(message);
-      console.error("Failed to cancel appointment:", err);
-    }
-  };
-
   const avgWaitTime = queueStats?.average_wait_time || 
     (queueList.length > 0 ? Math.floor(15 + Math.random() * 20) : 0);
   const peakHours = [9, 10, 11, 14, 15, 16];
   const currentHour = currentTime.getHours();
   const isPeakTime = peakHours.includes(currentHour);
+
+const formatAppointmentTime = (date?: string, time?: string) => {
+  if (!time) return "—";
+  const trimmed = time.trim();
+  if (/[AP]M$/i.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  if (!date) return trimmed;
+  const parsed = new Date(`${date}T${trimmed}`);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+};
+
+const normalizedQuery = searchQuery.trim().toLowerCase();
+
+const matchesAppointment = (appointment: any) => {
+  if (!normalizedQuery) return true;
+  return [
+    appointment.patientName ?? "",
+    appointment.reason ?? "",
+    appointment.status ?? "",
+    appointment.time ?? "",
+    appointment.date ?? "",
+    appointment.doctorName ?? "",
+  ].some((field) => field.toLowerCase().includes(normalizedQuery));
+};
+
+const matchesQueueEntry = (entry: QueueEntry) => {
+  if (!normalizedQuery) return true;
+  const doctorName =
+    entry.doctor?.fullName ||
+    [entry.doctor?.firstName, entry.doctor?.lastName]
+      .filter(Boolean)
+      .join(" ");
+  return [
+    entry.patient?.fullName ?? "",
+    entry.patient?.patientId ?? "",
+    entry.reason ?? "",
+    doctorName ?? "",
+  ].some((field) => field.toLowerCase().includes(normalizedQuery));
+};
+
+const matchesPatient = (patient: Patient) => {
+  if (!normalizedQuery) return false;
+  return [
+    patient.fullName,
+    patient.firstName,
+    patient.lastName,
+    patient.patientId,
+    patient.email,
+    patient.phone,
+  ]
+    .filter(Boolean)
+    .some((field) => field!.toLowerCase().includes(normalizedQuery));
+};
+
+const todayDate = new Date().toISOString().split("T")[0];
+const todaysAppointments = appointmentsList.filter((appointment) => {
+  const dateValue = (appointment.date ?? "").slice(0, 10);
+  const statusValue = (appointment.status ?? "scheduled").toLowerCase();
+  return dateValue === todayDate && statusValue === "scheduled";
+});
+
+const appointmentByPatientId = new Map<string, any>();
+appointmentsList.forEach((apt) => {
+  if (apt.patientId) {
+    const key = apt.patientId;
+    const existing = appointmentByPatientId.get(key);
+    if (!existing || (apt.date && apt.time && `${apt.date} ${apt.time}` < `${existing.date} ${existing.time}`)) {
+      appointmentByPatientId.set(key, apt);
+    }
+  }
+});
+
+const filteredAppointments =
+  normalizedQuery && searchFilter === "appointments"
+    ? todaysAppointments.filter(matchesAppointment)
+    : todaysAppointments;
+
+const appointmentSearchResults =
+  normalizedQuery && searchFilter === "appointments"
+    ? appointmentsList.filter(matchesAppointment)
+    : [];
+
+const patientSearchResults =
+  normalizedQuery && searchFilter === "patients"
+    ? patients.filter(matchesPatient)
+    : [];
+
+const checkInEntries = queueList.filter(
+  (entry) => entry.status === "waiting" || entry.status === "checked-in"
+);
+const consultationEntries = queueList.filter(
+  (entry) => entry.status === "in-consultation"
+);
+const checkoutEntries = queueList.filter(
+  (entry) => entry.status === "completed" || entry.status === "checkout"
+);
+
+const shouldFilterQueue = normalizedQuery && searchFilter === "patients";
+
+const filteredCheckInEntries = shouldFilterQueue
+  ? checkInEntries.filter(matchesQueueEntry)
+  : checkInEntries;
+const filteredConsultationEntries = shouldFilterQueue
+  ? consultationEntries.filter(matchesQueueEntry)
+  : consultationEntries;
+const filteredCheckoutEntries = shouldFilterQueue
+  ? checkoutEntries.filter(matchesQueueEntry)
+  : checkoutEntries;
 
   return (
     <div className="space-y-6 p-1">
@@ -657,101 +740,471 @@ export function ReceptionistDashboardNew() {
         </CardContent>
       </Card>
 
-      {/* Appointments & Queue Stats */}
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Appointments Stats */}
-        <Card className="border border-border shadow-md hover:shadow-lg transition-all duration-300">
-          <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
-                <CalendarIcon className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+      {/* Workspace search */}
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+          <div className="flex flex-1 items-center gap-3 rounded-full bg-slate-50 px-4 py-2.5 text-sm shadow-inner dark:bg-slate-800/80">
+            <SearchIcon className="h-4 w-4 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search patients and appointments across the workspace"
+              className="flex-1 border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            />
+            {normalizedQuery && (
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {searchFilter === "patients"
+                  ? `${patientSearchResults.length} matching patient${
+                      patientSearchResults.length === 1 ? "" : "s"
+                    }`
+                  : `${appointmentSearchResults.length} matching appointment${
+                      appointmentSearchResults.length === 1 ? "" : "s"
+                    }`}
+              </span>
+            )}
               </div>
-              <CardTitle className="text-lg font-semibold">
-                Today's Appointments
+          <Select
+            value={searchFilter}
+            onValueChange={(value: "patients" | "appointments") =>
+              setSearchFilter(value)
+            }
+          >
+            <SelectTrigger className="md:w-[200px] rounded-full border-0 bg-gradient-to-r from-teal-600 to-emerald-600 px-4 text-sm font-medium text-white shadow-md hover:from-teal-700 hover:to-emerald-700">
+              <FilterIcon className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="Search by" />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="patients">
+                <span className="flex items-center gap-2">
+                  <UsersIcon className="h-4 w-4 text-emerald-600" />
+                  Patients
+                </span>
+              </SelectItem>
+              <SelectItem value="appointments">
+                <span className="flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-teal-600" />
+                  Appointments
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {normalizedQuery && (
+          <div className="text-xs text-muted-foreground md:pl-1">
+            {searchFilter === "patients"
+              ? `Searching patient records for “${searchQuery}”.`
+              : `Searching appointments for “${searchQuery}”.`}
+          </div>
+        )}
+      </div>
+
+      {normalizedQuery && (
+        <Card className="border border-border bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-semibold">
+              {searchFilter === "patients"
+                ? "Patient search results"
+                : "Appointment search results"}
+              </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {searchFilter === "patients" ? (
+              patientSearchResults.length > 0 ? (
+                patientSearchResults.slice(0, 8).map((patient) => (
+                  <div
+                    key={patient._id}
+                    className="flex items-center justify-between rounded-lg border border-slate-200/70 px-3 py-2 text-sm dark:border-slate-700/60"
+                  >
+                    <div>
+                      <p className="font-medium text-foreground">{patient.fullName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {patient.patientId ? `ID: ${patient.patientId}` : "Unassigned ID"}
+                        {patient.phone ? ` • ${patient.phone}` : ""}
+                      </p>
+            </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        className="px-0 text-xs font-medium text-teal-600 hover:text-teal-500"
+                        onClick={() => navigate(`/patient-overview/${patient._id}`)}
+                      >
+                        View details
+              </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                        onClick={() => {
+                          setSearchFilter("appointments");
+                          setSearchQuery(patient.fullName);
+                        }}
+                      >
+                        View appointments
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No matching patients found.
+                </p>
+              )
+            ) : appointmentSearchResults.length > 0 ? (
+              appointmentSearchResults.slice(0, 8).map((appointment) => {
+                const appointmentKey =
+                  appointment.mongoId || appointment.id || appointment.appointmentId;
+                const appointmentStatus = (appointment.status ?? "scheduled").toLowerCase();
+                const isAlreadyCheckedIn = ["checked-in", "in-consultation", "ongoing", "checkout", "completed"].includes(
+                  appointmentStatus
+                );
+                const isProcessing = processingAppointmentId === appointmentKey;
+                const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
+                return (
+                  <div
+                    key={appointmentKey}
+                    className="space-y-3 rounded-lg border border-slate-200/70 p-3 text-sm dark:border-slate-700/60"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-foreground">
+                          {appointment.patientName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {appointment.reason || "General consultation"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Doctor: {appointment.doctorName || "Not assigned"}
+                </p>
+              </div>
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <span className="text-sm font-semibold text-foreground">
+                          {formattedTime}
+                        </span>
+                        {isAlreadyCheckedIn ? (
+                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            Checked in
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                            disabled={isProcessing}
+                            onClick={() => handleCheckInFromAppointment(appointment)}
+                          >
+                            {isProcessing ? (
+                              <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                            ) : (
+                              <CheckCircleIcon className="mr-2 h-3 w-3" />
+                            )}
+                            Move to check-in
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="capitalize">
+                        Status: {appointment.status?.replace("-", " ") ?? "scheduled"}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="px-0 text-xs font-medium text-slate-600 hover:text-slate-900"
+                        onClick={() => navigate("/receptionist-appointments")}
+                      >
+                        View in appointments
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No matching appointments found.
+              </p>
+            )}
+            {(searchFilter === "patients"
+              ? patientSearchResults.length
+              : appointmentSearchResults.length) > 8 && (
+              <p className="pt-1 text-xs text-muted-foreground">
+                Showing first 8 results. Refine your search for more matches.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="border border-emerald-100 bg-emerald-50/70 shadow-sm dark:border-emerald-900">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-emerald-500/10 p-2 text-emerald-600">
+                <CalendarIcon className="h-4 w-4" />
+              </span>
+              <CardTitle className="text-base font-semibold text-emerald-700">
+                Today&apos;s Appointments
+              </CardTitle>
+              </div>
+            <Badge className="border-0 bg-emerald-200 text-emerald-700">
+              {filteredAppointments.length}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-3 min-h-[240px] max-h-[320px] overflow-y-auto pr-1">
+            {filteredAppointments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-emerald-200 bg-white/80 p-6 text-center dark:border-emerald-800/60 dark:bg-slate-900/50">
+                <CalendarIcon className="mb-3 h-8 w-8 text-emerald-300" />
+                <p className="text-sm font-semibold text-emerald-700">
+                  No appointments scheduled today
+                </p>
+                <p className="mt-1 text-xs text-emerald-600/80">
+                  All future appointments remain available in search.
+                </p>
+              </div>
+            ) : (
+              filteredAppointments.map((appointment) => {
+                const appointmentKey =
+                  appointment.mongoId || appointment.id || appointment.appointmentId;
+                const isProcessing = processingAppointmentId === appointmentKey;
+                const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
+                return (
+                  <div
+                    key={appointmentKey}
+                    className="rounded-lg border border-emerald-100 bg-white/80 p-3 shadow-sm dark:border-emerald-800/60 dark:bg-slate-900"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          {appointment.patientName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {appointment.reason || "General consultation"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Doctor: {appointment.doctorName || "Not assigned"}
+                </p>
+              </div>
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {formattedTime}
+                        </span>
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 text-white hover:bg-emerald-700"
+                          disabled={isProcessing}
+                          onClick={() => handleCheckInFromAppointment(appointment)}
+                        >
+                          {isProcessing ? (
+                            <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <CheckCircleIcon className="mr-2 h-3 w-3" />
+                          )}
+                          Move to check-in
+                        </Button>
+            </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-sky-100 bg-sky-50/70 shadow-sm dark:border-sky-900">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-sky-500/10 p-2 text-sky-600">
+                <UsersIcon className="h-4 w-4" />
+              </span>
+              <CardTitle className="text-base font-semibold text-sky-700">
+                Queue Details
               </CardTitle>
             </div>
-            <Link to="/receptionist-appointments">
-              <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700">
-                View All
-                <ArrowRightIcon className="h-4 w-4 ml-1" />
-              </Button>
-            </Link>
+            <Badge className="border-0 bg-sky-200 text-sky-700">
+              {queueDetailTab === "checked-in"
+                ? filteredCheckInEntries.length
+                : filteredConsultationEntries.length}
+            </Badge>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/20 dark:to-emerald-950/20 border border-teal-200 dark:border-teal-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Total Today</p>
-                <p className="text-3xl font-bold text-teal-600 dark:text-teal-400">
-                  {appointmentsList.length}
+          <CardContent className="space-y-4">
+            <div className="flex rounded-full border border-sky-200 bg-white/70 p-1 text-sm dark:border-sky-800 dark:bg-slate-900/70">
+              <button
+                type="button"
+                className={`flex-1 rounded-full px-3 py-1.5 transition ${
+                  queueDetailTab === "checked-in"
+                    ? "bg-sky-500 text-white shadow"
+                    : "text-sky-600 hover:bg-sky-100 dark:text-sky-300 dark:hover:bg-slate-800"
+                }`}
+                onClick={() => setQueueDetailTab("checked-in")}
+              >
+                Checked In
+              </button>
+              <button
+                type="button"
+                className={`flex-1 rounded-full px-3 py-1.5 transition ${
+                  queueDetailTab === "consultation"
+                    ? "bg-sky-500 text-white shadow"
+                    : "text-sky-600 hover:bg-sky-100 dark:text-sky-300 dark:hover:bg-slate-800"
+                }`}
+                onClick={() => setQueueDetailTab("consultation")}
+              >
+                Consultation
+              </button>
+            </div>
+            <div className="space-y-3 min-h-[240px] max-h-[320px] overflow-y-auto pr-1">
+              {queueDetailTab === "checked-in" ? (
+                filteredCheckInEntries.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-200 bg-white/80 p-6 text-center dark:border-sky-800/60 dark:bg-slate-900/50">
+                    <CheckCircleIcon className="mb-3 h-8 w-8 text-sky-300" />
+                    <p className="text-sm font-semibold text-sky-700">
+                      No checked-in patients
+                    </p>
+                    <p className="mt-1 text-xs text-sky-600/80">
+                      Use the search to find more appointments.
                 </p>
               </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Scheduled</p>
-                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                  {appointmentsList.filter((apt) => apt.status === "scheduled").length}
+                ) : (
+                filteredCheckInEntries.map((entry) => {
+                  const appointment = appointmentByPatientId.get(entry.patient._id);
+                  return (
+                    <div
+                      key={entry.queue_id}
+                      className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <span className="font-semibold text-slate-800 dark:text-slate-100">
+                            {entry.patient.fullName}
+                          </span>
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            {appointment?.time
+                              ? formatAppointmentTime(appointment.date, appointment.time)
+                              : "Walk-in"}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {entry.reason || "General consultation"},{" "}
+                            {appointment?.doctorName || "Any doctor"}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
+                          >
+                            Waiting
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+                )
+              ) : filteredConsultationEntries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-200 bg-white/80 p-6 text-center dark:border-sky-800/60 dark:bg-slate-900/50">
+                  <ClockIcon className="mb-3 h-8 w-8 text-sky-300" />
+                  <p className="text-sm font-semibold text-sky-700">
+                    No ongoing consultations
+                  </p>
+                  <p className="mt-1 text-xs text-sky-600/80">
+                    Patients appear here while doctors are in session.
                 </p>
               </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Checked In</p>
-                <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-                  {appointmentsList.filter((apt) => apt.status === "checked-in").length}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-950/20 dark:to-slate-950/20 border border-gray-200 dark:border-gray-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Completed</p>
-                <p className="text-3xl font-bold text-gray-600 dark:text-gray-400">
-                  {appointmentsList.filter((apt) => apt.status === "completed").length}
-                </p>
-              </div>
+              ) : (
+                filteredConsultationEntries.map((entry) => {
+                  const doctorName =
+                    entry.doctor?.fullName ||
+                    [entry.doctor?.firstName, entry.doctor?.lastName]
+                      .filter(Boolean)
+                      .join(" ") ||
+                    "Assigned doctor";
+                  return (
+                    <div
+                      key={entry.queue_id}
+                      className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {entry.patient.fullName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {doctorName}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
+                        >
+                          In consultation
+                        </Badge>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {entry.reason || "Consultation in progress"}
+                      </p>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Queue Stats */}
-        <Card className="border border-border shadow-md hover:shadow-lg transition-all duration-300">
+        <Card className="border border-amber-100 bg-amber-50/70 shadow-sm dark:border-amber-900">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
-                <UsersIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
-              </div>
-              <CardTitle className="text-lg font-semibold">
-                Patient Queue
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-amber-500/10 p-2 text-amber-600">
+                <FileTextIcon className="h-4 w-4" />
+              </span>
+              <CardTitle className="text-base font-semibold text-amber-700">
+                Checkout
               </CardTitle>
             </div>
-            <Link to="/receptionist-workstation">
-              <Button variant="ghost" size="sm" className="text-cyan-600 hover:text-cyan-700">
-                View Queue
-                <ArrowRightIcon className="h-4 w-4 ml-1" />
-              </Button>
-            </Link>
+            <Badge className="border-0 bg-amber-200 text-amber-700">
+              {filteredCheckoutEntries.length}
+            </Badge>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 rounded-lg bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 border border-cyan-200 dark:border-cyan-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Total in Queue</p>
-                <p className="text-3xl font-bold text-cyan-600 dark:text-cyan-400">
-                  {queueList.length}
+          <CardContent className="space-y-3 min-h-[240px] max-h-[320px] overflow-y-auto pr-1">
+            {filteredCheckoutEntries.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-amber-200 bg-white/80 p-6 text-center dark:border-amber-800/60 dark:bg-slate-900/50">
+                <FileTextIcon className="mb-3 h-8 w-8 text-amber-300" />
+                <p className="text-sm font-semibold text-amber-700">
+                  No patients in checkout
+                </p>
+                <p className="mt-1 text-xs text-amber-600/80">
+                  Patients appear here when doctors end a consultation.
                 </p>
               </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/20 dark:to-emerald-950/20 border border-teal-200 dark:border-teal-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Waiting</p>
-                <p className="text-3xl font-bold text-teal-600 dark:text-teal-400">
-                  {waitingPatients}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">In Consultation</p>
-                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                  {inConsultation}
-                </p>
-              </div>
-              <div className="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Awaiting Checkout</p>
-                <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
-                  {awaitingCheckout}
-                </p>
-              </div>
-            </div>
+            ) : (
+              filteredCheckoutEntries.map((entry) => (
+                <div
+                  key={entry.queue_id}
+                  className="rounded-lg border border-amber-100 bg-white/80 p-3 shadow-sm dark:border-amber-800/60 dark:bg-slate-900"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                        {entry.patient.fullName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.doctor?.fullName ||
+                          [entry.doctor?.firstName, entry.doctor?.lastName]
+                            .filter(Boolean)
+                            .join(" ") ||
+                          "Consultation complete"}
+                      </p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                    >
+                      Awaiting checkout
+                    </Badge>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {entry.reason || "Awaiting final paperwork"}
+                  </p>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>
@@ -964,11 +1417,15 @@ export function ReceptionistDashboardNew() {
                 <SelectContent>
                   {appointmentsList
                     .filter((apt) => apt.status === "scheduled")
-                    .map((apt) => (
-                      <SelectItem key={apt.id} value={apt.id}>
-                        {apt.patientName} - {apt.time} ({apt.reason})
+                    .map((apt) => {
+                      const optionId = (apt.mongoId ?? apt.id) as string;
+                      return (
+                        <SelectItem key={optionId} value={optionId}>
+                          {apt.patientName} • {formatAppointmentTime(apt.date, apt.time)} (
+                          {apt.reason || "General consultation"})
                       </SelectItem>
-                    ))}
+                      );
+                    })}
                 </SelectContent>
               </Select>
               {appointmentsList.filter((apt) => apt.status === "scheduled").length === 0 && (
@@ -1010,7 +1467,6 @@ export function ReceptionistDashboardNew() {
               onClick={() => {
                 setCheckInDialog(false);
                 setSelectedPatientId("");
-                setSelectedDoctorId("");
                 setCheckInReason("");
                 setCheckInPriority("medium");
               }}
@@ -1038,62 +1494,6 @@ export function ReceptionistDashboardNew() {
         </DialogContent>
       </Dialog>
 
-      {/* Prescription Upload Dialog */}
-      <Dialog open={prescriptionDialog} onOpenChange={setPrescriptionDialog}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Upload Prescription</DialogTitle>
-            <DialogDescription>
-              Upload prescription for patient {selectedPatient}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="prescription-file">Prescription File</Label>
-              <Input
-                id="prescription-file"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => setPrescriptionFile(e.target.value)}
-              />
-
-              <p className="text-xs text-muted-foreground">
-                Accepted formats: PDF, JPG, PNG
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="prescription-notes">Notes (Optional)</Label>
-              <Textarea
-                id="prescription-notes"
-                placeholder="Add any additional notes about the prescription..."
-                value={prescriptionNotes}
-                onChange={(e) => setPrescriptionNotes(e.target.value)}
-                rows={4}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setPrescriptionDialog(false);
-                setPrescriptionFile("");
-                setPrescriptionNotes("");
-                setSelectedPatient(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSavePrescription}
-              className="bg-teal-600 hover:bg-teal-700 text-white"
-            >
-              <UploadIcon className="h-4 w-4 mr-2" />
-              Upload Prescription
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

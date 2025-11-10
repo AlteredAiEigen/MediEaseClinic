@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,6 @@ import {
   CalendarIcon,
   FilterIcon,
   FileTextIcon,
-  TrendingUpIcon,
   UserIcon,
   ActivityIcon,
   AlertCircleIcon,
@@ -44,6 +43,33 @@ const useDebounce = (value: string, delay: number) => {
   return debouncedValue;
 };
 
+const normalizeDate = (value?: string) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const startOfWeek = (reference: Date) => {
+  const start = new Date(reference);
+  start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  start.setDate(start.getDate() - day);
+  return start;
+};
+
+const endOfDay = (reference: Date) => {
+  const end = new Date(reference);
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
+
+const isWithinRange = (target: Date, start: Date, end: Date) =>
+  target >= start && target <= end;
+
+const isSameDay = (target: Date, comparison: Date) =>
+  target.toDateString() === comparison.toDateString();
+
 interface Patient {
   _id: string;
   patientId: string;
@@ -54,6 +80,8 @@ interface Patient {
   email?: string;
   presentInClinic: boolean;
   chiefComplaint?: string | null;
+  createdAt?: string;
+  registeredAt?: string;
 }
 
 export function ReceptionistPatients() {
@@ -63,6 +91,12 @@ export function ReceptionistPatients() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [appointmentsTodayCount, setAppointmentsTodayCount] = useState(0);
+  const [appointmentsThisWeekCount, setAppointmentsThisWeekCount] = useState(0);
+
+  const todayRef = useMemo(() => new Date(), []);
+  const weekStart = useMemo(() => startOfWeek(todayRef), [todayRef]);
+  const weekEnd = useMemo(() => endOfDay(todayRef), [todayRef]);
 
   useEffect(() => {
     const fetchPatients = async () => {
@@ -92,6 +126,48 @@ export function ReceptionistPatients() {
     fetchPatients();
   }, []);
 
+  useEffect(() => {
+    const fetchAppointmentStats = async () => {
+      try {
+        const response = await get("/api/appointments?limit=200");
+        if (response.success) {
+          const payload = response.data as any;
+          const list = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.appointments)
+            ? payload.appointments
+            : [];
+
+          let todayCount = 0;
+          let weekCount = 0;
+          const today = todayRef;
+
+          list.forEach((apt: any) => {
+            const dateValue = normalizeDate(apt?.date);
+            if (!dateValue) return;
+            if (isSameDay(dateValue, today)) {
+              todayCount += 1;
+            }
+            if (isWithinRange(dateValue, weekStart, weekEnd)) {
+              weekCount += 1;
+            }
+          });
+
+          setAppointmentsTodayCount(todayCount);
+          setAppointmentsThisWeekCount(weekCount);
+        }
+      } catch (err) {
+        console.error("Failed to load appointment stats:", err);
+        setAppointmentsTodayCount(0);
+        setAppointmentsThisWeekCount(0);
+      }
+    };
+
+    fetchAppointmentStats();
+  }, [todayRef, weekEnd, weekStart]);
+
   const filteredPatients = useMemo(() => {
     const query = debouncedSearchQuery.trim().toLowerCase();
     return patients.filter((patient) => {
@@ -107,6 +183,20 @@ export function ReceptionistPatients() {
       return matchesSearch && matchesStatus;
     });
   }, [patients, debouncedSearchQuery, statusFilter]);
+
+  const inClinicCount = useMemo(
+    () => patients.filter((patient) => patient.presentInClinic).length,
+    [patients]
+  );
+
+  const newPatientsThisWeek = useMemo(() => {
+    return patients.filter((patient) => {
+      const createdAt =
+        normalizeDate(patient.createdAt) ?? normalizeDate(patient.registeredAt);
+      if (!createdAt) return false;
+      return isWithinRange(createdAt, weekStart, weekEnd);
+    }).length;
+  }, [patients, weekEnd, weekStart]);
 
   const getStatusColor = (patient: Patient): string => {
     if (patient.presentInClinic) {
@@ -190,10 +280,6 @@ export function ReceptionistPatients() {
                 <h3 className="text-3xl font-bold text-foreground mt-2">
                   {patients.length}
                 </h3>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1">
-                  <TrendingUpIcon className="w-3 h-3" />
-                  +12% this month
-                </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-teal-500 flex items-center justify-center">
                 <UserIcon className="w-6 h-6 text-white" />
@@ -210,7 +296,7 @@ export function ReceptionistPatients() {
                   In Clinic Today
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {patients.filter((p) => p.presentInClinic).length}
+                  {inClinicCount}
                 </h3>
               </div>
               <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
@@ -225,9 +311,11 @@ export function ReceptionistPatients() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  New This Month
+                  New This Week
                 </p>
-                <h3 className="text-3xl font-bold text-foreground mt-2">24</h3>
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {newPatientsThisWeek}
+                </h3>
               </div>
               <div className="w-12 h-12 rounded-xl bg-cyan-500 flex items-center justify-center">
                 <UserPlusIcon className="w-6 h-6 text-white" />
@@ -241,9 +329,14 @@ export function ReceptionistPatients() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Appointments Today
+                  Appointments This Week
                 </p>
-                <h3 className="text-3xl font-bold text-foreground mt-2">18</h3>
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {appointmentsThisWeekCount}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Today: {appointmentsTodayCount}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
                 <CalendarIcon className="w-6 h-6 text-white" />
