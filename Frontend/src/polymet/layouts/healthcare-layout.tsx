@@ -633,6 +633,12 @@ export function HealthcareLayout({
                   <Button
                     variant="ghost"
                     className="w-full text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/20"
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      // In a real app, this would navigate to a notifications page
+                      // For now, just close the dropdown
+                      console.log("View all notifications clicked");
+                    }}
                   >
                     View All Notifications
                   </Button>

@@ -14,6 +14,10 @@ import numpy as np
 
 # Try to import pydub, but handle Python 3.13 compatibility issues
 try:
+    from io import BytesIO
+    import tempfile
+    import subprocess
+    import shutil
     from pydub import AudioSegment
     from pydub.effects import normalize
     PYDUB_AVAILABLE = True
@@ -78,29 +82,57 @@ class AWSService:
         Returns:
             Amplified audio bytes
         """
-        if not PYDUB_AVAILABLE:
-            # If pydub is not available (e.g., Python 3.13), return original audio
-            print("Warning: Audio amplification skipped (pydub not available)")
-            return audio_data
+        if PYDUB_AVAILABLE:
+            try:
+                audio = AudioSegment.from_file(BytesIO(audio_data), format="wav")
+                amplified = normalize(audio) + gain_db
+                if amplified.max_dBFS > -1.0:
+                    amplified = amplified.apply_gain(-1.0 - amplified.max_dBFS)
+                output_buffer = BytesIO()
+                amplified.export(output_buffer, format="wav")
+                return output_buffer.getvalue()
+            except Exception as e:
+                print(f"Audio amplification with pydub failed: {e}")
 
+        # Fallback to ffmpeg amplification
         try:
-            # Load audio from bytes
-            audio = AudioSegment.from_file(audio_data, format="wav")
+            ffmpeg_path = shutil.which("ffmpeg")
+            if not ffmpeg_path:
+                print("Warning: ffmpeg not found; skipping audio amplification")
+                return audio_data
 
-            # Apply normalization/amplification
-            amplified = normalize(audio) + gain_db
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as input_file:
+                input_file.write(audio_data)
+                input_path = input_file.name
 
-            # Ensure we don't exceed maximum amplitude
-            if amplified.max_dBFS > -1.0:
-                amplified = amplified.apply_gain(-1.0 - amplified.max_dBFS)
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as output_file:
+                output_path = output_file.name
 
-            # Export back to bytes
-            output_buffer = amplified.export(format="wav")
-            return output_buffer.read()
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-i", input_path,
+                "-filter:a", f"volume={gain_db}dB",
+                output_path
+            ]
 
+            subprocess.run(cmd, check=True, capture_output=True)
+
+            with open(output_path, "rb") as amplified_file:
+                amplified_data = amplified_file.read()
+
+            return amplified_data
+
+        except subprocess.CalledProcessError as e:
+            print(f"Audio amplification via ffmpeg failed: {e.stderr.decode('utf-8', errors='ignore')}")
+            return audio_data
         except Exception as e:
-            print(f"Audio amplification failed: {e}")
-            return audio_data  # Return original if amplification fails
+            print(f"Audio amplification fallback failed: {e}")
+            return audio_data
+        finally:
+            for path in locals().get("input_path", ""), locals().get("output_path", ""):
+                if path and os.path.exists(path):
+                    os.remove(path)
 
     async def upload_recording_to_s3(
         self,
@@ -179,122 +211,72 @@ class AWSService:
                 'error': f'Upload processing failed: {str(e)}'
             }
 
-    async def start_transcription_job(
+    def start_transcription_job_and_wait(
         self,
         recording_url: str,
-        job_name: str,
-        language_code: str = "en-US"
+        job_name: str
     ) -> Dict[str, Any]:
         """
-        Start AWS Transcribe job for audio file.
+        Start AWS Transcribe job and wait for completion (synchronous polling).
 
         Args:
             recording_url: S3 URL of the recording
             job_name: Unique job name
-            language_code: Language code for transcription
-
-        Returns:
-            Dict with transcription job details
-        """
-        try:
-            # Extract bucket and key from URL
-            # URL format: https://bucket.s3.region.amazonaws.com/key
-            url_parts = recording_url.replace('https://', '').split('/')
-            bucket = url_parts[0].split('.')[0]
-            key = '/'.join(url_parts[1:])
-
-            response = self.transcribe_client.start_transcription_job(
-                TranscriptionJobName=job_name,
-                Media={'MediaFileUri': recording_url},
-                MediaFormat='wav',
-                LanguageCode=language_code,
-                Settings={
-                    'ShowSpeakerLabels': True,
-                    'MaxSpeakerLabels': 2,  # Doctor and patient
-                    'ChannelIdentification': False,
-                    'ShowAlternatives': False
-                },
-                OutputBucketName=self.transcripts_bucket,
-                OutputKey=f"transcripts/{job_name}.json"
-            )
-
-            return {
-                'success': True,
-                'job_name': job_name,
-                'job_status': response['TranscriptionJob']['TranscriptionJobStatus'],
-                'job_arn': response['TranscriptionJob']['TranscriptionJobArn']
-            }
-
-        except ClientError as e:
-            return {
-                'success': False,
-                'error': f'Transcription job failed: {str(e)}'
-            }
-
-    async def get_transcription_result(self, job_name: str) -> Dict[str, Any]:
-        """
-        Get transcription job result.
-
-        Args:
-            job_name: Transcription job name
 
         Returns:
             Dict with transcription result
         """
         try:
-            response = self.transcribe_client.get_transcription_job(
-                TranscriptionJobName=job_name
+            # Start transcription job
+            self.transcribe_client.start_transcription_job(
+                TranscriptionJobName=job_name,
+                Media={'MediaFileUri': recording_url},
+                IdentifyMultipleLanguages=True,
+                LanguageOptions=['en-US', 'hi-IN'],
+                MediaFormat='mp3'
             )
 
-            job = response['TranscriptionJob']
-            status = job['TranscriptionJobStatus']
+            # Poll for completion
+            import time
+            while True:
+                response = self.transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
+                status = response['TranscriptionJob']['TranscriptionJobStatus']
 
-            if status == 'COMPLETED':
-                # Get transcript from S3
-                transcript_key = f"transcripts/{job_name}.json"
-                transcript_obj = self.s3_client.get_object(
-                    Bucket=self.transcripts_bucket,
-                    Key=transcript_key
-                )
+                if status == 'COMPLETED':
+                    transcript_uri = response['TranscriptionJob']['Transcript']['TranscriptFileUri']
+                    import requests
+                    transcript_response = requests.get(transcript_uri)
+                    transcript_json = transcript_response.json()
+                    transcript_text = transcript_json['results']['transcripts'][0]['transcript']
 
-                import json
-                transcript_data = json.loads(transcript_obj['Body'].read().decode('utf-8'))
+                    return {
+                        'success': True,
+                        'status': 'completed',
+                        'transcript': transcript_text,
+                        'confidence': transcript_json['results']['transcripts'][0].get('confidence', 0.0),
+                        'job_name': job_name
+                    }
 
-                # Extract transcript text
-                transcript = transcript_data['results']['transcripts'][0]['transcript']
+                elif status == 'FAILED':
+                    return {
+                        'success': False,
+                        'status': 'error',
+                        'error': 'Transcription job failed',
+                        'job_name': job_name
+                    }
 
-                # Extract speaker labels if available
-                speaker_segments = []
-                if 'speaker_labels' in transcript_data['results']:
-                    speaker_segments = transcript_data['results']['speaker_labels']['segments']
+                else:
+                    time.sleep(5)  # Wait 5 seconds before polling again
 
-                return {
-                    'success': True,
-                    'status': 'completed',
-                    'transcript': transcript,
-                    'confidence': transcript_data['results']['transcripts'][0].get('confidence', 0),
-                    'speaker_segments': speaker_segments,
-                    'full_response': transcript_data
-                }
-
-            elif status == 'FAILED':
-                return {
-                    'success': False,
-                    'status': 'failed',
-                    'error': job.get('FailureReason', 'Unknown error')
-                }
-
-            else:
-                return {
-                    'success': True,
-                    'status': status.lower()
-                }
-
-        except ClientError as e:
+        except Exception as e:
             return {
                 'success': False,
-                'error': f'Failed to get transcription: {str(e)}'
+                'status': 'error',
+                'error': f'Transcription failed: {str(e)}',
+                'job_name': job_name
             }
+
+# Removed old async get_transcription_result method - using synchronous start_transcription_job_and_wait instead
 
     async def extract_structured_notes(
         self,
@@ -325,7 +307,8 @@ class AWSService:
             PHYSICAL EXAMINATION: Physical findings mentioned
             ASSESSMENT: Doctor's assessment/diagnosis
             PLAN: Treatment plan and recommendations
-            MEDICATIONS: Any medications prescribed or discussed
+            MEDICATIONS: Any medications prescribed or discussed (extract medication names)
+            ALLERGIES: Any allergies mentioned by the patient or doctor (extract specific allergy names)
             FOLLOW-UP INSTRUCTIONS: Follow-up care instructions
             DIFFERENTIAL DIAGNOSIS: Alternative diagnoses considered
             CLINICAL IMPRESSION: Overall clinical impression
@@ -344,13 +327,18 @@ class AWSService:
                 "physicalExamination": "...",
                 "assessment": "...",
                 "plan": "...",
-                "medications": ["med1", "med2"],
+                "medications": ["medication name 1", "medication name 2"],
+                "allergies": ["allergy name 1", "allergy name 2"],
                 "followUpInstructions": "...",
                 "differentialDiagnosis": ["dx1", "dx2"],
                 "clinicalImpression": "..."
             }}
 
-            If any category is not mentioned or not applicable, use null or empty array.
+            IMPORTANT: 
+            - Extract specific medication names mentioned (e.g., "Aspirin", "Metformin", "Ibuprofen")
+            - Extract specific allergy names mentioned (e.g., "Penicillin", "Peanuts", "Latex")
+            - If no medications or allergies are mentioned, use empty arrays []
+            - If any category is not mentioned or not applicable, use null or empty array.
             """
 
             response = await ai_service.generate_response(prompt, model="gpt-4")

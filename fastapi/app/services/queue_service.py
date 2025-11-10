@@ -288,10 +288,19 @@ class QueueService:
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             
+            # Convert doctor_id string to ObjectId for proper matching
+            try:
+                doctor_object_id = ObjectId(doctor_id)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid doctor ID format"
+                )
+            
             pipeline = [
                 {
                     "$match": {
-                        "doctor": doctor_id,
+                        "doctor": doctor_object_id,
                         "checked_in_at": {"$gte": today},
                         "is_active": True
                     }
@@ -305,7 +314,15 @@ class QueueService:
                     }
                 },
                 {
-                    "$sort": {"queue_number": 1}
+                    "$lookup": {
+                        "from": "users",
+                        "localField": "doctor",
+                        "foreignField": "_id",
+                        "as": "doctor_info"
+                    }
+                },
+                {
+                    "$sort": {"priority": -1, "queue_number": 1}
                 }
             ]
             
@@ -316,22 +333,49 @@ class QueueService:
             for entry in queue:
                 entry["_id"] = str(entry["_id"])
                 # Convert any remaining ObjectId fields to strings
-                for key, value in entry.items():
-                    if isinstance(value, ObjectId):
-                        entry[key] = str(value)
+                if entry.get("patient") and isinstance(entry["patient"], ObjectId):
+                    entry["patient"] = str(entry["patient"])
+                if entry.get("doctor") and isinstance(entry["doctor"], ObjectId):
+                    entry["doctor"] = str(entry["doctor"])
+                if entry.get("appointment") and isinstance(entry["appointment"], ObjectId):
+                    entry["appointment"] = str(entry["appointment"])
+                if entry.get("checked_in_by") and isinstance(entry["checked_in_by"], ObjectId):
+                    entry["checked_in_by"] = str(entry["checked_in_by"])
                 
-                if entry.get("patient_info"):
+                if entry.get("patient_info") and len(entry["patient_info"]) > 0:
                     patient = entry["patient_info"][0]
                     patient["_id"] = str(patient["_id"])
                     # Convert any ObjectIds in patient document
                     for key, value in patient.items():
                         if isinstance(value, ObjectId):
                             patient[key] = str(value)
+                    # Add fullName if not present
+                    if "fullName" not in patient:
+                        firstName = patient.get("firstName", "")
+                        lastName = patient.get("lastName", "")
+                        patient["fullName"] = f"{firstName} {lastName}".strip()
                     entry["patient"] = patient
                     del entry["patient_info"]
+                
+                if entry.get("doctor_info") and len(entry["doctor_info"]) > 0:
+                    doctor = entry["doctor_info"][0]
+                    doctor["_id"] = str(doctor["_id"])
+                    # Convert any ObjectIds in doctor document
+                    for key, value in doctor.items():
+                        if isinstance(value, ObjectId):
+                            doctor[key] = str(value)
+                    # Add fullName if not present
+                    if "fullName" not in doctor:
+                        firstName = doctor.get("firstName", "")
+                        lastName = doctor.get("lastName", "")
+                        doctor["fullName"] = f"{firstName} {lastName}".strip()
+                    entry["doctor"] = doctor
+                    del entry["doctor_info"]
             
             return queue
         
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error fetching doctor queue: {e}")
             raise HTTPException(

@@ -349,8 +349,11 @@ export function DoctorAppointments() {
                       size="sm"
                       variant="outline"
                       className="hover:bg-blue-50 dark:hover:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+                      asChild
                     >
-                      View Details
+                      <Link to={`/patient-overview/${appointment.patientId || appointment.id}`}>
+                        View Details
+                      </Link>
                     </Button>
                     {appointment.status === "scheduled" && (
                       <Button
@@ -358,7 +361,7 @@ export function DoctorAppointments() {
                         className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white"
                         asChild
                       >
-                        <Link to={`/consultation/${appointment.patientId}`}>
+                        <Link to={`/consultation/${appointment.patientId || appointment.id}`}>
                           Start
                         </Link>
                       </Button>

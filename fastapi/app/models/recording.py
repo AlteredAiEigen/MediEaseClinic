@@ -156,6 +156,7 @@ async def recording_helper(recording: dict) -> dict:
     
     return {
         "_id": str(recording["_id"]),
+        "id": str(recording["_id"]),  # Also include as "id" for frontend compatibility
         "recordingId": recording.get("recordingId", ""),
         "patientId": str(recording["patientId"]),
         "appointmentId": str(recording["appointmentId"]),
@@ -169,6 +170,8 @@ async def recording_helper(recording: dict) -> dict:
         "mimeType": recording.get("mimeType", "audio/mpeg"),
         "status": recording.get("status", "recording"),
         "transcription": recording.get("transcription", ""),
+        "transcriptionJobName": recording.get("transcriptionJobName"),  # Added for polling
+        "s3Url": recording.get("s3Url"),  # Added for appointment reference
         "transcriptionConfidence": recording.get("transcriptionConfidence"),
         "processingStartedAt": recording.get("processingStartedAt"),
         "processingCompletedAt": recording.get("processingCompletedAt"),

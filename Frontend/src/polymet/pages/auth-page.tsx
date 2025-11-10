@@ -388,6 +388,9 @@ export function AuthPage() {
                           </label>
                           <button
                             type="button"
+                            onClick={() => {
+                              alert("Please contact your administrator to reset your password.");
+                            }}
                             className="text-[#00C4B3] hover:underline"
                           >
                             Forgot password?

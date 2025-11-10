@@ -523,7 +523,7 @@ export function ReceptionistWorkstation() {
 
   return (
     <div className="space-y-6">
-      {/* Search Bar with Filter and Register Button */}
+      {/* Search Bar with Filter and Action Buttons */}
       <div className="flex items-center gap-4">
         <Card className="flex-1 border-2 border-teal-200 dark:border-teal-800 shadow-lg bg-gradient-to-r from-teal-50/50 to-emerald-50/50 dark:from-teal-950/20 dark:to-emerald-950/20">
           <CardContent className="p-5">

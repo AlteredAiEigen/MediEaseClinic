@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -37,7 +36,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { get, post, put } from "@/lib/api-client";
+import { get, post, put, del } from "@/lib/api-client";
 import {
   Select,
   SelectContent,
@@ -123,7 +122,6 @@ const extractList = <T,>(rawData: any): T[] => {
 };
 
 export function ReceptionistDashboardNew() {
-  const [queueTab, setQueueTab] = useState("all");
   const [currentTime, setCurrentTime] = useState(new Date());
   const [queueList, setQueueList] = useState<QueueEntry[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -295,16 +293,16 @@ export function ReceptionistDashboardNew() {
   };
 
   const handleCheckIn = async () => {
-    if (!selectedPatientId || !selectedDoctorId) {
-      alert("Please select both a patient and a doctor");
+    if (!selectedPatientId) {
+      alert("Please select an appointment");
       return;
     }
 
     try {
       setIsCheckingIn(true);
+      // Use appointment-based check-in
       const response = await post("/api/queue/check-in", {
-        patientId: selectedPatientId,
-        doctorId: selectedDoctorId,
+        appointmentId: selectedPatientId, // Reusing this state for appointmentId
         reason: checkInReason || "General Consultation",
         priority: checkInPriority,
         notes: "",
@@ -318,7 +316,7 @@ export function ReceptionistDashboardNew() {
         setCheckInPriority("medium");
         fetchQueueData();
         fetchQueueStats();
-        fetchPatients(); // Refresh patients list
+        fetchTodayAppointments(); // Refresh appointments list
       } else {
         alert(response.message || "Failed to check in patient");
       }
@@ -350,30 +348,31 @@ export function ReceptionistDashboardNew() {
   const completedToday = queueStats?.completed || 0;
 
   // Fetch appointments for today
-  useEffect(() => {
-    const fetchTodayAppointments = async () => {
-      try {
-        const today = new Date().toISOString().split("T")[0];
-        const response = await get(`/api/appointments?date=${today}&limit=50`);
-        if (response.success) {
-          const rawAppointments = extractList<any>(response.data);
-          const mappedAppointments = rawAppointments.map((apt: any) => ({
-            id: apt._id || apt.appointmentId,
-            patientId: apt.patientId,
-            patientName: apt.patientName || "Unknown Patient",
-            time: apt.time,
-            reason: apt.reason || "General Consultation",
-            status: apt.status,
-            avatar: apt.patientName 
-              ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
-              : undefined,
-          }));
-          setAppointmentsList(mappedAppointments);
-        }
-      } catch (err) {
-        console.error("Failed to load appointments:", err);
+  const fetchTodayAppointments = async () => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const response = await get(`/api/appointments?date=${today}&limit=50`);
+      if (response.success) {
+        const rawAppointments = extractList<any>(response.data);
+        const mappedAppointments = rawAppointments.map((apt: any) => ({
+          id: apt._id || apt.appointmentId,
+          patientId: apt.patientId,
+          patientName: apt.patientName || "Unknown Patient",
+          time: apt.time,
+          reason: apt.reason || "General Consultation",
+          status: apt.status,
+          avatar: apt.patientName 
+            ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
+            : undefined,
+        }));
+        setAppointmentsList(mappedAppointments);
       }
-    };
+    } catch (err) {
+      console.error("Failed to load appointments:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchTodayAppointments();
   }, []);
 
@@ -401,20 +400,18 @@ export function ReceptionistDashboardNew() {
     const appointment = appointmentsList.find(
       (apt) => apt.id === appointmentId
     );
-    if (!appointment || !selectedDoctorId) {
-      alert("Please select a doctor first");
+    if (!appointment) {
+      alert("Appointment not found");
       return;
     }
     
-    // Check in the patient from appointment
+    // Check in the patient from appointment using appointment-based check-in
     try {
       const response = await post("/api/queue/check-in", {
-        patientId: appointment.patientId,
-        doctorId: selectedDoctorId,
+        appointmentId: appointment.id,
         reason: appointment.reason || "General Consultation",
         priority: "medium",
         notes: "",
-        appointmentId: appointment.id,
       });
       
       if (response.success) {
@@ -423,22 +420,39 @@ export function ReceptionistDashboardNew() {
         );
         fetchQueueData();
         fetchQueueStats();
+        fetchTodayAppointments();
+      } else {
+        alert(response.message || "Failed to check in patient");
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to check in patient";
+      alert(message);
       console.error("Failed to check in from appointment:", err);
     }
   };
 
-  const removeFromAppointments = (appointmentId: string) => {
-    setAppointmentsList((prev) =>
-      prev.filter((apt) => apt.id !== appointmentId)
-    );
-  };
+  const removeFromAppointments = async (appointmentId: string) => {
+    if (!confirm("Are you sure you want to cancel this appointment?")) {
+      return;
+    }
 
-  const filteredQueuePatients = queueList.filter((p) => {
-    if (queueTab === "all") return true;
-    return p.status === queueTab;
-  });
+    try {
+      const response = await del(`/api/appointments/${appointmentId}`);
+      if (response.success) {
+        setAppointmentsList((prev) =>
+          prev.filter((apt) => apt.id !== appointmentId)
+        );
+        fetchTodayAppointments();
+        alert("Appointment cancelled successfully");
+      } else {
+        alert(response.message || "Failed to cancel appointment");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel appointment";
+      alert(message);
+      console.error("Failed to cancel appointment:", err);
+    }
+  };
 
   const avgWaitTime = queueStats?.average_wait_time || 
     (queueList.length > 0 ? Math.floor(15 + Math.random() * 20) : 0);
@@ -643,9 +657,9 @@ export function ReceptionistDashboardNew() {
         </CardContent>
       </Card>
 
-      {/* Side by Side: Appointments and Queue */}
+      {/* Appointments & Queue Stats */}
       <div className="grid lg:grid-cols-2 gap-6">
-        {/* Today's Appointments */}
+        {/* Appointments Stats */}
         <Card className="border border-border shadow-md hover:shadow-lg transition-all duration-300">
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div className="flex items-center gap-3">
@@ -656,311 +670,88 @@ export function ReceptionistDashboardNew() {
                 Today's Appointments
               </CardTitle>
             </div>
-            <Badge className="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-              {appointmentsList.length} scheduled
-            </Badge>
+            <Link to="/receptionist-appointments">
+              <Button variant="ghost" size="sm" className="text-teal-600 hover:text-teal-700">
+                View All
+                <ArrowRightIcon className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2 max-h-[600px] overflow-y-auto">
-              {appointmentsList.length === 0 ? (
-                <div className="text-center py-12 text-muted-foreground">
-                  <CalendarIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-
-                  <p className="text-sm">No appointments scheduled</p>
-                </div>
-              ) : (
-                appointmentsList.map((apt) => (
-                  <div
-                    key={apt.id}
-                    className="group relative flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:shadow-md transition-all duration-300"
-                  >
-                    <Avatar className="h-12 w-12 ring-2 ring-border">
-                      <AvatarImage src={apt.avatar} />
-
-                      <AvatarFallback>
-                        {apt.patientName
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm">{apt.patientName}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {apt.reason}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-semibold">{apt.time}</p>
-                      <Badge className="bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 text-xs">
-                        {apt.status}
-                      </Badge>
-                    </div>
-                    <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:shadow-md transition-all"
-                        onClick={() => moveToQueue(apt.id)}
-                        title="Check In"
-                      >
-                        <CheckCircleIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-9 w-9 p-0 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 hover:shadow-md transition-all"
-                        onClick={() => removeFromAppointments(apt.id)}
-                        title="Cancel"
-                      >
-                        <XIcon className="h-5 w-5 text-red-600 dark:text-red-400" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/20 dark:to-emerald-950/20 border border-teal-200 dark:border-teal-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Total Today</p>
+                <p className="text-3xl font-bold text-teal-600 dark:text-teal-400">
+                  {appointmentsList.length}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Scheduled</p>
+                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                  {appointmentsList.filter((apt) => apt.status === "scheduled").length}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border border-emerald-200 dark:border-emerald-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Checked In</p>
+                <p className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {appointmentsList.filter((apt) => apt.status === "checked-in").length}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-gray-50 to-slate-50 dark:from-gray-950/20 dark:to-slate-950/20 border border-gray-200 dark:border-gray-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Completed</p>
+                <p className="text-3xl font-bold text-gray-600 dark:text-gray-400">
+                  {appointmentsList.filter((apt) => apt.status === "completed").length}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Patient Queue */}
+        {/* Queue Stats */}
         <Card className="border border-border shadow-md hover:shadow-lg transition-all duration-300">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
-                  <UsersIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
-                </div>
-                <CardTitle className="text-lg font-semibold">
-                  Patient Queue
-                </CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-cyan-100 dark:bg-cyan-900/30 flex items-center justify-center">
+                <UsersIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
               </div>
-              <div className="flex items-center gap-2">
-                <Badge className="bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800">
-                  {queueList.length} in queue
-                </Badge>
-                <Button
-                  size="sm"
-                  onClick={() => setCheckInDialog(true)}
-                  className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white"
-                >
-                  <UserPlusIcon className="h-4 w-4 mr-2" />
-                  Check In Patient
-                </Button>
-              </div>
+              <CardTitle className="text-lg font-semibold">
+                Patient Queue
+              </CardTitle>
             </div>
+            <Link to="/receptionist-workstation">
+              <Button variant="ghost" size="sm" className="text-cyan-600 hover:text-cyan-700">
+                View Queue
+                <ArrowRightIcon className="h-4 w-4 ml-1" />
+              </Button>
+            </Link>
           </CardHeader>
           <CardContent>
-            <Tabs
-              value={queueTab}
-              onValueChange={setQueueTab}
-              className="w-full"
-            >
-              <TabsList className="grid w-full grid-cols-5 bg-muted mb-4 p-1 rounded-xl">
-                <TabsTrigger
-                  value="all"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg text-xs"
-                >
-                  All
-                </TabsTrigger>
-                <TabsTrigger
-                  value="checked-in"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg text-xs"
-                >
-                  Checked In
-                </TabsTrigger>
-                <TabsTrigger
-                  value="waiting"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg text-xs"
-                >
-                  Waiting
-                </TabsTrigger>
-                <TabsTrigger
-                  value="in-consultation"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg text-xs"
-                >
-                  In Progress
-                </TabsTrigger>
-                <TabsTrigger
-                  value="awaiting-checkout"
-                  className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg text-xs"
-                >
-                  Checkout
-                </TabsTrigger>
-              </TabsList>
-              <div className="space-y-2 max-h-[520px] overflow-y-auto">
-                {filteredQueuePatients.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <UsersIcon className="h-12 w-12 mx-auto mb-3 opacity-30" />
-
-                    <p className="text-sm">No patients in queue</p>
-                  </div>
-                ) : (
-                  filteredQueuePatients.map((queueEntry) => {
-                    const currentStatus = queueEntry.status;
-                    const statusFlow = [
-                      "waiting",
-                      "in-consultation",
-                      "completed",
-                    ];
-
-                    const currentIndex = statusFlow.indexOf(currentStatus);
-                    const canMoveForward = currentIndex < statusFlow.length - 1;
-                    const canMoveBackward = currentIndex > 0;
-                    
-                    const patientName = queueEntry.patient?.fullName || 
-                      `${queueEntry.patient?.firstName || ""} ${queueEntry.patient?.lastName || ""}`.trim() ||
-                      "Unknown Patient";
-                    const patientId = queueEntry.patient?.patientId || queueEntry.patient?._id || "";
-                    const doctorName = queueEntry.doctor?.fullName || 
-                      `${queueEntry.doctor?.firstName || ""} ${queueEntry.doctor?.lastName || ""}`.trim() ||
-                      "Unknown Doctor";
-
-                    return (
-                      <div
-                        key={queueEntry._id}
-                        className="group relative flex items-center gap-3 p-4 rounded-xl border border-border bg-card hover:shadow-md transition-all duration-300"
-                      >
-                        <Avatar className="h-12 w-12 ring-2 ring-border">
-                          <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patientName)}&background=random`} />
-
-                          <AvatarFallback>
-                            {patientName
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .toUpperCase()
-                              .slice(0, 2)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm">
-                            {patientName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {patientId} • Dr. {doctorName}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {queueEntry.reason || "General Consultation"}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs font-medium text-muted-foreground mb-1">
-                            Queue #{queueEntry.queue_number}
-                          </p>
-                          <Badge
-                            className={
-                              currentStatus === "in-consultation"
-                                ? "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800"
-                                : currentStatus === "checked-in"
-                                  ? "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800"
-                                  : currentStatus === "waiting"
-                                    ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                                    : currentStatus === "awaiting-checkout"
-                                      ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
-                                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-                            }
-                          >
-                            {currentStatus === "in-consultation"
-                              ? "In Consultation"
-                              : currentStatus === "checked-in"
-                                ? "Checked In"
-                                : currentStatus === "waiting"
-                                  ? "Waiting"
-                                  : currentStatus === "awaiting-checkout"
-                                    ? "Awaiting Checkout"
-                                    : currentStatus}
-                          </Badge>
-                        </div>
-                        <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {currentStatus === "awaiting-checkout" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-9 w-9 p-0 rounded-lg hover:bg-teal-100 dark:hover:bg-teal-900/30 hover:shadow-md transition-all"
-                                onClick={() =>
-                                  handleUploadPrescription(queueEntry.patient?._id || "")
-                                }
-                                title="Upload Prescription"
-                              >
-                                <UploadIcon className="h-5 w-5 text-teal-600 dark:text-teal-400" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:shadow-md transition-all"
-                                onClick={() =>
-                                  handleCompleteCheckout(queueEntry._id)
-                                }
-                                title="Complete Checkout"
-                              >
-                                <CheckCircleIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                              </Button>
-                            </>
-                          )}
-                          {currentStatus !== "awaiting-checkout" && currentStatus !== "completed" && (
-                            <>
-                              {currentStatus === "waiting" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-9 w-9 p-0 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:shadow-md transition-all"
-                                  onClick={async () => {
-                                    try {
-                                      await post(`/api/queue/${queueEntry._id}/start-consultation`, {});
-                                      fetchQueueData();
-                                    } catch (err) {
-                                      console.error("Failed to start consultation:", err);
-                                    }
-                                  }}
-                                  title="Start Consultation"
-                                >
-                                  <ChevronRightIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                                </Button>
-                              )}
-                              {currentStatus === "in-consultation" && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-9 w-9 p-0 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 hover:shadow-md transition-all"
-                                  onClick={async () => {
-                                    try {
-                                      await put(`/api/queue/${queueEntry._id}/status`, { status: "completed" });
-                                      fetchQueueData();
-                                    } catch (err) {
-                                      console.error("Failed to complete consultation:", err);
-                                    }
-                                  }}
-                                  title="Complete Consultation"
-                                >
-                                  <CheckCircleIcon className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                                </Button>
-                              )}
-                            </>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-9 w-9 p-0 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 hover:shadow-md transition-all"
-                            onClick={async () => {
-                              try {
-                                await handleCheckOut(queueEntry._id);
-                              } catch (err) {
-                                console.error("Failed to check out:", err);
-                              }
-                            }}
-                            title="Check Out"
-                          >
-                            <ArrowLeftIcon className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 rounded-lg bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/20 dark:to-blue-950/20 border border-cyan-200 dark:border-cyan-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Total in Queue</p>
+                <p className="text-3xl font-bold text-cyan-600 dark:text-cyan-400">
+                  {queueList.length}
+                </p>
               </div>
-            </Tabs>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/20 dark:to-emerald-950/20 border border-teal-200 dark:border-teal-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Waiting</p>
+                <p className="text-3xl font-bold text-teal-600 dark:text-teal-400">
+                  {waitingPatients}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">In Consultation</p>
+                <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                  {inConsultation}
+                </p>
+              </div>
+              <div className="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-800">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Awaiting Checkout</p>
+                <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                  {awaitingCheckout}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -1151,51 +942,40 @@ export function ReceptionistDashboardNew() {
         </DialogContent>
       </Dialog>
 
-      {/* Check In Dialog */}
+      {/* Check In Dialog - Appointment-based */}
       <Dialog open={checkInDialog} onOpenChange={setCheckInDialog}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Check In Patient</DialogTitle>
+            <DialogTitle>Check In Appointment</DialogTitle>
             <DialogDescription>
-              Add a patient to the queue for a doctor
+              Check in a patient using their scheduled appointment
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="checkin-patient">Patient *</Label>
+              <Label htmlFor="checkin-appointment">Appointment *</Label>
               <Select
                 value={selectedPatientId}
                 onValueChange={setSelectedPatientId}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a patient" />
+                  <SelectValue placeholder="Select an appointment" />
                 </SelectTrigger>
                 <SelectContent>
-                  {patients.map((patient) => (
-                    <SelectItem key={patient._id} value={patient._id}>
-                      {patient.fullName} ({patient.patientId})
-                    </SelectItem>
-                  ))}
+                  {appointmentsList
+                    .filter((apt) => apt.status === "scheduled")
+                    .map((apt) => (
+                      <SelectItem key={apt.id} value={apt.id}>
+                        {apt.patientName} - {apt.time} ({apt.reason})
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="checkin-doctor">Doctor *</Label>
-              <Select
-                value={selectedDoctorId}
-                onValueChange={setSelectedDoctorId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a doctor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {doctors.map((doctor) => (
-                    <SelectItem key={doctor._id} value={doctor._id}>
-                      Dr. {doctor.firstName} {doctor.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {appointmentsList.filter((apt) => apt.status === "scheduled").length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No scheduled appointments available. Please schedule an appointment first.
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="checkin-reason">Reason</Label>
@@ -1239,7 +1019,7 @@ export function ReceptionistDashboardNew() {
             </Button>
             <Button
               onClick={handleCheckIn}
-              disabled={isCheckingIn || !selectedPatientId || !selectedDoctorId}
+              disabled={isCheckingIn || !selectedPatientId}
               className="bg-teal-600 hover:bg-teal-700 text-white"
             >
               {isCheckingIn ? (

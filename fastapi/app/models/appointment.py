@@ -159,5 +159,11 @@ async def appointment_helper(appointment: dict) -> dict:
         "clinicId": appointment.get("clinicId"),
         "createdAt": appointment.get("createdAt"),
         "updatedAt": appointment.get("updatedAt"),
+        # Recording-related fields
+        "s3Url": appointment.get("s3Url"),
+        "recordingId": appointment.get("recordingId"),
+        "consultationNotes": appointment.get("consultationNotes"),
+        "transcription": appointment.get("transcription"),
+        "structuredNotes": appointment.get("structuredNotes"),
     }
 

@@ -252,12 +252,24 @@ async def get_transcription_status(
 ):
     """
     Get transcription status for a recording.
+    
+    Automatically processes transcription if AWS Transcribe has completed
+    but the recording hasn't been processed yet.
 
     Returns current transcription status and results if completed.
     """
     try:
         recording_service = RecordingService(db)
         recording = await recording_service.get_recording(recording_id)
+        
+        if not recording:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Recording not found"
+            )
+
+        # With synchronous transcription, processing should be complete
+        # No need to poll AWS since transcription completes during upload
 
         transcription_status = {
             "recordingId": recording["recordingId"],

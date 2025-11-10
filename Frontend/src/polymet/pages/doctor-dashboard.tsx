@@ -254,7 +254,7 @@ export function DoctorDashboard() {
     const report = labReports.find((r) => r.id === reportId);
     if (report) {
       // Open the ViewReportsDialog for this patient
-      setViewReportsOpen(true);
+      setReportsOpen(true);
     }
   };
 
@@ -568,7 +568,7 @@ export function DoctorDashboard() {
                             className="h-6 px-2 text-[10px] flex-shrink-0"
                             asChild
                           >
-                            <Link to={`/patient-details/${appointment.id}`}>
+                            <Link to={`/patient-overview/${appointment.patientId || appointment.id}`}>
                               View
                             </Link>
                           </Button>
@@ -683,7 +683,7 @@ export function DoctorDashboard() {
                             className="h-6 px-2 text-[10px] flex-shrink-0"
                             asChild
                           >
-                            <Link to={`/patient-details/${patient.id}`}>
+                            <Link to={`/patient-overview/${patient.id}`}>
                               View
                             </Link>
                           </Button>

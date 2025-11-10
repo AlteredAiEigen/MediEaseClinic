@@ -24,6 +24,7 @@ import { PatientVisitHistory } from "@/polymet/components/patient-visit-history"
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
 import { get, post } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 
 interface Patient {
   _id: string;
@@ -62,7 +63,9 @@ interface Recording {
 
 export function ConsultationSession() {
   const { patientId } = useParams();
+  const { user } = useAuth();
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +102,7 @@ export function ConsultationSession() {
   const [transcriptionPolling, setTranscriptionPolling] = useState<NodeJS.Timeout | null>(null);
   const [uploadedRecordingId, setUploadedRecordingId] = useState<string | null>(null);
 
-  // Fetch patient data on component mount
+  // Fetch patient data and queue entry on component mount
   useEffect(() => {
     const fetchPatientData = async () => {
       if (!patientId) return;
@@ -115,6 +118,25 @@ export function ConsultationSession() {
         } else {
           setError("Patient not found");
         }
+
+        // Fetch queue entry for this patient to get appointmentId
+        if (user?._id) {
+          try {
+            const queueResponse = await get<{ queue: any[] }>(`/api/queue/doctor/${user._id}`);
+            if (queueResponse.success && queueResponse.data?.queue) {
+              const activeEntry = queueResponse.data.queue.find(
+                (entry: any) => entry.patient?._id === patientId && 
+                (entry.status === "in-consultation" || entry.status === "waiting")
+              );
+              if (activeEntry?.appointment) {
+                setAppointmentId(activeEntry.appointment._id || activeEntry.appointment);
+              }
+            }
+          } catch (err) {
+            console.warn("Could not fetch queue entry:", err);
+            // Continue without appointmentId - it's optional
+          }
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load patient data";
         setError(message);
@@ -124,7 +146,7 @@ export function ConsultationSession() {
     };
 
     fetchPatientData();
-  }, [patientId]);
+  }, [patientId, user?._id]);
 
   // Cleanup transcription polling on unmount
   useEffect(() => {
@@ -191,7 +213,18 @@ export function ConsultationSession() {
   };
 
   const uploadRecording = async () => {
-    if (!audioBlob || !patientId) return;
+    if (!audioBlob || !patientId || !user?._id) {
+      alert("Missing required information: patient ID or doctor ID");
+      return;
+    }
+
+    // Calculate duration in seconds
+    const duration = finalRecordingDuration
+      ? finalRecordingDuration.split(":").reduce((acc, val, idx) => {
+          if (idx === 0) return acc + parseInt(val) * 60;
+          return acc + parseInt(val);
+        }, 0)
+      : 0;
 
     try {
       setIsUploading(true);
@@ -200,24 +233,66 @@ export function ConsultationSession() {
       const formData = new FormData();
       formData.append("recording", audioBlob, "consultation-recording.wav");
       formData.append("patientId", patientId);
+      formData.append("doctorId", user._id);
+      formData.append("duration", duration.toString());
+      
+      // Add appointmentId if available
+      if (appointmentId) {
+        formData.append("appointmentId", appointmentId);
+      } else {
+        // Try to find appointment from today's appointments
+        try {
+          const today = new Date().toISOString().split("T")[0];
+          const appointmentsResponse = await get(`/api/appointments?patientId=${patientId}&date=${today}&status=checked-in`);
+          if (appointmentsResponse.success && appointmentsResponse.data?.data) {
+            const appointments = Array.isArray(appointmentsResponse.data.data) 
+              ? appointmentsResponse.data.data 
+              : appointmentsResponse.data.data?.data || [];
+            const activeAppointment = appointments.find((apt: any) => 
+              apt.status === "checked-in" || apt.status === "in-progress"
+            );
+            if (activeAppointment?._id) {
+              formData.append("appointmentId", activeAppointment._id);
+            }
+          }
+        } catch (err) {
+          console.warn("Could not fetch appointment:", err);
+        }
+      }
 
-      const response = await post("/api/recordings/upload", formData, {
+      const response = await post("/api/recordings/", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
 
       if (response.success && response.data) {
-        console.log("Recording uploaded successfully:", response.data);
-        const recordingId = response.data.recording.id;
+        console.log("Recording uploaded and transcribed successfully:", response.data);
+        const recording = response.data.recording;
+        const recordingId = recording.recordingId || recording.id;
         setUploadedRecordingId(recordingId);
-        setTranscriptionStatus("processing");
 
-        // Start polling for transcription status
-        startTranscriptionPolling(recordingId);
+        // Since transcription is now synchronous, we get results immediately
+        if (recording.status === "processed" && recording.transcription) {
+          setTranscriptionText(recording.transcription);
+          setStructuredNotes(recording.aiProcessing?.structuredNotes || null);
+          setTranscriptionStatus("completed");
+
+          // Auto-fill clinical notes from structured notes
+          if (recording.aiProcessing?.structuredNotes) {
+            const notes = recording.aiProcessing.structuredNotes;
+            if (notes.chiefComplaint && !notes) setNotes(`Chief Complaint: ${notes.chiefComplaint}`);
+            if (notes.assessment && !diagnosis) setDiagnosis(notes.assessment);
+            if (notes.plan && !treatment) setTreatment(notes.plan);
+          }
+        } else if (recording.status === "error") {
+          setTranscriptionStatus("error");
+          console.error("Transcription failed:", recording.errorMessage);
+        }
       }
     } catch (err) {
       console.error("Error uploading recording:", err);
+      alert(err instanceof Error ? err.message : "Failed to upload recording");
     } finally {
       setIsUploading(false);
     }
@@ -262,7 +337,10 @@ export function ConsultationSession() {
     }
   };
 
+  // Transcription is now synchronous, so no polling needed
   const checkTranscriptionStatus = async (recordingId?: string) => {
+    // Since transcription happens synchronously during upload,
+    // we only need this for manual status checks if needed
     if (!recordingId && !uploadedRecordingId) return;
 
     try {
@@ -271,6 +349,7 @@ export function ConsultationSession() {
 
       if (response.success && response.data?.transcription) {
         const status = response.data.transcription.status;
+        setTranscriptionStatus(status);
 
         if (status === "processed") {
           // Get the full recording details to access transcription
@@ -279,47 +358,12 @@ export function ConsultationSession() {
             const recording = recordingResponse.data.recording;
             setTranscriptionText(recording.transcription || "");
             setStructuredNotes(recording.aiProcessing?.structuredNotes || null);
-            setTranscriptionStatus("completed");
-
-            // Auto-fill clinical notes from structured notes
-            if (recording.aiProcessing?.structuredNotes) {
-              const notes = recording.aiProcessing.structuredNotes;
-              if (notes.chiefComplaint && !notes) setNotes(`Chief Complaint: ${notes.chiefComplaint}`);
-              if (notes.assessment && !diagnosis) setDiagnosis(notes.assessment);
-              if (notes.plan && !treatment) setTreatment(notes.plan);
-            }
-          }
-
-          // Stop polling
-          if (transcriptionPolling) {
-            clearInterval(transcriptionPolling);
-            setTranscriptionPolling(null);
-          }
-        } else if (status === "processing") {
-          setTranscriptionStatus("processing");
-        } else if (status === "error") {
-          setTranscriptionStatus("error");
-          if (transcriptionPolling) {
-            clearInterval(transcriptionPolling);
-            setTranscriptionPolling(null);
           }
         }
       }
     } catch (err) {
       console.error("Error checking transcription status:", err);
     }
-  };
-
-  const startTranscriptionPolling = (recordingId: string) => {
-    // Check immediately
-    checkTranscriptionStatus(recordingId);
-
-    // Then poll every 30 seconds
-    const interval = setInterval(() => {
-      checkTranscriptionStatus(recordingId);
-    }, 30000);
-
-    setTranscriptionPolling(interval);
   };
 
   const askAI = async () => {

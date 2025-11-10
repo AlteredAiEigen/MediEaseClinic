@@ -35,6 +35,12 @@ class AppointmentUpdateRequest(BaseModel):
     followUpRequired: Optional[bool] = None
     followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
+    # Fields for recording service updates
+    s3Url: Optional[str] = None
+    recordingId: Optional[str] = None
+    consultationNotes: Optional[str] = None
+    transcription: Optional[str] = None
+    structuredNotes: Optional[dict] = None
 
 
 class AppointmentStatusUpdate(BaseModel):

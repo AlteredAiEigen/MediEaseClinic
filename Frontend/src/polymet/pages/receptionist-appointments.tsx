@@ -33,7 +33,7 @@ import {
   Loader2Icon,
   AlertCircleIcon,
 } from "lucide-react";
-import { get, post, put } from "@/lib/api-client";
+import { get, post, put, del } from "@/lib/api-client";
 
 // Custom hook for debounced search
 const useDebounce = (value: string, delay: number) => {
@@ -122,6 +122,13 @@ export function ReceptionistAppointments() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Reschedule dialog state
+  const [isRescheduleOpen, setIsRescheduleOpen] = useState(false);
+  const [rescheduleAppointment, setRescheduleAppointment] = useState<Appointment | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [isRescheduling, setIsRescheduling] = useState(false);
 
   useEffect(() => {
     fetchAppointments();
@@ -319,9 +326,73 @@ export function ReceptionistAppointments() {
 
       if (response.success) {
         fetchAppointments();
+        fetchAllAppointmentsForMonth();
       }
     } catch (err) {
       console.error("Failed to update appointment status:", err);
+      alert(err instanceof Error ? err.message : "Failed to update appointment status");
+    }
+  };
+
+  const handleCancelAppointment = async (appointmentId: string) => {
+    if (!confirm("Are you sure you want to cancel this appointment?")) {
+      return;
+    }
+
+    try {
+      const response = await del(`/api/appointments/${appointmentId}`);
+
+      if (response.success) {
+        alert("Appointment cancelled successfully");
+        fetchAppointments();
+        fetchAllAppointmentsForMonth();
+      } else {
+        alert(response.message || "Failed to cancel appointment");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to cancel appointment";
+      alert(message);
+      console.error("Failed to cancel appointment:", err);
+    }
+  };
+
+  const handleRescheduleClick = (appointment: Appointment) => {
+    setRescheduleAppointment(appointment);
+    setRescheduleDate(appointment.date);
+    setRescheduleTime(appointment.time);
+    setIsRescheduleOpen(true);
+  };
+
+  const handleRescheduleAppointment = async () => {
+    if (!rescheduleAppointment || !rescheduleDate || !rescheduleTime) {
+      alert("Please select both date and time");
+      return;
+    }
+
+    try {
+      setIsRescheduling(true);
+      const response = await put(`/api/appointments/${rescheduleAppointment._id || rescheduleAppointment.appointmentId}`, {
+        date: rescheduleDate,
+        time: rescheduleTime,
+      });
+
+      if (response.success) {
+        alert("Appointment rescheduled successfully");
+        setIsRescheduleOpen(false);
+        setRescheduleAppointment(null);
+        setRescheduleDate("");
+        setRescheduleTime("");
+        fetchAppointments();
+        fetchAllAppointmentsForMonth();
+      } else {
+        alert(response.message || "Failed to reschedule appointment");
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to reschedule appointment";
+      alert(message);
+      console.error("Failed to reschedule appointment:", err);
+    } finally {
+      setIsRescheduling(false);
     }
   };
 
@@ -680,6 +751,8 @@ export function ReceptionistAppointments() {
                       size="sm"
                       variant="outline"
                       className="hover:bg-teal-50 dark:hover:bg-teal-950/20 border-teal-200 dark:border-teal-800"
+                      onClick={() => handleRescheduleClick(appointment)}
+                      disabled={appointment.status === "cancelled" || appointment.status === "completed"}
                     >
                       Reschedule
                     </Button>
@@ -687,6 +760,8 @@ export function ReceptionistAppointments() {
                       size="sm"
                       variant="outline"
                       className="hover:bg-red-50 dark:hover:bg-red-950/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400"
+                      onClick={() => handleCancelAppointment(appointment._id || appointment.appointmentId)}
+                      disabled={appointment.status === "cancelled" || appointment.status === "completed"}
                     >
                       Cancel
                     </Button>
@@ -697,6 +772,80 @@ export function ReceptionistAppointments() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Reschedule Dialog */}
+      <Dialog open={isRescheduleOpen} onOpenChange={setIsRescheduleOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Reschedule Appointment</DialogTitle>
+            <DialogDescription>
+              Update the date and time for this appointment
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {rescheduleAppointment && (
+              <>
+                <div className="p-3 bg-teal-50 dark:bg-teal-950/20 rounded-md border border-teal-200 dark:border-teal-800">
+                  <p className="text-sm font-medium text-muted-foreground">Patient</p>
+                  <p className="text-lg font-semibold text-teal-700 dark:text-teal-400">
+                    {rescheduleAppointment.patientName}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Current: {rescheduleAppointment.date} at {rescheduleAppointment.time}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reschedule-date">New Date *</Label>
+                  <Input
+                    id="reschedule-date"
+                    type="date"
+                    value={rescheduleDate}
+                    onChange={(e) => setRescheduleDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reschedule-time">New Time *</Label>
+                  <Input
+                    id="reschedule-time"
+                    type="time"
+                    value={rescheduleTime}
+                    onChange={(e) => setRescheduleTime(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+          <div className="flex gap-2 pt-4">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setIsRescheduleOpen(false);
+                setRescheduleAppointment(null);
+                setRescheduleDate("");
+                setRescheduleTime("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white"
+              onClick={handleRescheduleAppointment}
+              disabled={!rescheduleDate || !rescheduleTime || isRescheduling}
+            >
+              {isRescheduling ? (
+                <>
+                  <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                  Rescheduling...
+                </>
+              ) : (
+                "Reschedule Appointment"
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

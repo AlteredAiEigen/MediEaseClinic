@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { AddPatientDialog } from "@/polymet/components/add-patient-dialog";
+import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,6 +67,8 @@ export function DoctorPatients() {
   const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [statusFilter, setStatusFilter] = useState("all");
   const [addPatientOpen, setAddPatientOpen] = useState(false);
+  const [scheduleAppointmentOpen, setScheduleAppointmentOpen] = useState(false);
+  const [selectedPatientForSchedule, setSelectedPatientForSchedule] = useState<Patient | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -199,6 +202,17 @@ export function DoctorPatients() {
       <AddPatientDialog
         open={addPatientOpen}
         onOpenChange={setAddPatientOpen}
+      />
+
+      {/* Schedule Appointment Dialog */}
+      <NewAppointmentDialog
+        open={scheduleAppointmentOpen}
+        onOpenChange={(open) => {
+          setScheduleAppointmentOpen(open);
+          if (!open) {
+            setSelectedPatientForSchedule(null);
+          }
+        }}
       />
 
       {error && (
@@ -390,6 +404,10 @@ export function DoctorPatients() {
                       variant="outline"
                       size="sm"
                       className="hover:bg-emerald-50 dark:hover:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800"
+                      onClick={() => {
+                        setSelectedPatientForSchedule(patient);
+                        setScheduleAppointmentOpen(true);
+                      }}
                     >
                       <CalendarIcon className="w-4 h-4 mr-2" />
                       Schedule
