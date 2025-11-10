@@ -169,21 +169,21 @@ export function DoctorDashboard() {
           setTodayAppointments(mappedAppointments.length);
         }
 
-        // Fetch queue stats for completed count
+        // Fetch doctor-specific stats
         const statsResponse = await get<{
-          total_patients: number;
-          waiting: number;
-          in_consultation: number;
-          completed: number;
-          checked_out: number;
-          average_wait_time: number;
-        }>("/api/queue/stats");
+          totalPatients: number;
+          todayAppointments: number;
+          scheduledToday: number;
+          completedToday: number;
+          inQueue: number;
+          thisWeek: number;
+        }>("/api/doctors/me/stats");
         if (statsResponse.success && statsResponse.data) {
-          setCompletedToday(statsResponse.data.completed);
+          setTotalPatients(statsResponse.data.totalPatients || 0);
+          setTodayAppointments(statsResponse.data.todayAppointments || 0);
+          setCompletedToday(statsResponse.data.completedToday || 0);
+          // inQueue is already set from queue response above
         }
-
-        // Fetch total patients count (this would be from a doctor stats endpoint if available)
-        setTotalPatients(156); // Placeholder - would need a dedicated endpoint
 
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load dashboard data";
@@ -197,30 +197,58 @@ export function DoctorDashboard() {
   }, [user]);
 
   // Lab reports data
-  const [labReports] = useState([
-    {
-      id: "1",
-      patientId: "P004",
-      patientName: "Lakshmi Iyer",
-      patientAvatar: "https://github.com/yahyabedirhan.png",
-      reportType: "Blood Test Results",
-      date: "2024-01-20",
-      time: "08:02 AM",
-      priority: "high" as const,
-      status: "pending" as const,
-    },
-    {
-      id: "2",
-      patientId: "P006",
-      patientName: "Anjali Gupta",
-      patientAvatar: "https://github.com/shoaibux1.png",
-      reportType: "X-Ray Report",
-      date: "2024-01-20",
-      time: "07:15 AM",
-      priority: "normal" as const,
-      status: "pending" as const,
-    },
-  ]);
+  const [labReports, setLabReports] = useState<Array<{
+    id: string;
+    patientId: string;
+    patientName: string;
+    patientAvatar: string;
+    reportType: string;
+    date: string;
+    time: string;
+    priority: "high" | "normal" | "low";
+    status: "pending" | "reviewed";
+  }>>([]);
+
+  // Fetch lab reports
+  useEffect(() => {
+    const fetchLabReports = async () => {
+      if (!user?._id) return;
+
+      try {
+        const response = await get<{ data: Array<{
+          _id: string;
+          patientId: string;
+          patientName?: string;
+          category: string;
+          createdAt: string;
+          isCritical?: boolean;
+          status?: string;
+        }> }>("/api/lab-reports?limit=10");
+        
+        if (response.success && response.data?.data) {
+          const mappedReports = response.data.data.map((report) => ({
+            id: report._id,
+            patientId: report.patientId,
+            patientName: report.patientName || "Unknown Patient",
+            patientAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(report.patientName || "Unknown")}&background=random`,
+            reportType: report.category || "Lab Report",
+            date: new Date(report.createdAt).toLocaleDateString(),
+            time: new Date(report.createdAt).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            priority: (report.isCritical ? "high" : "normal") as "high" | "normal" | "low",
+            status: (report.status === "reviewed" ? "reviewed" : "pending") as "pending" | "reviewed",
+          }));
+          setLabReports(mappedReports);
+        }
+      } catch (err) {
+        console.error("Failed to fetch lab reports:", err);
+      }
+    };
+
+    fetchLabReports();
+  }, [user]);
 
   const handleViewLabReport = (reportId: string) => {
     const report = labReports.find((r) => r.id === reportId);

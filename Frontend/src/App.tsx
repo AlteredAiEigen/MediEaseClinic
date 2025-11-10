@@ -21,6 +21,7 @@ import { ReceptionistDashboardNew } from "@/polymet/pages/receptionist-dashboard
 import { ReceptionistPatients } from "@/polymet/pages/receptionist-patients";
 import { ReceptionistAppointments } from "@/polymet/pages/receptionist-appointments";
 import { ReceptionistSettings } from "@/polymet/pages/receptionist-settings";
+import { ReceptionistWorkstation } from "@/polymet/pages/receptionist-workstation";
 import { RegisterPatient } from "@/polymet/pages/register-patient";
 import { PatientOverview } from "@/polymet/pages/patient-overview";
 import { ConsultationSession } from "@/polymet/pages/consultation-session-new";
@@ -242,6 +243,17 @@ export default function MediEaseClinicPrototype() {
             <RequireAuth role="receptionist">
               <HealthcareLayout>
                 <ReceptionistSettings />
+              </HealthcareLayout>
+            </RequireAuth>
+          }
+        />
+
+        <Route
+          path="/receptionist-workstation"
+          element={
+            <RequireAuth role="receptionist">
+              <HealthcareLayout>
+                <ReceptionistWorkstation />
               </HealthcareLayout>
             </RequireAuth>
           }

@@ -4,7 +4,7 @@ Supports admin, doctor, and receptionist roles.
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, EmailStr
 from bson import ObjectId
 
@@ -46,9 +46,13 @@ class UserBase(BaseModel):
     speciality: Optional[str] = None
     licenseNumber: Optional[str] = None
     experience: Optional[int] = Field(0, ge=0)
+    availability: Optional[Dict[str, Dict[str, str]]] = None  # {day: {startTime: "09:00", endTime: "17:00", enabled: true}}
 
     # Admin specific fields
     permissions: Optional[List[str]] = []
+    
+    # Notification preferences (for all users)
+    notificationPreferences: Optional[Dict[str, bool]] = None  # {emailNotifications: true, smsAlerts: true, appointmentReminders: true}
 
 
 class UserCreate(UserBase):
@@ -94,6 +98,8 @@ class UserUpdate(BaseModel):
     experience: Optional[int] = Field(None, ge=0)
     profileImage: Optional[str] = None
     isActive: Optional[bool] = None
+    availability: Optional[Dict[str, Dict[str, Any]]] = None
+    notificationPreferences: Optional[Dict[str, bool]] = None
 
 
 async def user_helper(user: dict) -> dict:
@@ -120,6 +126,8 @@ async def user_helper(user: dict) -> dict:
         "speciality": user.get("speciality"),
         "licenseNumber": user.get("licenseNumber"),
         "experience": user.get("experience", 0),
+        "availability": user.get("availability"),
+        "notificationPreferences": user.get("notificationPreferences"),
         "permissions": user.get("permissions", []),
         "createdAt": user.get("createdAt"),
         "updatedAt": user.get("updatedAt"),

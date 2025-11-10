@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-pro"
     
     # Security Settings
-    cors_origins: str = "http://localhost:3000,http://localhost:8081"
+    cors_origins: str = "http://localhost:3000,http://localhost:8081,http://localhost:5173"
     allowed_hosts: str = "localhost,127.0.0.1"
     
     # Rate Limiting

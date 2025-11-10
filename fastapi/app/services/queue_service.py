@@ -33,19 +33,68 @@ class QueueService:
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = today + timedelta(days=1)
         
+        # Convert doctor_id to ObjectId if it's a valid ObjectId string
+        doctor_object_id = ObjectId(doctor_id) if ObjectId.is_valid(doctor_id) else doctor_id
+        
         count = await self.queue_collection.count_documents({
-            "doctor": doctor_id,
+            "doctor": doctor_object_id,
             "created_at": {"$gte": today, "$lt": tomorrow}
         })
         
         return count + 1
     
     async def check_in_patient(self, check_in_data: QueueCheckIn, checked_in_by: str) -> QueueInDB:
-        """Check in a patient to the queue."""
+        """Check in a patient to the queue via appointment."""
         try:
-            # Check if patient is already in queue
+            # Validate appointment_id
+            if not check_in_data.appointment_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Appointment ID is required for check-in"
+                )
+            
+            try:
+                appointment_object_id = ObjectId(check_in_data.appointment_id)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid appointment ID format"
+                )
+            
+            # Get appointment details
+            appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+            if not appointment:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Appointment not found"
+                )
+            
+            # Check appointment status - should be scheduled
+            if appointment.get("status") not in ["scheduled"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Cannot check in appointment with status: {appointment.get('status')}"
+                )
+            
+            # Get patient and doctor IDs from appointment
+            patient_object_id = appointment.get("patientId")
+            doctor_object_id = appointment.get("doctorId")
+            
+            if not patient_object_id or not doctor_object_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Appointment is missing patient or doctor information"
+                )
+            
+            # Convert to ObjectId if they're strings
+            if isinstance(patient_object_id, str):
+                patient_object_id = ObjectId(patient_object_id)
+            if isinstance(doctor_object_id, str):
+                doctor_object_id = ObjectId(doctor_object_id)
+            
+            # Check if patient is already in queue (use ObjectId for comparison)
             existing = await self.queue_collection.find_one({
-                "patient": check_in_data.patient_id,
+                "patient": patient_object_id,
                 "is_active": True,
                 "status": {"$in": ["waiting", "in-consultation"]}
             })
@@ -57,7 +106,7 @@ class QueueService:
                 )
             
             # Check if patient exists
-            patient = await db["patients"].find_one({"_id": ObjectId(check_in_data.patient_id)})
+            patient = await self.db["patients"].find_one({"_id": patient_object_id})
             if not patient:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
@@ -65,29 +114,36 @@ class QueueService:
                 )
             
             # Check if doctor exists
-            doctor = await db["users"].find_one({"_id": ObjectId(check_in_data.doctor_id)})
+            doctor = await self.db["users"].find_one({"_id": doctor_object_id})
             if not doctor:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="Doctor not found"
                 )
             
+            # Verify doctor role
+            if doctor.get("role") != "doctor":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected user is not a doctor"
+                )
+            
             # Generate queue entry
             queue_id = await QueueService.generate_queue_id()
-            queue_number = await self.get_next_queue_number(check_in_data.doctor_id)
+            queue_number = await self.get_next_queue_number(str(doctor_object_id))
             
             queue_dict = {
                 "queue_id": queue_id,
-                "patient": check_in_data.patient_id,
-                "doctor": check_in_data.doctor_id,
-                "appointment": check_in_data.appointment_id,
-                "checked_in_by": checked_in_by,
+                "patient": patient_object_id,
+                "doctor": doctor_object_id,
+                "appointment": appointment_object_id,
+                "checked_in_by": ObjectId(checked_in_by) if ObjectId.is_valid(checked_in_by) else checked_in_by,
                 "checked_in_at": datetime.utcnow(),
                 "status": "waiting",
                 "queue_number": queue_number,
                 "priority": check_in_data.priority,
-                "reason": check_in_data.reason,
-                "notes": check_in_data.notes,
+                "reason": check_in_data.reason or "General Consultation",
+                "notes": check_in_data.notes or "",
                 "wait_time": 0,
                 "is_active": True,
                 "created_at": datetime.utcnow(),
@@ -97,7 +153,37 @@ class QueueService:
             result = await self.queue_collection.insert_one(queue_dict)
             queue_dict["_id"] = str(result.inserted_id)
             
-            logger.info(f"Checked in patient {check_in_data.patient_id} - Queue #{queue_number}")
+            # Convert ObjectIds to strings for Pydantic model
+            queue_dict["patient"] = str(patient_object_id)
+            queue_dict["doctor"] = str(doctor_object_id)
+            if appointment_object_id:
+                queue_dict["appointment"] = str(appointment_object_id)
+            if queue_dict.get("checked_in_by") and isinstance(queue_dict["checked_in_by"], ObjectId):
+                queue_dict["checked_in_by"] = str(queue_dict["checked_in_by"])
+            
+            # Update patient's presentInClinic status to True
+            await self.db["patients"].update_one(
+                {"_id": patient_object_id},
+                {
+                    "$set": {
+                        "presentInClinic": True,
+                        "updatedAt": datetime.utcnow()
+                    }
+                }
+            )
+            
+            # Update appointment status to "checked-in"
+            await self.db["appointments"].update_one(
+                {"_id": appointment_object_id},
+                {
+                    "$set": {
+                        "status": "checked-in",
+                        "updatedAt": datetime.utcnow()
+                    }
+                }
+            )
+            
+            logger.info(f"Checked in appointment {check_in_data.appointment_id} - Queue #{queue_number}")
             return QueueInDB(**queue_dict)
         
         except HTTPException:
@@ -118,7 +204,7 @@ class QueueService:
                 {
                     "$match": {
                         "checked_in_at": {"$gte": today},
-                        "status": {"$in": ["waiting", "in-consultation"]},
+                        "status": {"$in": ["waiting", "in-consultation", "checkout", "completed"]},
                         "is_active": True
                     }
                 },
@@ -146,16 +232,46 @@ class QueueService:
             cursor = self.queue_collection.aggregate(pipeline)
             queue = await cursor.to_list(length=None)
             
-            # Format response
+            # Format response - convert all ObjectIds to strings
             for entry in queue:
                 entry["_id"] = str(entry["_id"])
-                if entry.get("patient_info"):
-                    entry["patient"] = entry["patient_info"][0]
-                    entry["patient"]["_id"] = str(entry["patient"]["_id"])
+                # Convert any remaining ObjectId fields to strings
+                if entry.get("patient") and isinstance(entry["patient"], ObjectId):
+                    entry["patient"] = str(entry["patient"])
+                if entry.get("doctor") and isinstance(entry["doctor"], ObjectId):
+                    entry["doctor"] = str(entry["doctor"])
+                if entry.get("appointment") and isinstance(entry["appointment"], ObjectId):
+                    entry["appointment"] = str(entry["appointment"])
+                if entry.get("checked_in_by") and isinstance(entry["checked_in_by"], ObjectId):
+                    entry["checked_in_by"] = str(entry["checked_in_by"])
+                
+                if entry.get("patient_info") and len(entry["patient_info"]) > 0:
+                    patient = entry["patient_info"][0]
+                    patient["_id"] = str(patient["_id"])
+                    # Convert any ObjectIds in patient document
+                    for key, value in patient.items():
+                        if isinstance(value, ObjectId):
+                            patient[key] = str(value)
+                    # Add fullName if not present
+                    if "fullName" not in patient:
+                        firstName = patient.get("firstName", "")
+                        lastName = patient.get("lastName", "")
+                        patient["fullName"] = f"{firstName} {lastName}".strip()
+                    entry["patient"] = patient
                     del entry["patient_info"]
-                if entry.get("doctor_info"):
-                    entry["doctor"] = entry["doctor_info"][0]
-                    entry["doctor"]["_id"] = str(entry["doctor"]["_id"])
+                if entry.get("doctor_info") and len(entry["doctor_info"]) > 0:
+                    doctor = entry["doctor_info"][0]
+                    doctor["_id"] = str(doctor["_id"])
+                    # Convert any ObjectIds in doctor document
+                    for key, value in doctor.items():
+                        if isinstance(value, ObjectId):
+                            doctor[key] = str(value)
+                    # Add fullName if not present
+                    if "fullName" not in doctor:
+                        firstName = doctor.get("firstName", "")
+                        lastName = doctor.get("lastName", "")
+                        doctor["fullName"] = f"{firstName} {lastName}".strip()
+                    entry["doctor"] = doctor
                     del entry["doctor_info"]
             
             return queue
@@ -196,12 +312,22 @@ class QueueService:
             cursor = self.queue_collection.aggregate(pipeline)
             queue = await cursor.to_list(length=None)
             
-            # Format response
+            # Format response - convert all ObjectIds to strings
             for entry in queue:
                 entry["_id"] = str(entry["_id"])
+                # Convert any remaining ObjectId fields to strings
+                for key, value in entry.items():
+                    if isinstance(value, ObjectId):
+                        entry[key] = str(value)
+                
                 if entry.get("patient_info"):
-                    entry["patient"] = entry["patient_info"][0]
-                    entry["patient"]["_id"] = str(entry["patient"]["_id"])
+                    patient = entry["patient_info"][0]
+                    patient["_id"] = str(patient["_id"])
+                    # Convert any ObjectIds in patient document
+                    for key, value in patient.items():
+                        if isinstance(value, ObjectId):
+                            patient[key] = str(value)
+                    entry["patient"] = patient
                     del entry["patient_info"]
             
             return queue
@@ -219,6 +345,10 @@ class QueueService:
             entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
             if entry:
                 entry["_id"] = str(entry["_id"])
+                # Convert all ObjectIds to strings
+                for key, value in entry.items():
+                    if isinstance(value, ObjectId):
+                        entry[key] = str(value)
                 return entry
             return None
         
@@ -258,6 +388,10 @@ class QueueService:
             
             if result:
                 result["_id"] = str(result["_id"])
+                # Convert all ObjectIds to strings
+                for key, value in result.items():
+                    if isinstance(value, ObjectId):
+                        result[key] = str(value)
                 logger.info(f"Updated queue entry {entry_id} to status {status_update.status}")
                 return result
             return None
@@ -278,10 +412,33 @@ class QueueService:
     
     async def check_out_patient(self, entry_id: str) -> Optional[Dict]:
         """Check out patient from queue."""
-        return await self.update_queue_status(
+        # Get queue entry to find patient ID
+        entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
+        if not entry:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Queue entry not found"
+            )
+        
+        # Update queue status
+        result = await self.update_queue_status(
             entry_id,
             QueueStatusUpdate(status="checked-out")
         )
+        
+        # Update patient's presentInClinic status to False
+        if result and entry.get("patient"):
+            await self.db["patients"].update_one(
+                {"_id": ObjectId(entry["patient"])},
+                {
+                    "$set": {
+                        "presentInClinic": False,
+                        "updatedAt": datetime.utcnow()
+                    }
+                }
+            )
+        
+        return result
     
     async def get_queue_stats(self) -> Dict:
         """Get today's queue statistics."""
@@ -388,6 +545,10 @@ class QueueService:
             updated_entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
             if updated_entry:
                 updated_entry["_id"] = str(updated_entry["_id"])
+                # Convert all ObjectIds to strings
+                for key, value in updated_entry.items():
+                    if isinstance(value, ObjectId):
+                        updated_entry[key] = str(value)
                 updates.append(updated_entry)
 
         # Sort updates to match new queue_number ascending

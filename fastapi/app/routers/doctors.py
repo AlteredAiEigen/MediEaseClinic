@@ -2,16 +2,44 @@
 Doctor-specific API endpoints.
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Query, status
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pydantic import BaseModel, Field, EmailStr
 
 from app.database import get_db
-from app.middleware.auth import get_current_user, require_roles
+from app.middleware.auth import get_current_user, require_roles, get_current_active_user
 from app.utils.response import success_response, error_response, paginated_response
+from app.models.user import user_helper
+from app.services.appointment_service import AppointmentService
+from app.services.queue_service import QueueService
+from datetime import datetime
 
 router = APIRouter()
+
+
+class DoctorProfileUpdate(BaseModel):
+    """Schema for updating doctor profile."""
+    firstName: Optional[str] = Field(None, min_length=1, max_length=50)
+    lastName: Optional[str] = Field(None, min_length=1, max_length=50)
+    phone: Optional[str] = Field(None, pattern=r"^[\d\s\-\+\(\)]+$")
+    speciality: Optional[str] = None
+    licenseNumber: Optional[str] = None
+    experience: Optional[int] = Field(None, ge=0)
+    profileImage: Optional[str | None] = None
+
+
+class AvailabilityUpdate(BaseModel):
+    """Schema for updating doctor availability."""
+    availability: Dict[str, Dict[str, Any]] = Field(..., description="Availability schedule by day")
+
+
+class NotificationPreferencesUpdate(BaseModel):
+    """Schema for updating notification preferences."""
+    notificationPreferences: Dict[str, bool] = Field(..., description="Notification preferences")
+
 
 def get_users_collection(db: AsyncIOMotorDatabase):
     """Get users collection."""
@@ -20,6 +48,10 @@ def get_users_collection(db: AsyncIOMotorDatabase):
 def get_appointments_collection(db: AsyncIOMotorDatabase):
     """Get appointments collection."""
     return db.appointments
+
+def get_patients_collection(db: AsyncIOMotorDatabase):
+    """Get patients collection."""
+    return db.patients
 
 
 @router.get("/", response_model=dict)
@@ -124,6 +156,429 @@ async def get_doctor_stats(
     except Exception as e:
         return error_response(
             message=f"Failed to fetch doctor statistics: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.get("/me/stats", response_model=dict)
+async def get_current_doctor_stats(
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get current doctor's dashboard statistics."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        doctor_id = str(current_user["_id"])
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        clinic_id = current_user.get("clinicId")
+        
+        appointment_service = AppointmentService(db)
+        queue_service = QueueService(db)
+        
+        # Get today's appointments count
+        today_appointments, _ = await appointment_service.list_appointments(
+            page=1,
+            limit=1,
+            doctor_id=doctor_id,
+            date=today,
+            clinic_id=clinic_id
+        )
+        today_appointments_count = await get_appointments_collection(db).count_documents({
+            "doctorId": doctor_id,
+            "date": today,
+            "clinicId": clinic_id
+        })
+        
+        # Get scheduled appointments for today
+        scheduled_today = await get_appointments_collection(db).count_documents({
+            "doctorId": doctor_id,
+            "date": today,
+            "status": "scheduled",
+            "clinicId": clinic_id
+        })
+        
+        # Get completed appointments today
+        completed_today = await get_appointments_collection(db).count_documents({
+            "doctorId": doctor_id,
+            "date": today,
+            "status": "completed",
+            "clinicId": clinic_id
+        })
+        
+        # Get queue stats for this doctor
+        doctor_queue = await queue_service.get_doctor_queue(doctor_id)
+        in_queue = len([e for e in doctor_queue if e.get("status") in ["waiting", "in-consultation"]])
+        
+        # Get total unique patients seen by this doctor (from appointments)
+        unique_patients = await get_appointments_collection(db).distinct(
+            "patientId",
+            {"doctorId": doctor_id, "clinicId": clinic_id}
+        )
+        total_patients = len(unique_patients)
+        
+        # Get this week's appointments
+        week_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = week_start - timedelta(days=week_start.weekday())
+        week_start_str = week_start.strftime("%Y-%m-%d")
+        
+        this_week = await get_appointments_collection(db).count_documents({
+            "doctorId": doctor_id,
+            "date": {"$gte": week_start_str},
+            "clinicId": clinic_id
+        })
+        
+        return success_response(
+            data={
+                "totalPatients": total_patients,
+                "todayAppointments": today_appointments_count,
+                "scheduledToday": scheduled_today,
+                "completedToday": completed_today,
+                "inQueue": in_queue,
+                "thisWeek": this_week,
+            },
+            message="Doctor statistics retrieved successfully"
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to fetch doctor statistics: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.get("/me/patients", response_model=dict)
+async def get_current_doctor_patients(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get patients who have appointments with the current doctor."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        doctor_id = str(current_user["_id"])
+        clinic_id = current_user.get("clinicId")
+        
+        # Get unique patient IDs from appointments
+        appointment_query = {"doctorId": doctor_id}
+        if clinic_id:
+            appointment_query["clinicId"] = clinic_id
+        
+        unique_patient_ids = await get_appointments_collection(db).distinct(
+            "patientId",
+            appointment_query
+        )
+        
+        if not unique_patient_ids:
+            return paginated_response(
+                message="No patients found",
+                data=[],
+                total=0,
+                page=page,
+                limit=limit
+            )
+        
+        # Convert to ObjectIds for query
+        patient_object_ids = [ObjectId(pid) for pid in unique_patient_ids if ObjectId.is_valid(pid)]
+        
+        if not patient_object_ids:
+            return paginated_response(
+                message="No valid patients found",
+                data=[],
+                total=0,
+                page=page,
+                limit=limit
+            )
+        
+        # Get total count
+        total = await get_patients_collection(db).count_documents({
+            "_id": {"$in": patient_object_ids},
+            "clinicId": clinic_id
+        } if clinic_id else {"_id": {"$in": patient_object_ids}})
+        
+        # Get paginated results
+        skip = (page - 1) * limit
+        query = {"_id": {"$in": patient_object_ids}}
+        if clinic_id:
+            query["clinicId"] = clinic_id
+        
+        cursor = get_patients_collection(db).find(query).sort("createdAt", -1).skip(skip).limit(limit)
+        patients = await cursor.to_list(length=limit)
+        
+        # Convert ObjectId to string and format
+        for patient in patients:
+            patient["_id"] = str(patient["_id"])
+            if "fullName" not in patient:
+                patient["fullName"] = f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip()
+        
+        return paginated_response(
+            message="Doctor's patients retrieved successfully",
+            data=patients,
+            total=total,
+            page=page,
+            limit=limit
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to fetch doctor's patients: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.get("/me/availability", response_model=dict)
+async def get_current_doctor_availability(
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get current doctor's availability schedule."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        doctor = await get_users_collection(db).find_one(
+            {"_id": ObjectId(current_user["_id"]), "role": "doctor"},
+            {"availability": 1}
+        )
+        
+        if not doctor:
+            return error_response(
+                message="Doctor profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        availability = doctor.get("availability") or {}
+        
+        return success_response(
+            data={"availability": availability},
+            message="Availability retrieved successfully"
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to fetch availability: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.put("/me/availability", response_model=dict)
+async def update_current_doctor_availability(
+    update_data: AvailabilityUpdate,
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update current doctor's availability schedule."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        update_doc = {
+            "availability": update_data.availability,
+            "updatedAt": datetime.utcnow()
+        }
+        
+        result = await get_users_collection(db).find_one_and_update(
+            {"_id": ObjectId(current_user["_id"]), "role": "doctor"},
+            {"$set": update_doc},
+            return_document=True,
+            projection={"availability": 1}
+        )
+        
+        if not result:
+            return error_response(
+                message="Doctor profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        return success_response(
+            message="Availability updated successfully",
+            data={"availability": result.get("availability", {})}
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to update availability: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.put("/me/notifications", response_model=dict)
+async def update_current_doctor_notifications(
+    update_data: NotificationPreferencesUpdate,
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update current doctor's notification preferences."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        update_doc = {
+            "notificationPreferences": update_data.notificationPreferences,
+            "updatedAt": datetime.utcnow()
+        }
+        
+        result = await get_users_collection(db).find_one_and_update(
+            {"_id": ObjectId(current_user["_id"]), "role": "doctor"},
+            {"$set": update_doc},
+            return_document=True,
+            projection={"notificationPreferences": 1}
+        )
+        
+        if not result:
+            return error_response(
+                message="Doctor profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        return success_response(
+            message="Notification preferences updated successfully",
+            data={"notificationPreferences": result.get("notificationPreferences", {})}
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to update notification preferences: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.get("/me", response_model=dict)
+async def get_current_doctor(
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get current doctor's profile information."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        doctor = await get_users_collection(db).find_one(
+            {"_id": ObjectId(current_user["_id"]), "role": "doctor"},
+            {"password": 0}
+        )
+        
+        if not doctor:
+            return error_response(
+                message="Doctor profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        formatted_doctor = await user_helper(doctor)
+        
+        return success_response(
+            data={"doctor": formatted_doctor},
+            message="Doctor profile retrieved successfully"
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to fetch doctor profile: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.put("/me/profile", response_model=dict)
+async def update_current_doctor_profile(
+    update_data: DoctorProfileUpdate,
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update current doctor's profile details."""
+    try:
+        # Verify user is a doctor
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+        
+        update_doc = update_data.model_dump(exclude_unset=True)
+        
+        if not update_doc:
+            return error_response(
+                message="No profile fields provided for update",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate and clean fields
+        if "firstName" in update_doc:
+            update_doc["firstName"] = update_doc["firstName"].strip()
+            if not update_doc["firstName"]:
+                return error_response(
+                    message="First name cannot be empty",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if "lastName" in update_doc:
+            update_doc["lastName"] = update_doc["lastName"].strip()
+            if not update_doc["lastName"]:
+                return error_response(
+                    message="Last name cannot be empty",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if "phone" in update_doc and update_doc["phone"] is not None:
+            update_doc["phone"] = update_doc["phone"].strip()
+            if update_doc["phone"] == "":
+                update_doc["phone"] = None
+        
+        if "profileImage" in update_doc and update_doc["profileImage"] == "":
+            update_doc["profileImage"] = None
+        
+        update_doc["updatedAt"] = datetime.utcnow()
+        
+        result = await get_users_collection(db).find_one_and_update(
+            {"_id": ObjectId(current_user["_id"]), "role": "doctor"},
+            {"$set": update_doc},
+            return_document=True,
+            projection={"password": 0}
+        )
+        
+        if not result:
+            return error_response(
+                message="Doctor profile not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        
+        formatted_doctor = await user_helper(result)
+        
+        return success_response(
+            message="Profile updated successfully",
+            data={"doctor": formatted_doctor}
+        )
+    
+    except Exception as e:
+        return error_response(
+            message=f"Failed to update profile: {str(e)}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

@@ -85,8 +85,9 @@ class PatientBase(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
-    clinicId: Optional[str] = None
-    clinicName: Optional[str] = None
+    # Note: Patients are universal - clinic info is for reference only (which clinic created the patient)
+    createdByClinicId: Optional[str] = None
+    createdByClinicName: Optional[str] = None
 
 
 class PatientCreate(PatientBase):
@@ -222,18 +223,19 @@ async def patient_helper(patient: dict) -> dict:
     return {
         "_id": str(patient["_id"]),
         "patientId": patient.get("patientId", ""),
-        "firstName": patient["firstName"],
-        "lastName": patient["lastName"],
-        "fullName": f"{patient['firstName']} {patient['lastName']}",
-        "clinicId": patient.get("clinicId"),
-        "clinicName": patient.get("clinicName"),
-        "gender": patient["gender"],
-        "age": patient["age"],
-        "bloodGroup": patient["bloodGroup"],
-        "dateOfBirth": patient["dateOfBirth"],
-        "email": patient["email"],
-        "phone": patient["phone"],
-        "address": patient["address"],
+        "firstName": patient.get("firstName", ""),
+        "lastName": patient.get("lastName", ""),
+        "fullName": f"{patient.get('firstName', '')} {patient.get('lastName', '')}",
+        # Patients are universal - clinic info is for reference only
+        "createdByClinicId": patient.get("createdByClinicId"),
+        "createdByClinicName": patient.get("createdByClinicName"),
+        "gender": patient.get("gender", ""),
+        "age": patient.get("age", ""),
+        "bloodGroup": patient.get("bloodGroup", ""),
+        "dateOfBirth": patient.get("dateOfBirth", ""),
+        "email": patient.get("email", ""),
+        "phone": patient.get("phone", ""),
+        "address": patient.get("address", ""),
         "vitals": patient.get("vitals", {}),
         "medicalHistory": medical_history_value,
         "allergies": allergy_value,

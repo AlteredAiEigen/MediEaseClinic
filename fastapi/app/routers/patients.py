@@ -28,6 +28,9 @@ async def create_patient(
     
     Requires authentication. Only doctors, receptionists, and admins can create patients.
     
+    Patients are universal across all clinics. The clinic info is stored for reference
+    (to track which clinic created the patient) but does not restrict patient access.
+    
     HIPAA Compliance: Sensitive fields are encrypted before storage.
     """
     try:
@@ -35,20 +38,17 @@ async def create_patient(
 
         patient_payload = patient_data.model_dump()
 
+        # Get clinic info for reference (which clinic created this patient)
+        # Patients are universal and not restricted to this clinic
         clinic_id = current_user.get("clinicId")
         clinic_name = current_user.get("clinicName")
-
-        if clinic_id:
-            patient_payload["clinicId"] = clinic_id
-        if clinic_name:
-            patient_payload["clinicName"] = clinic_name
 
         patient_model = PatientCreate(**patient_payload)
 
         patient = await patient_service.create_patient(
             patient_model,
-            clinic_id=clinic_id,
-            clinic_name=clinic_name
+            clinic_id=clinic_id,  # Stored as createdByClinicId for reference only
+            clinic_name=clinic_name  # Stored as createdByClinicName for reference only
         )
         
         return success_response(
@@ -85,7 +85,8 @@ async def list_patients(
     """
     try:
         patient_service = PatientService(db)
-        clinic_id = current_user.get("clinicId")
+        # Patients are universal - not filtered by clinic
+        # clinic_id is not passed to maintain universal patient access
 
         patients, total = await patient_service.list_patients(
             page=page,
@@ -93,7 +94,7 @@ async def list_patients(
             search=search,
             gender=gender,
             present_in_clinic=present_in_clinic,
-            clinic_id=clinic_id
+            clinic_id=None  # Not used for filtering - patients are universal
         )
         
         return paginated_response(
@@ -124,8 +125,8 @@ async def search_patients(
     """
     try:
         patient_service = PatientService(db)
-        clinic_id = current_user.get("clinicId")
-        patients = await patient_service.search_patients(q, clinic_id=clinic_id)
+        # Patients are universal - not filtered by clinic
+        patients = await patient_service.search_patients(q, clinic_id=None)
         
         return success_response(
             message=f"Found {len(patients)} matching patients",

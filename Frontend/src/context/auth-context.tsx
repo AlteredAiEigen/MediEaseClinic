@@ -89,17 +89,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
     fetchCurrentUser();
   }, [fetchCurrentUser]);
 
-  const login = useCallback(async ({ email, password }: LoginPayload) => {
-    setState((prev) => ({ ...prev, loading: true }));
-    try {
-      const response = await post<{
-        user: User;
-        accessToken: string;
-        refreshToken?: string;
-      }>("/api/auth/login", {
-        email,
-        password,
-      }, { auth: false });
+    const login = useCallback(async ({ email, password }: LoginPayload) => {
+      setState((prev) => ({ ...prev, loading: true }));
+      try {
+        // Call the real backend API
+        const response = await post<{
+          user: User;
+          accessToken: string;
+          refreshToken?: string;
+        }>("/api/auth/login", {
+          email,
+          password,
+        }, { auth: false });
 
       if (!(response.success && response.data?.user && response.data.accessToken)) {
         throw new Error(response.message ?? "Login failed");

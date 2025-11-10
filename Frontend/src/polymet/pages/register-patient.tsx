@@ -17,8 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlusIcon, ArrowLeftIcon, SaveIcon } from "lucide-react";
+import { UserPlusIcon, ArrowLeftIcon, SaveIcon, Loader2Icon } from "lucide-react";
 import { Link } from "react-router-dom";
+import { post } from "@/lib/api-client";
 
 export function RegisterPatient() {
   const [formData, setFormData] = useState({
@@ -36,26 +37,73 @@ export function RegisterPatient() {
     medicalHistory: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // In a real app, this would submit to the backend
-    console.log("Registering patient:", formData);
-    // Show success message and reset form
-    alert("Patient registered successfully!");
-    setFormData({
-      firstName: "",
-      lastName: "",
-      dateOfBirth: "",
-      gender: "",
-      phone: "",
-      email: "",
-      address: "",
-      emergencyContact: "",
-      emergencyPhone: "",
-      bloodGroup: "",
-      allergies: "",
-      medicalHistory: "",
-    });
+    setIsSubmitting(true);
+
+    try {
+      // Calculate age from date of birth
+      const calculateAge = (dateOfBirth: string) => {
+        const birthDate = new Date(dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        return age.toString();
+      };
+
+      // Prepare the data for the API
+      const patientData = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        gender: formData.gender,
+        dateOfBirth: formData.dateOfBirth,
+        age: calculateAge(formData.dateOfBirth),
+        phone: formData.phone,
+        email: formData.email || `${formData.firstName.toLowerCase()}.${formData.lastName.toLowerCase()}@example.com`,
+        address: formData.address,
+        bloodGroup: formData.bloodGroup || "A+", // Default to A+ if not selected
+        allergies: formData.allergies || "",
+        medicalHistory: formData.medicalHistory || "",
+        emergencyContact: formData.emergencyContact,
+        emergencyContactPhone: formData.emergencyPhone
+      };
+
+      // Call the real backend API
+      const response = await post("/api/patients", patientData);
+      
+      if (!response.success) {
+        throw new Error(response.message || "Failed to register patient");
+      }
+
+      // Reset form on success
+      setFormData({
+        firstName: "",
+        lastName: "",
+        dateOfBirth: "",
+        gender: "",
+        phone: "",
+        email: "",
+        address: "",
+        emergencyContact: "",
+        emergencyPhone: "",
+        bloodGroup: "",
+        allergies: "",
+        medicalHistory: "",
+      });
+
+      // Show success message
+      alert("Patient registered successfully!");
+    } catch (error) {
+      console.error("Error registering patient:", error);
+      alert("Failed to register patient. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (field: string, value: string) => {
@@ -147,9 +195,9 @@ export function RegisterPatient() {
                       <SelectValue placeholder="Select gender" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -294,9 +342,14 @@ export function RegisterPatient() {
               <Button
                 type="submit"
                 className="bg-teal-600 hover:bg-teal-700 text-white"
+                disabled={isSubmitting}
               >
-                <SaveIcon className="h-4 w-4 mr-2" />
-                Register Patient
+                {isSubmitting ? (
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <SaveIcon className="h-4 w-4 mr-2" />
+                )}
+                {isSubmitting ? "Registering..." : "Register Patient"}
               </Button>
             </div>
           </CardContent>

@@ -22,8 +22,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { get } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
+
+const extractList = <T,>(rawData: any): T[] => {
+  if (Array.isArray(rawData)) {
+    return rawData as T[];
+  }
+  if (rawData && Array.isArray(rawData.data)) {
+    return rawData.data as T[];
+  }
+  if (rawData && Array.isArray(rawData.items)) {
+    return rawData.items as T[];
+  }
+  if (rawData && Array.isArray(rawData.results)) {
+    return rawData.results as T[];
+  }
+  if (rawData && Array.isArray(rawData.appointments)) {
+    return rawData.appointments as T[];
+  }
+  return [];
+};
 
 export function DoctorAppointments() {
+  const { user } = useAuth();
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -31,14 +52,27 @@ export function DoctorAppointments() {
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch appointments on component mount
+  // Fetch appointments on component mount and when date changes
   useEffect(() => {
     const fetchAppointments = async () => {
+      if (!user?._id) return;
+      
       try {
         setIsLoading(true);
-        const response = await get("/api/appointments");
-        if (response.success && response.data?.appointments) {
-          setAppointments(response.data.appointments);
+        const selectedDate = date ? date.toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+        const url = `/api/appointments?doctorId=${user._id}&date=${selectedDate}&limit=100`;
+        const response = await get(url);
+        if (response.success) {
+          const rawAppointments = extractList<any>(response.data);
+          const mappedAppointments = rawAppointments.map((apt: any) => ({
+            ...apt,
+            id: apt._id || apt.appointmentId,
+            avatar: apt.patientName
+              ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
+              : undefined,
+            reason: apt.reason || "General Consultation",
+          }));
+          setAppointments(mappedAppointments);
         }
       } catch (error) {
         console.error('Failed to fetch appointments:', error);
@@ -48,16 +82,17 @@ export function DoctorAppointments() {
     };
 
     fetchAppointments();
-  }, []);
+  }, [user, date]);
 
-  const todayAppointments = appointments.filter(
-    (apt) => apt.date === new Date().toISOString().split('T')[0]
+  const selectedDateStr = date ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+  const dateAppointments = appointments.filter(
+    (apt) => apt.date === selectedDateStr
   );
 
   const filteredAppointments =
     statusFilter === "all"
-      ? todayAppointments
-      : todayAppointments.filter((apt) => apt.status === statusFilter);
+      ? dateAppointments
+      : dateAppointments.filter((apt) => apt.status === statusFilter);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -107,7 +142,7 @@ export function DoctorAppointments() {
                   Today's Total
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {todayAppointments.length}
+                  {filteredAppointments.length}
                 </h3>
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1">
                   <TrendingUpIcon className="w-3 h-3" />
@@ -130,7 +165,7 @@ export function DoctorAppointments() {
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
                   {
-                    todayAppointments.filter((a) => a.status === "completed")
+                    dateAppointments.filter((a) => a.status === "completed")
                       .length
                   }
                 </h3>
@@ -151,7 +186,7 @@ export function DoctorAppointments() {
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
                   {
-                    todayAppointments.filter((a) => a.status === "scheduled")
+                    dateAppointments.filter((a) => a.status === "scheduled")
                       .length
                   }
                 </h3>
@@ -186,13 +221,21 @@ export function DoctorAppointments() {
           <CardHeader>
             <CardTitle>Calendar</CardTitle>
           </CardHeader>
-          <CardContent>
-            <Calendar
-              mode="single"
-              selected={date}
-              onSelect={setDate}
-              className="rounded-md border border-border"
-            />
+          <CardContent className="p-4">
+            <div className="flex justify-center w-full">
+              <div className="w-full">
+                <Calendar
+                  mode="single"
+                  selected={date}
+                  onSelect={(selectedDate) => {
+                    if (selectedDate) {
+                      setDate(selectedDate);
+                    }
+                  }}
+                  className="rounded-md"
+                />
+              </div>
+            </div>
 
             <div className="mt-4 space-y-2">
               <Button
@@ -240,18 +283,33 @@ export function DoctorAppointments() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {filteredAppointments.map((appointment) => (
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <p className="text-muted-foreground">Loading appointments...</p>
+                </div>
+              </div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="text-center py-12">
+                <CalendarIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground">No appointments for this date</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Select a different date or create a new appointment
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredAppointments.map((appointment) => (
                 <div
                   key={appointment.id}
                   className="flex items-center gap-4 p-4 rounded-xl border border-border hover:shadow-md transition-all duration-200 bg-card"
                 >
                   <div className="flex flex-col items-center justify-center px-4 py-2 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
                     <span className="text-2xl font-bold text-foreground">
-                      {appointment.time.split(":")[0]}
+                      {appointment.time ? appointment.time.split(":")[0] : "00"}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {appointment.time.split(" ")[1]}
+                      {appointment.time ? (appointment.time.includes(" ") ? appointment.time.split(" ")[1] : "") : ""}
                     </span>
                   </div>
 
@@ -308,7 +366,8 @@ export function DoctorAppointments() {
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

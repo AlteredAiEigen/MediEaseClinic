@@ -122,40 +122,20 @@ class AppointmentService:
                 detail="Selected user is not a doctor"
             )
 
-        patient_clinic = patient.get("clinicId")
+        # Patients are universal - not restricted to clinics
+        # Only appointments and doctors are clinic-specific
         doctor_clinic = doctor.get("clinicId")
 
-        # Infer clinic scope
-        effective_clinic = clinic_id or doctor_clinic or patient_clinic
+        # Infer clinic scope from appointment context or doctor
+        effective_clinic = clinic_id or doctor_clinic
 
-        # Validate clinic alignment
+        # Validate doctor clinic alignment (doctors are clinic-specific)
         if clinic_id:
-            if patient_clinic and patient_clinic != clinic_id:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Selected patient does not belong to your clinic"
-                )
             if doctor_clinic and doctor_clinic != clinic_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Selected doctor does not belong to your clinic"
                 )
-        if patient_clinic and doctor_clinic and patient_clinic != doctor_clinic:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Patient and doctor belong to different clinics"
-            )
-
-        # Normalize patient clinic if missing but determinable
-        if not patient_clinic and effective_clinic:
-            update_fields: Dict[str, object] = {"clinicId": effective_clinic}
-            if clinic_name:
-                update_fields["clinicName"] = clinic_name
-            await self.patients_collection.update_one(
-                {"_id": patient["_id"]},
-                {"$set": update_fields}
-            )
-            patient_clinic = effective_clinic
 
         # Normalize doctor clinic if missing but determinable
         if not doctor_clinic and effective_clinic:

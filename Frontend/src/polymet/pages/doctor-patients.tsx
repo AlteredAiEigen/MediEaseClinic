@@ -27,6 +27,7 @@ import {
   AlertCircleIcon,
 } from "lucide-react";
 import { get } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 
 // Custom hook for debounced search
 const useDebounce = (value: string, delay: number) => {
@@ -60,6 +61,7 @@ interface Patient {
 type PatientStatus = "in-clinic" | "remote";
 
 export function DoctorPatients() {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [statusFilter, setStatusFilter] = useState("all");
@@ -70,26 +72,50 @@ export function DoctorPatients() {
 
   useEffect(() => {
     const fetchPatients = async () => {
+      if (!user?._id) return;
+      
       try {
         setIsLoading(true);
         setError(null);
 
-        const response = await get<{ data: Patient[] }>("/api/patients?limit=100");
-        if (response.success && response.data?.data) {
-          setPatients(response.data.data);
+        // Fetch doctor's patients from dedicated endpoint
+        const response = await get<{ data: Patient[] }>(`/api/doctors/me/patients?limit=100`);
+        if (response.success) {
+          if (response.data?.data && response.data.data.length > 0) {
+            setPatients(response.data.data);
+            setError(null);
+          } else {
+            // No patients found - this is not an error, just empty state
+            setPatients([]);
+            setError(null);
+          }
         } else {
-          setError(response.message ?? "Failed to load patients");
+          // If endpoint fails, try fallback to all patients (for testing)
+          console.warn("Doctor patients endpoint failed, trying fallback...");
+          const fallbackResponse = await get<{ data: Patient[] }>(`/api/patients?limit=100`);
+          if (fallbackResponse.success && fallbackResponse.data?.data) {
+            setPatients(fallbackResponse.data.data);
+            setError(null);
+          } else {
+            setError(response.message ?? "No patients found. Create appointments to see patients here.");
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load patients";
-        setError(message);
+        // Don't show error if it's just no patients
+        if (message.includes("No patients") || message.includes("not found")) {
+          setPatients([]);
+          setError(null);
+        } else {
+          setError(message);
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchPatients();
-  }, []);
+  }, [user]);
 
   const filteredPatients = useMemo(() => {
     const query = debouncedSearchQuery.trim().toLowerCase();

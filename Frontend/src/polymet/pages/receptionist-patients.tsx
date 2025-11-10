@@ -70,11 +70,16 @@ export function ReceptionistPatients() {
         setIsLoading(true);
         setError(null);
 
-        const response = await get<{ data: Patient[] }>("/api/patients?limit=100");
-        if (response.success && response.data?.data) {
-          setPatients(response.data.data);
+        // Call the real backend API
+        const response = await get<Patient[]>("/api/patients?limit=100");
+        
+        if (response.success && Array.isArray(response.data)) {
+          setPatients(response.data);
         } else {
-          setError(response.message ?? "Failed to load patients");
+          setPatients([]);
+          if (response.message) {
+            setError(response.message);
+          }
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load patients";

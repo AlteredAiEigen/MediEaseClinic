@@ -43,9 +43,8 @@ class PatientCreateRequest(BaseModel):
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
     
-    # Clinic association (injected server-side)
-    clinicId: Optional[str] = None
-    clinicName: Optional[str] = None
+    # Note: Patients are universal. Clinic info is stored for reference only (which clinic created the patient)
+    # This is injected server-side and not used for filtering
 
 
 class PatientUpdateRequest(BaseModel):
@@ -72,8 +71,7 @@ class PatientUpdateRequest(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
-    clinicId: Optional[str] = None
-    clinicName: Optional[str] = None
+    # Note: Patients are universal. Clinic info is for reference only
 
 
 class PatientSearchQuery(BaseModel):

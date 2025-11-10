@@ -8,10 +8,8 @@ from pydantic import BaseModel, Field
 
 
 class QueueCheckIn(BaseModel):
-    """Check-in request schema."""
-    patient_id: str = Field(..., alias="patientId")
-    doctor_id: str = Field(..., alias="doctorId")
-    appointment_id: Optional[str] = Field(None, alias="appointmentId")
+    """Check-in request schema. Requires appointment_id."""
+    appointment_id: str = Field(..., alias="appointmentId", description="Appointment ID is required for check-in")
     reason: Optional[str] = Field("General Consultation")
     priority: str = Field(default="medium", pattern="^(low|medium|high|emergency)$")
     notes: Optional[str] = Field("")

@@ -35,7 +35,7 @@ class AppointmentBase(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
     duration: int = Field(30, ge=15, le=480)
-    status: str = Field("scheduled", pattern="^(scheduled|checked-in|in-progress|completed|cancelled|no-show)$")
+    status: str = Field("scheduled", pattern="^(scheduled|cancelled|checked-in|ongoing|checkout|completed)$")
     priority: str = Field("medium", pattern="^(low|medium|high)$")
     reason: str = Field(..., max_length=500)
     notes: Optional[str] = Field("", max_length=1000)

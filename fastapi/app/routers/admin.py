@@ -93,13 +93,13 @@ async def get_dashboard_stats(
         first_day_of_month = today.replace(day=1)
         
         # Get counts
-        patient_query: Dict[str, object] = {}
+        # Patients are universal - not filtered by clinic
         appointment_query: Dict[str, object] = {}
         if clinic_id:
-            patient_query["clinicId"] = clinic_id
             appointment_query["clinicId"] = clinic_id
 
-        total_patients = await get_patients_collection(db).count_documents(patient_query)
+        # Patients are universal across all clinics
+        total_patients = await get_patients_collection(db).count_documents({})
         total_appointments = await get_appointments_collection(db).count_documents(appointment_query)
         total_doctors = await get_users_collection(db).count_documents(
             user_filter({"role": "doctor"}, require_active=True)
@@ -118,10 +118,8 @@ async def get_dashboard_stats(
             appointments_today_query
         )
 
-        # Patients this month
+        # Patients this month (universal - not filtered by clinic)
         patients_this_month_query = {"createdAt": {"$gte": first_day_of_month}}
-        if clinic_id:
-            patients_this_month_query["clinicId"] = clinic_id
         patients_this_month = await get_patients_collection(db).count_documents(patients_this_month_query)
 
         # Recent activity (last 10 appointments and patients)
@@ -132,9 +130,10 @@ async def get_dashboard_stats(
             .limit(5)
             .to_list(length=5)
         )
+        # Recent patients (universal - not filtered by clinic)
         recent_patients = await (
             get_patients_collection(db)
-            .find(patient_query)
+            .find({})
             .sort("createdAt", -1)
             .limit(5)
             .to_list(length=5)
@@ -291,13 +290,12 @@ async def get_system_stats(
         active_users = await get_users_collection(db).count_documents(staff_filter(require_active=True))
 
         # Collection counts
-        patient_query: Dict[str, object] = {}
+        # Patients are universal - not filtered by clinic
         appointment_query: Dict[str, object] = {}
         if clinic_id:
-            patient_query["clinicId"] = clinic_id
             appointment_query["clinicId"] = clinic_id
 
-        total_patients = await get_patients_collection(db).count_documents(patient_query)
+        total_patients = await get_patients_collection(db).count_documents({})
         total_appointments = await get_appointments_collection(db).count_documents(appointment_query)
         total_clinical_notes = await get_clinical_notes_collection(db).count_documents({})
         total_recordings = await get_recordings_collection(db).count_documents({})
@@ -476,12 +474,10 @@ async def get_patients(
     current_user: dict = Depends(require_roles(["admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    """Get all patients."""
+    """Get all patients. Patients are universal across all clinics."""
     try:
-        clinic_id = current_user.get("clinicId")
+        # Patients are universal - not filtered by clinic
         query = {}
-        if clinic_id:
-            query["clinicId"] = clinic_id
 
         total = await get_patients_collection(db).count_documents(query)
         skip = (page - 1) * limit

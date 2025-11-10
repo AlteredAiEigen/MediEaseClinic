@@ -80,6 +80,28 @@ interface Doctor {
   fullName?: string;
 }
 
+const extractList = <T,>(rawData: any): T[] => {
+  if (Array.isArray(rawData)) {
+    return rawData as T[];
+  }
+  if (rawData && Array.isArray(rawData.data)) {
+    return rawData.data as T[];
+  }
+  if (rawData && Array.isArray(rawData.items)) {
+    return rawData.items as T[];
+  }
+  if (rawData && Array.isArray(rawData.results)) {
+    return rawData.results as T[];
+  }
+  if (rawData && Array.isArray(rawData.patients)) {
+    return rawData.patients as T[];
+  }
+  if (rawData && Array.isArray(rawData.doctors)) {
+    return rawData.doctors as T[];
+  }
+  return [];
+};
+
 export function ReceptionistAppointments() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -94,6 +116,7 @@ export function ReceptionistAppointments() {
   const [appointmentReason, setAppointmentReason] = useState("");
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,13 +129,18 @@ export function ReceptionistAppointments() {
     fetchDoctors();
   }, [selectedDate]);
 
+  useEffect(() => {
+    fetchAllAppointmentsForMonth();
+  }, [date]);
+
   const fetchAppointments = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await get<{ data: Appointment[] }>(`/api/appointments?date=${selectedDate}`);
-      if (response.success && response.data?.data) {
-        setAppointments(response.data.data);
+      const response = await get(`/api/appointments?date=${selectedDate}`);
+      if (response.success) {
+        const appointmentsData = extractList<Appointment>(response.data);
+        setAppointments(appointmentsData);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load appointments");
@@ -121,11 +149,48 @@ export function ReceptionistAppointments() {
     }
   };
 
+  const fetchAllAppointmentsForMonth = async () => {
+    try {
+      if (!date) return;
+
+      // Get first and last day of the current month
+      const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+      const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+      const startDate = firstDay.toISOString().split("T")[0];
+      const endDate = lastDay.toISOString().split("T")[0];
+
+      // For now, we'll fetch appointments for each day of the month
+      // In a real implementation, you might want an API endpoint that accepts date ranges
+      const monthAppointments: Appointment[] = [];
+
+      // Loop through each day of the month
+      for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split("T")[0];
+        try {
+          const response = await get(`/api/appointments?date=${dateStr}`);
+          if (response.success) {
+            const dayAppointments = extractList<Appointment>(response.data);
+            monthAppointments.push(...dayAppointments);
+          }
+        } catch (err) {
+          // Silently ignore errors for individual days
+          console.warn(`Failed to fetch appointments for ${dateStr}:`, err);
+        }
+      }
+
+      setAllAppointments(monthAppointments);
+    } catch (err) {
+      console.error("Failed to load month appointments:", err);
+    }
+  };
+
   const fetchPatients = async () => {
     try {
-      const response = await get<{ data: Patient[] }>("/api/patients?limit=100");
-      if (response.success && response.data?.data) {
-        setPatients(response.data.data);
+      const response = await get("/api/patients?limit=100");
+      if (response.success) {
+        const patientsData = extractList<Patient>(response.data);
+        setPatients(patientsData);
       }
     } catch (err) {
       console.error("Failed to load patients:", err);
@@ -134,12 +199,20 @@ export function ReceptionistAppointments() {
 
   const fetchDoctors = async () => {
     try {
-      const response = await get<{ doctors: Doctor[] }>("/api/doctors?limit=100");
-      if (response.success && response.data?.doctors) {
-        setDoctors(response.data.doctors);
+      const response = await get("/api/doctors?limit=100");
+      if (response.success) {
+        const doctorsData = extractList<Doctor>(response.data);
+        setDoctors(doctorsData);
+        if (doctorsData.length === 0) {
+          console.warn("No doctors found. Make sure doctors have the same clinicId as the receptionist.");
+        }
+      } else {
+        console.error("Failed to load doctors:", response.message);
+        setDoctors([]);
       }
     } catch (err) {
       console.error("Failed to load doctors:", err);
+      setDoctors([]);
     }
   };
 
@@ -153,6 +226,24 @@ export function ReceptionistAppointments() {
   const filteredPatients = patients.filter((p) =>
     p.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
   );
+
+  // Get unique dates that have appointments for calendar modifiers
+  const appointmentDates = Array.from(
+    new Set(
+      allAppointments
+        .map(apt => apt.date)
+        .filter(date => date) // Filter out null/undefined dates
+    )
+  ).map(dateStr => new Date(dateStr));
+
+  // Calendar modifiers to highlight dates with appointments
+  const modifiers = {
+    hasAppointment: appointmentDates,
+  };
+
+  const modifiersClassNames = {
+    hasAppointment: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold",
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -325,24 +416,18 @@ export function ReceptionistAppointments() {
           <CardHeader>
             <CardTitle>Calendar</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <Calendar
-              mode="single"
               selected={date}
-              onSelect={setDate}
-              className="rounded-md border border-border"
+              onSelect={(selectedDate) => {
+                if (selectedDate) {
+                  setDate(selectedDate);
+                  setSelectedDate(selectedDate.toISOString().split("T")[0]);
+                }
+              }}
+              modifiers={modifiers}
+              modifiersClassNames={modifiersClassNames}
             />
-
-            <div className="mt-4 space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setDate(new Date())}
-              >
-                Jump to Today
-              </Button>
-            </div>
           </CardContent>
         </Card>
 

@@ -74,10 +74,20 @@ class AuthService:
             # Generate unique clinic ID for admin
             import uuid
             clinic_id = str(uuid.uuid4())[:8].upper()
+            clinic_name = user_data.clinicName
         else:
             # For doctors/receptionists - clinic info should be set by the admin creating them
-            # But for self-registration (if allowed), this would need clinic info
-            clinic_id = None
+            # Use clinicId and clinicName from user_data if provided (when created by admin)
+            # Handle both RegisterRequest and UserCreate types
+            try:
+                # Try to get from model_dump first (works for both Pydantic models)
+                user_dict_temp = user_data.model_dump()
+                clinic_id = user_dict_temp.get('clinicId')
+                clinic_name = user_dict_temp.get('clinicName')
+            except (AttributeError, TypeError):
+                # Fallback to direct attribute access
+                clinic_id = getattr(user_data, 'clinicId', None)
+                clinic_name = getattr(user_data, 'clinicName', None)
 
         # Validate doctor-specific fields
         if user_data.role == "doctor":
@@ -102,7 +112,13 @@ class AuthService:
         # Handle clinic information
         if user_data.role == "admin":
             user_dict["clinicId"] = clinic_id
-            user_dict["clinicName"] = user_data.clinicName
+            user_dict["clinicName"] = clinic_name
+        else:
+            # For doctors/receptionists, assign clinic info if provided (when created by admin)
+            if clinic_id:
+                user_dict["clinicId"] = clinic_id
+            if clinic_name:
+                user_dict["clinicName"] = clinic_name
         
         # Insert into database
         result = await self._get_users_collection().insert_one(user_dict)

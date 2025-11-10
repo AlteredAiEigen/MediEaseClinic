@@ -89,10 +89,12 @@ class PatientService:
         patient_dict["email"] = patient_dict["email"].lower()
         patient_dict["createdAt"] = datetime.utcnow()
         patient_dict["updatedAt"] = datetime.utcnow()
+        # Store clinic info for reference (which clinic created the patient)
+        # but patients are universal and not restricted to this clinic
         if clinic_id:
-            patient_dict["clinicId"] = clinic_id
+            patient_dict["createdByClinicId"] = clinic_id
         if clinic_name:
-            patient_dict["clinicName"] = clinic_name
+            patient_dict["createdByClinicName"] = clinic_name
         
         # Encrypt sensitive fields
         patient_dict = field_encryption.encrypt_dict_fields(
@@ -170,10 +172,13 @@ class PatientService:
         search: Optional[str] = None,
         gender: Optional[str] = None,
         present_in_clinic: Optional[bool] = None,
-        clinic_id: Optional[str] = None
+        clinic_id: Optional[str] = None  # Kept for backward compatibility but not used for filtering
     ) -> tuple[List[dict], int]:
         """
         List patients with pagination and filtering.
+        
+        Patients are universal across all clinics - not filtered by clinic.
+        clinic_id parameter is kept for backward compatibility but not used.
         
         Args:
             page: Page number (1-indexed)
@@ -203,8 +208,7 @@ class PatientService:
         if present_in_clinic is not None:
             query["presentInClinic"] = present_in_clinic
         
-        if clinic_id:
-            query["clinicId"] = clinic_id
+        # Note: clinic_id is NOT used for filtering - patients are universal
         
         # Calculate skip
         skip = (page - 1) * limit
@@ -332,6 +336,9 @@ class PatientService:
         """
         Search patients by multiple fields.
         
+        Patients are universal across all clinics - not filtered by clinic.
+        clinic_id parameter is kept for backward compatibility but not used.
+        
         Args:
             query: Search query
         
@@ -348,8 +355,7 @@ class PatientService:
             ]
         }
         
-        if clinic_id:
-            search_query["clinicId"] = clinic_id
+        # Note: clinic_id is NOT used for filtering - patients are universal
         
         cursor = self.patients_collection.find(search_query).limit(20)
         patients = await cursor.to_list(length=20)

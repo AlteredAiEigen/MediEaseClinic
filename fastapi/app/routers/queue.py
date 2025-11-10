@@ -2,7 +2,8 @@
 Queue API endpoints.
 """
 
-from fastapi import APIRouter, Depends, status
+import json
+from fastapi import APIRouter, Depends, status, HTTPException
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -28,12 +29,27 @@ async def check_in_patient(
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Check in a patient to the queue."""
-    queue_service = QueueService(db)
-    queue_entry = await queue_service.check_in_patient(check_in_data, current_user["_id"])
-    return success_response(
-        data=queue_entry.dict(by_alias=True),
-        message="Patient checked in successfully"
-    )
+    try:
+        queue_service = QueueService(db)
+        queue_entry = await queue_service.check_in_patient(check_in_data, current_user["_id"])
+        # Convert Pydantic model to dict, ensuring ObjectIds are strings
+        entry_dict = queue_entry.dict(by_alias=True, exclude_none=False)
+        # Ensure all values are JSON-serializable (handles any remaining ObjectIds)
+        entry_dict = json.loads(json.dumps(entry_dict, default=str))
+        return success_response(
+            data=entry_dict,
+            message="Patient checked in successfully"
+        )
+    except HTTPException as e:
+        return error_response(
+            message=e.detail,
+            status_code=e.status_code
+        )
+    except Exception as e:
+        return error_response(
+            message=f"Failed to check in patient: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @router.get("/", response_model=dict)
@@ -42,17 +58,28 @@ async def get_queue(
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Get today's active queue."""
-    queue_service = QueueService(db)
-    queue = await queue_service.get_active_queue()
-    return success_response(
-        data=queue,
-        message="Queue retrieved successfully"
-    )
+    try:
+        queue_service = QueueService(db)
+        queue = await queue_service.get_active_queue()
+        return success_response(
+            data={"queue": queue},
+            message="Queue retrieved successfully"
+        )
+    except HTTPException as e:
+        return error_response(
+            message=e.detail,
+            status_code=e.status_code
+        )
+    except Exception as e:
+        return error_response(
+            message=f"Failed to fetch queue: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @router.get("/stats", response_model=dict)
 async def get_queue_stats(
-    current_user: dict = Depends(require_roles(["admin", "doctor"])),
+    current_user: dict = Depends(require_roles(["admin", "doctor", "receptionist"])),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Get today's queue statistics."""

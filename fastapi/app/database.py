@@ -75,6 +75,8 @@ class Database:
             await cls.database.patients.create_index("email")
             await cls.database.patients.create_index("phone")
             await cls.database.patients.create_index([("firstName", 1), ("lastName", 1)])
+            await cls.database.patients.create_index("createdByClinicId")  # For reference queries (patients are universal)
+            await cls.database.patients.create_index("presentInClinic")  # For queue management
             
             # Appointments collection indexes
             await cls.database.appointments.create_index("appointmentId", unique=True)
@@ -82,6 +84,8 @@ class Database:
             await cls.database.appointments.create_index("doctorId")
             await cls.database.appointments.create_index("date")
             await cls.database.appointments.create_index("status")
+            await cls.database.appointments.create_index("clinicId")  # Appointments are clinic-specific
+            await cls.database.appointments.create_index([("date", 1), ("time", 1)])  # For schedule queries
             
             # Prescriptions collection indexes
             await cls.database.prescriptions.create_index("prescriptionId", unique=True)
@@ -101,6 +105,27 @@ class Database:
             await cls.database.clinical_notes.create_index("patientId")
             await cls.database.clinical_notes.create_index("doctorId")
             await cls.database.clinical_notes.create_index("appointmentId")
+            await cls.database.clinical_notes.create_index("status")
+            await cls.database.clinical_notes.create_index("actionable")
+            
+            # Queue collection indexes
+            await cls.database.queue.create_index("queue_id", unique=True)
+            await cls.database.queue.create_index("patient")
+            await cls.database.queue.create_index("doctor")
+            await cls.database.queue.create_index("appointment")
+            await cls.database.queue.create_index("status")
+            await cls.database.queue.create_index("is_active")
+            await cls.database.queue.create_index([("checked_in_at", -1)])  # For queue ordering
+            
+            # Patient Vitals collection indexes
+            await cls.database.patient_vitals.create_index("patientId")
+            await cls.database.patient_vitals.create_index("recordedBy")
+            await cls.database.patient_vitals.create_index([("recordedAt", -1)])  # For chronological queries
+            
+            # Users collection additional indexes
+            await cls.database.users.create_index("clinicId")  # For clinic-based user queries
+            await cls.database.users.create_index("isActive")
+            await cls.database.users.create_index([("role", 1), ("isActive", 1)])  # For role-based active user queries
             
             # Audit Logs collection indexes (HIPAA Critical)
             await cls.database.audit_logs.create_index("userId")

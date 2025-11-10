@@ -189,6 +189,11 @@ export function HealthcareLayout({
         label: "Dashboard",
         path: "/receptionist-dashboard",
       },
+      {
+        icon: ActivityIcon,
+        label: "Work Station",
+        path: "/receptionist-workstation",
+      },
       { icon: UsersIcon, label: "Patients", path: "/receptionist-patients" },
       {
         icon: CalendarIcon,
@@ -458,6 +463,13 @@ export function HealthcareLayout({
                 <div>
                   <h1 className="text-2xl font-bold text-foreground">
                     Settings
+                  </h1>
+                </div>
+              )}
+              {location.pathname === "/receptionist-workstation" && (
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">
+                    Work Station
                   </h1>
                 </div>
               )}
