@@ -1128,8 +1128,8 @@ const filteredCheckoutEntries = shouldFilterQueue
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {doctorName}
-                          </p>
-                        </div>
+                </p>
+              </div>
                         <Badge
                           variant="outline"
                           className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
@@ -1139,8 +1139,8 @@ const filteredCheckoutEntries = shouldFilterQueue
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
                         {entry.reason || "Consultation in progress"}
-                      </p>
-                    </div>
+                </p>
+              </div>
                   );
                 })
               )}

@@ -218,6 +218,13 @@ export function ReceptionistAppointments() {
     [allAppointments, appointments]
   );
 
+  const todayAppointments = appointments;
+
+  const activeStatuses = useMemo(
+    () => new Set(["scheduled", "in-progress", "checked-in", "completed"]),
+    []
+  );
+
   const weekAppointments = useMemo(() => {
     return sourceAppointments.filter((apt) => {
       const dateValue = normalizeDate(apt.date);
@@ -234,8 +241,10 @@ export function ReceptionistAppointments() {
   );
 
   const scheduledThisWeek = useMemo(
-    () => weekAppointments.filter((apt) => apt.status === "scheduled").length,
-    [weekAppointments]
+    () =>
+      weekAppointments.filter((apt) => (apt.status ? activeStatuses.has(apt.status) : false))
+        .length,
+    [weekAppointments, activeStatuses]
   );
 
   const todayCompleted = useMemo(
@@ -244,8 +253,10 @@ export function ReceptionistAppointments() {
   );
 
   const todayScheduled = useMemo(
-    () => todayAppointments.filter((apt) => apt.status === "scheduled").length,
-    [todayAppointments]
+    () =>
+      todayAppointments.filter((apt) => (apt.status ? activeStatuses.has(apt.status) : false))
+        .length,
+    [todayAppointments, activeStatuses]
   );
 
   useEffect(() => {
@@ -346,8 +357,6 @@ export function ReceptionistAppointments() {
       setDoctors([]);
     }
   };
-
-  const todayAppointments = appointments;
 
   const filteredAppointments =
     statusFilter === "all"

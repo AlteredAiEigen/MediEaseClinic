@@ -129,7 +129,7 @@ export function ReceptionistPatients() {
   useEffect(() => {
     const fetchAppointmentStats = async () => {
       try {
-        const response = await get("/api/appointments?limit=200");
+        const response = await get("/api/appointments?limit=100");
         if (response.success) {
           const payload = response.data as any;
           const list = Array.isArray(payload)
