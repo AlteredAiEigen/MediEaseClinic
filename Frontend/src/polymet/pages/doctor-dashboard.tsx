@@ -90,6 +90,25 @@ interface Appointment {
   doctorName?: string;
 }
 
+const extractList = <T,>(rawData: any): T[] => {
+  if (Array.isArray(rawData)) {
+    return rawData as T[];
+  }
+  if (rawData && Array.isArray(rawData.data)) {
+    return rawData.data as T[];
+  }
+  if (rawData && Array.isArray(rawData.items)) {
+    return rawData.items as T[];
+  }
+  if (rawData && Array.isArray(rawData.results)) {
+    return rawData.results as T[];
+  }
+  if (rawData && Array.isArray(rawData.appointments)) {
+    return rawData.appointments as T[];
+  }
+  return [];
+};
+
 export function DoctorDashboard() {
   const { user } = useAuth();
   const [totalPatients, setTotalPatients] = useState(0);
@@ -117,82 +136,124 @@ export function DoctorDashboard() {
   >([]);
 
   // Fetch queue and appointments data
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!user?._id) return;
+  const fetchDashboardData = async () => {
+    if (!user?._id) return;
 
-      try {
-        setIsLoading(true);
-        setError(null);
+    try {
+      setIsLoading(true);
+      setError(null);
 
-        // Fetch doctor's queue
-        const queueResponse = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
-        if (queueResponse.success && queueResponse.data?.queue) {
-          const mappedQueue: QueuePatient[] = queueResponse.data.queue
-            .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
-            .map((entry) => ({
-              id: entry._id,
-              name: entry.patient.fullName,
-              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
-              time: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              appointmentType: entry.reason || "Consultation",
-              status: entry.status === "in-consultation" ? "in-progress" : "waiting",
-              queueNumber: entry.queue_number,
-              priority: entry.priority,
-              reason: entry.reason,
-            }));
-          setQueuePatients(mappedQueue);
-          setInQueue(mappedQueue.length);
-        }
-
-        // Fetch upcoming appointments (scheduled status)
-        const today = new Date().toISOString().split("T")[0];
-        const appointmentsResponse = await get<{ data: Appointment[] }>(
-          `/api/appointments?doctorId=${user._id}&date=${today}&status=scheduled`
-        );
-        if (appointmentsResponse.success && appointmentsResponse.data?.data) {
-          const mappedAppointments: UpcomingAppointment[] = appointmentsResponse.data.data.map(
-            (apt) => ({
-              id: apt._id,
-              name: apt.patientName || "Unknown Patient",
-              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName || "Unknown")}&background=random`,
-              time: apt.time,
-              appointmentType: apt.type || "Consultation",
-              patientId: apt.patientId,
-              doctorId: apt.doctorId,
-            })
-          );
-          setUpcomingAppointments(mappedAppointments);
-          setTodayAppointments(mappedAppointments.length);
-        }
-
-        // Fetch doctor-specific stats
-        const statsResponse = await get<{
-          totalPatients: number;
-          todayAppointments: number;
-          scheduledToday: number;
-          completedToday: number;
-          inQueue: number;
-          thisWeek: number;
-        }>("/api/doctors/me/stats");
-        if (statsResponse.success && statsResponse.data) {
-          setTotalPatients(statsResponse.data.totalPatients || 0);
-          setTodayAppointments(statsResponse.data.todayAppointments || 0);
-          setCompletedToday(statsResponse.data.completedToday || 0);
-          // inQueue is already set from queue response above
-        }
-
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load dashboard data";
-        setError(message);
-      } finally {
-        setIsLoading(false);
+      // Fetch doctor's queue
+      const queueResponse = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
+      if (queueResponse.success && queueResponse.data?.queue) {
+        const mappedQueue: QueuePatient[] = queueResponse.data.queue
+          .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
+          .map((entry) => ({
+            id: entry._id,
+            name: entry.patient.fullName,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+            time: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            appointmentType: entry.reason || "Consultation",
+            status: entry.status === "in-consultation" ? "in-progress" : "waiting",
+            queueNumber: entry.queue_number,
+            priority: entry.priority,
+            reason: entry.reason,
+          }));
+        setQueuePatients(mappedQueue);
+        setInQueue(mappedQueue.length);
       }
-    };
 
+      // Fetch today's appointments (all statuses for today, doctor auto-filtered by backend)
+      const today = new Date().toISOString().split("T")[0];
+      const appointmentsResponse = await get(
+        `/api/appointments?date=${today}&limit=100`
+      );
+      
+      if (appointmentsResponse.success) {
+        // Extract appointments from response using helper
+        const appointmentsList = extractList<Appointment>(appointmentsResponse.data);
+        
+        // Normalize date for comparison - handle both YYYY-MM-DD and ISO date strings
+        const normalizeDate = (dateStr: string | undefined): string => {
+          if (!dateStr) return "";
+          // If it's already in YYYY-MM-DD format, return as is
+          if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return dateStr;
+          }
+          // If it's an ISO string, extract the date part
+          if (dateStr.includes("T")) {
+            return dateStr.split("T")[0];
+          }
+          return dateStr;
+        };
+        
+        // Filter for today's appointments (exclude completed and cancelled)
+        // Include scheduled, checked-in, and in-progress appointments
+        const activeAppointments = appointmentsList.filter(
+          (apt) => {
+            const aptDate = normalizeDate(apt.date);
+            const status = (apt.status || "").toLowerCase();
+            const isToday = aptDate === today;
+            const isActive = status !== "completed" && status !== "cancelled" && status !== "no-show";
+            
+            return isToday && isActive;
+          }
+        );
+        
+        // Sort by time
+        activeAppointments.sort((a, b) => {
+          const timeA = a.time || "";
+          const timeB = b.time || "";
+          return timeA.localeCompare(timeB);
+        });
+        
+        const mappedAppointments: UpcomingAppointment[] = activeAppointments.map(
+          (apt) => ({
+            id: apt._id || apt.appointmentId,
+            name: apt.patientName || "Unknown Patient",
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName || "Unknown")}&background=random`,
+            time: apt.time || "",
+            appointmentType: apt.type || apt.reason || "Consultation",
+            patientId: apt.patientId,
+            doctorId: apt.doctorId,
+          })
+        );
+        setUpcomingAppointments(mappedAppointments);
+        setTodayAppointments(mappedAppointments.length);
+      } else {
+        // If API call failed, clear appointments
+        setUpcomingAppointments([]);
+        setTodayAppointments(0);
+      }
+
+      // Fetch doctor-specific stats
+      const statsResponse = await get<{
+        totalPatients: number;
+        todayAppointments: number;
+        scheduledToday: number;
+        completedToday: number;
+        inQueue: number;
+        thisWeek: number;
+      }>("/api/doctors/me/stats");
+      if (statsResponse.success && statsResponse.data) {
+        setTotalPatients(statsResponse.data.totalPatients || 0);
+        setTodayAppointments(statsResponse.data.todayAppointments || 0);
+        setCompletedToday(statsResponse.data.completedToday || 0);
+        // inQueue is already set from queue response above
+      }
+
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load dashboard data";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchDashboardData();
   }, [user]);
 
@@ -508,7 +569,7 @@ export function DoctorDashboard() {
           </CardHeader>
           <CardContent className="p-0">
             <div
-              className="max-h-[280px] overflow-y-auto px-4 pb-3 pt-3 scrollbar-thin scrollbar-thumb-teal-300 dark:scrollbar-thumb-teal-700 scrollbar-track-transparent hover:scrollbar-thumb-teal-400 dark:hover:scrollbar-thumb-teal-600"
+              className="h-[500px] overflow-y-auto px-4 pb-3 pt-3 scrollbar-thin scrollbar-thumb-teal-300 dark:scrollbar-thumb-teal-700 scrollbar-track-transparent hover:scrollbar-thumb-teal-400 dark:hover:scrollbar-thumb-teal-600"
               onDragOver={handleDragOver}
               onDrop={handleDropOnAppointments}
             >
@@ -626,7 +687,7 @@ export function DoctorDashboard() {
           </CardHeader>
           <CardContent className="p-0">
             <div
-              className="max-h-[280px] overflow-y-auto px-4 pb-3 pt-3 scrollbar-thin scrollbar-thumb-cyan-300 dark:scrollbar-thumb-cyan-700 scrollbar-track-transparent hover:scrollbar-thumb-cyan-400 dark:hover:scrollbar-thumb-cyan-600"
+              className="h-[500px] overflow-y-auto px-4 pb-3 pt-3 scrollbar-thin scrollbar-thumb-cyan-300 dark:scrollbar-thumb-cyan-700 scrollbar-track-transparent hover:scrollbar-thumb-cyan-400 dark:hover:scrollbar-thumb-cyan-600"
               onDragOver={handleDragOver}
               onDrop={handleDropOnQueue}
             >
@@ -748,7 +809,7 @@ export function DoctorDashboard() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="max-h-[280px] overflow-y-auto px-4 pb-3 pt-3 scrollbar-thin scrollbar-thumb-purple-300 dark:scrollbar-thumb-purple-700 scrollbar-track-transparent">
+            <div className="h-[500px] overflow-y-auto px-4 pb-3 pt-3 scrollbar-thin scrollbar-thumb-purple-300 dark:scrollbar-thumb-purple-700 scrollbar-track-transparent">
               <div className="space-y-2">
                 {labReports.map((report) => (
                   <div

@@ -22,7 +22,6 @@ import {
   MailIcon,
   CalendarIcon,
   FileTextIcon,
-  TrendingUpIcon,
   UserIcon,
   ActivityIcon,
   AlertCircleIcon,
@@ -51,15 +50,89 @@ interface Patient {
   _id: string;
   patientId: string;
   fullName: string;
+  firstName?: string;
+  lastName?: string;
   age: string;
   gender: string;
   phone: string;
   email?: string;
   presentInClinic: boolean;
   chiefComplaint?: string | null;
+  createdAt?: string;
+  registeredAt?: string;
 }
 
 type PatientStatus = "in-clinic" | "remote";
+
+interface Appointment {
+  _id?: string;
+  appointmentId?: string;
+  patientId?: string;
+  doctorId?: string;
+  date?: string;
+  time?: string;
+  type?: string;
+  status?: string;
+}
+
+interface DoctorStats {
+  totalPatients?: number;
+  todayAppointments?: number;
+  scheduledToday?: number;
+  completedToday?: number;
+  inQueue?: number;
+  thisWeek?: number;
+}
+
+const extractList = <T,>(payload: any): T[] => {
+  if (Array.isArray(payload)) {
+    return payload as T[];
+  }
+  if (payload && Array.isArray(payload.data)) {
+    return payload.data as T[];
+  }
+  if (payload && Array.isArray(payload.items)) {
+    return payload.items as T[];
+  }
+  if (payload && Array.isArray(payload.results)) {
+    return payload.results as T[];
+  }
+  if (payload && Array.isArray(payload.patients)) {
+    return payload.patients as T[];
+  }
+  if (payload && Array.isArray(payload.appointments)) {
+    return payload.appointments as T[];
+  }
+  return [];
+};
+
+const normalizeDate = (value?: string) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const startOfMonth = (reference: Date) => {
+  const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const endOfMonth = (reference: Date) => {
+  const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
+
+const endOfDay = (reference: Date) => {
+  const end = new Date(reference);
+  end.setHours(23, 59, 59, 999);
+  return end;
+};
+
+const isWithinRange = (target: Date, start: Date, end: Date) =>
+  target >= start && target <= end;
 
 export function DoctorPatients() {
   const { user } = useAuth();
@@ -70,80 +143,220 @@ export function DoctorPatients() {
   const [scheduleAppointmentOpen, setScheduleAppointmentOpen] = useState(false);
   const [selectedPatientForSchedule, setSelectedPatientForSchedule] = useState<Patient | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [doctorStats, setDoctorStats] = useState<DoctorStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchPatients = async () => {
-      if (!user?._id) return;
+  const todayRef = useMemo(() => new Date(), []);
+  const monthStart = useMemo(() => startOfMonth(todayRef), [todayRef]);
+  const monthEnd = useMemo(() => endOfMonth(todayRef), [todayRef]);
+  const followUpWindowEnd = useMemo(() => {
+    const windowEnd = new Date(todayRef);
+    windowEnd.setDate(windowEnd.getDate() + 7);
+    return endOfDay(windowEnd);
+  }, [todayRef]);
+  const activeAppointmentStatuses = useMemo(
+    () => new Set(["scheduled", "checked-in", "in-progress"]),
+    []
+  );
+
+  const fetchPatients = useCallback(async () => {
+    if (!user?._id) return;
+    
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Fetch doctor's patients from dedicated endpoint
+      const response = await get(`/api/doctors/me/patients?limit=100`);
+      let patientList: Patient[] = [];
       
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        // Fetch doctor's patients from dedicated endpoint
-        const response = await get<{ data: Patient[] }>(`/api/doctors/me/patients?limit=100`);
-        if (response.success) {
-          if (response.data?.data && response.data.data.length > 0) {
-            setPatients(response.data.data);
-            setError(null);
-          } else {
-            // No patients found - this is not an error, just empty state
-            setPatients([]);
-            setError(null);
-          }
-        } else {
-          // If endpoint fails, try fallback to all patients (for testing)
-          console.warn("Doctor patients endpoint failed, trying fallback...");
-          const fallbackResponse = await get<{ data: Patient[] }>(`/api/patients?limit=100`);
-          if (fallbackResponse.success && fallbackResponse.data?.data) {
-            setPatients(fallbackResponse.data.data);
-            setError(null);
-          } else {
-            setError(response.message ?? "No patients found. Create appointments to see patients here.");
-          }
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load patients";
-        // Don't show error if it's just no patients
-        if (message.includes("No patients") || message.includes("not found")) {
-          setPatients([]);
-          setError(null);
-        } else {
-          setError(message);
-        }
-      } finally {
-        setIsLoading(false);
+      if (response.success) {
+        patientList = extractList<Patient>(response.data);
       }
-    };
+      
+      // If no patients from doctor endpoint, try fallback
+      if (patientList.length === 0) {
+        console.warn("Doctor patients endpoint returned no patients, trying fallback...");
+        const fallbackResponse = await get(`/api/patients?limit=100`);
+        if (fallbackResponse.success) {
+          patientList = extractList<Patient>(fallbackResponse.data);
+        }
+      }
+      
+      // Normalize all patients to ensure all fields are available for search
+      const normalized = patientList.map((patient: any) => {
+        const fullName =
+          (patient.fullName || "").trim() ||
+          [patient.firstName || "", patient.lastName || ""].filter(Boolean).join(" ").trim() ||
+          patient.patientId ||
+          "Unnamed Patient";
+        
+        return {
+          _id: patient._id || patient.id,
+          patientId: patient.patientId || "",
+          fullName: fullName,
+          firstName: patient.firstName || "",
+          lastName: patient.lastName || "",
+          age: patient.age || "",
+          gender: patient.gender || "",
+          phone: patient.phone || "",
+          email: patient.email || "",
+          presentInClinic: Boolean(patient.presentInClinic),
+          chiefComplaint: patient.chiefComplaint || null,
+          createdAt: patient.createdAt,
+          registeredAt: patient.registeredAt,
+        } as Patient;
+      });
+      
+      setPatients(normalized);
+      if (normalized.length === 0) {
+        setError(null); // Empty state, not an error
+      } else {
+        setError(null);
+      }
 
-    fetchPatients();
+      const [statsResponse, appointmentsResponse] = await Promise.all([
+        get("/api/doctors/me/stats"),
+        get(`/api/appointments?limit=100${user?._id ? `&doctor_id=${user._id}` : ""}`),
+      ]);
+
+      if (statsResponse.success) {
+        setDoctorStats((statsResponse.data as DoctorStats) ?? null);
+      } else {
+        setDoctorStats(null);
+      }
+
+      if (appointmentsResponse.success) {
+        setAppointments(extractList<Appointment>(appointmentsResponse.data));
+      } else {
+        setAppointments([]);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load patients";
+      // Don't show error if it's just no patients
+      if (message.includes("No patients") || message.includes("not found")) {
+        setPatients([]);
+        setError(null);
+      } else {
+        setError(message);
+      }
+      setDoctorStats(null);
+      setAppointments([]);
+    } finally {
+      setIsLoading(false);
+    }
   }, [user]);
 
-  const filteredPatients = useMemo(() => {
-    const query = debouncedSearchQuery.trim().toLowerCase();
+  useEffect(() => {
+    fetchPatients();
+  }, [fetchPatients]);
+
+  const totalPatientsCount = useMemo(() => {
+    // Always use the actual patients array length to ensure it updates when new patients are added
+    return patients.length;
+  }, [patients.length]);
+
+  const inClinicCount = useMemo(
+    () => patients.filter((patient) => patient.presentInClinic).length,
+    [patients]
+  );
+
+  const newPatientsThisMonth = useMemo(() => {
     return patients.filter((patient) => {
-      const matchesSearch =
-        query.length === 0 ||
-        patient.fullName.toLowerCase().includes(query) ||
-        patient.patientId.toLowerCase().includes(query) ||
-        patient.email?.toLowerCase().includes(query);
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "in-clinic" && patient.presentInClinic) ||
-        (statusFilter === "remote" && !patient.presentInClinic);
+      const created =
+        normalizeDate(patient.createdAt) ?? normalizeDate(patient.registeredAt);
+      if (!created) return false;
+      return isWithinRange(created, monthStart, monthEnd);
+    }).length;
+  }, [patients, monthStart, monthEnd]);
+
+  const followUpsDue = useMemo(() => {
+    return appointments.filter((appointment) => {
+      const appointmentDate = normalizeDate(appointment.date);
+      if (!appointmentDate) return false;
+      if (appointmentDate < todayRef || appointmentDate > followUpWindowEnd) {
+        return false;
+      }
+      if (appointment.type && !appointment.type.toLowerCase().includes("follow")) {
+        return false;
+      }
+      if (appointment.status && !activeAppointmentStatuses.has(appointment.status)) {
+        return false;
+      }
+      if (user?._id && appointment.doctorId && appointment.doctorId !== user._id) {
+        return false;
+      }
+      return true;
+    }).length;
+  }, [appointments, todayRef, followUpWindowEnd, activeAppointmentStatuses, user?._id]);
+
+  const filteredPatients = useMemo(() => {
+    // Return empty if no patients
+    if (!patients || patients.length === 0) {
+      return [];
+    }
+    
+    const query = (debouncedSearchQuery || "").trim().toLowerCase();
+    
+    return patients.filter((patient) => {
+      // Normalize patient data for search - ensure all fields are strings
+      const fullName = String(patient.fullName || "").trim().toLowerCase();
+      const firstName = String(patient.firstName || "").trim().toLowerCase();
+      const lastName = String(patient.lastName || "").trim().toLowerCase();
+      const patientId = String(patient.patientId || "").trim().toLowerCase();
+      const email = String(patient.email || "").trim().toLowerCase();
+      const phone = String(patient.phone || "").trim().toLowerCase();
+      
+      // Search across all fields - if query is empty, show all
+      let matchesSearch = true;
+      if (query.length > 0) {
+        matchesSearch =
+          fullName.includes(query) ||
+          firstName.includes(query) ||
+          lastName.includes(query) ||
+          patientId.includes(query) ||
+          email.includes(query) ||
+          phone.includes(query) ||
+          `${firstName} ${lastName}`.trim().includes(query);
+      }
+      
+      // Status filtering
+      let matchesStatus = true;
+      if (statusFilter === "in-clinic") {
+        matchesStatus = Boolean(patient.presentInClinic);
+      } else if (statusFilter === "remote") {
+        matchesStatus = !Boolean(patient.presentInClinic);
+      } else if (statusFilter === "scheduled") {
+        // Check if patient has any scheduled appointments
+        const hasScheduledAppointment = appointments.some(
+          (apt) => {
+            const aptPatientId = String(apt.patientId || "");
+            return (
+              (aptPatientId === String(patient._id || "")) ||
+              (aptPatientId === String(patient.patientId || ""))
+            ) && apt.status === "scheduled";
+          }
+        );
+        matchesStatus = hasScheduledAppointment;
+      }
+      
       return matchesSearch && matchesStatus;
     });
-  }, [patients, debouncedSearchQuery, statusFilter]);
+  }, [patients, debouncedSearchQuery, statusFilter, appointments]);
 
-  const getStatusColor = (patient: Patient): string => {
-    if (patient.presentInClinic) {
-      return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
+  const getStatusText = (patient: Patient): string | null => {
+    // Only show status if patient has appointments
+    const hasAppointments = appointments.some(
+      (apt) =>
+        apt.patientId === patient._id || apt.patientId === patient.patientId
+    );
+    
+    if (!hasAppointments) {
+      return null; // No status if no appointments
     }
-    return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
-  };
-
-  const getStatusText = (patient: Patient): string => {
+    
     return patient.presentInClinic ? "in-clinic" : "remote";
   };
 
@@ -202,6 +415,7 @@ export function DoctorPatients() {
       <AddPatientDialog
         open={addPatientOpen}
         onOpenChange={setAddPatientOpen}
+        onPatientAdded={fetchPatients}
       />
 
       {/* Schedule Appointment Dialog */}
@@ -233,12 +447,13 @@ export function DoctorPatients() {
                   Total Patients
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {patients.length}
+                  {totalPatientsCount}
                 </h3>
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2 flex items-center gap-1">
-                  <TrendingUpIcon className="w-3 h-3" />
-                  +12% this month
-                </p>
+                {typeof doctorStats?.thisWeek === "number" && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Appointments this week: {doctorStats.thisWeek}
+                  </p>
+                )}
               </div>
               <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center">
                 <UserIcon className="w-6 h-6 text-white" />
@@ -255,8 +470,13 @@ export function DoctorPatients() {
                   In Clinic Today
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {patients.filter((p) => p.presentInClinic).length}
+                  {inClinicCount}
                 </h3>
+                {typeof doctorStats?.inQueue === "number" && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    In queue: {doctorStats.inQueue}
+                  </p>
+                )}
               </div>
               <div className="w-12 h-12 rounded-xl bg-emerald-500 flex items-center justify-center">
                 <ActivityIcon className="w-6 h-6 text-white" />
@@ -272,7 +492,10 @@ export function DoctorPatients() {
                 <p className="text-sm font-medium text-muted-foreground">
                   New This Month
                 </p>
-                <h3 className="text-3xl font-bold text-foreground mt-2">24</h3>
+                <h3 className="text-3xl font-bold text-foreground mt-2">{newPatientsThisMonth}</h3>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {monthStart.toLocaleDateString()} – {monthEnd.toLocaleDateString()}
+                </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-purple-500 flex items-center justify-center">
                 <UserPlusIcon className="w-6 h-6 text-white" />
@@ -288,7 +511,10 @@ export function DoctorPatients() {
                 <p className="text-sm font-medium text-muted-foreground">
                   Follow-ups Due
                 </p>
-                <h3 className="text-3xl font-bold text-foreground mt-2">8</h3>
+                <h3 className="text-3xl font-bold text-foreground mt-2">{followUpsDue}</h3>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Next 7 days
+                </p>
               </div>
               <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center">
                 <CalendarIcon className="w-6 h-6 text-white" />
@@ -320,15 +546,38 @@ export function DoctorPatients() {
               />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full md:w-[200px]">
+              <SelectTrigger 
+                className="w-full md:w-[200px] bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 hover:from-teal-600 hover:to-emerald-600"
+              >
                 <FilterIcon className="w-4 h-4 mr-2" />
 
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="in-clinic">In Clinic</SelectItem>
-                <SelectItem value="remote">Remote Follow-up</SelectItem>
+                <SelectItem 
+                  value="all"
+                  className="focus:bg-teal-50 focus:text-teal-700 dark:focus:bg-teal-950/20 dark:focus:text-teal-300"
+                >
+                  All Status
+                </SelectItem>
+                <SelectItem 
+                  value="in-clinic"
+                  className="focus:bg-teal-50 focus:text-teal-700 dark:focus:bg-teal-950/20 dark:focus:text-teal-300"
+                >
+                  In Clinic
+                </SelectItem>
+                <SelectItem 
+                  value="remote"
+                  className="focus:bg-teal-50 focus:text-teal-700 dark:focus:bg-teal-950/20 dark:focus:text-teal-300"
+                >
+                  Remote Follow-up
+                </SelectItem>
+                <SelectItem 
+                  value="scheduled"
+                  className="focus:bg-teal-50 focus:text-teal-700 dark:focus:bg-teal-950/20 dark:focus:text-teal-300"
+                >
+                  Scheduled
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -367,9 +616,16 @@ export function DoctorPatients() {
                       <h4 className="font-semibold text-foreground">
                         {patient.fullName}
                       </h4>
-                      <Badge className={getStatusColor(patient)}>
-                        {getStatusText(patient)}
-                      </Badge>
+                      {getStatusText(patient) && (
+                        <Badge 
+                          className="text-white border-0"
+                          style={{
+                            background: "linear-gradient(to right, rgb(20, 184, 166), rgb(16, 185, 129))"
+                          }}
+                        >
+                          {getStatusText(patient)}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">{patient.patientId}</p>
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">

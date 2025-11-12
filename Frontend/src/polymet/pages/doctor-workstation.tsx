@@ -52,6 +52,10 @@ interface QueueEntry {
     phone?: string;
     email?: string;
   };
+  appointment?: {
+    _id: string;
+    appointmentId?: string;
+  } | string;
   doctor: {
     _id: string;
     fullName?: string;
@@ -67,57 +71,169 @@ interface QueueEntry {
   wait_time: number;
 }
 
+interface Appointment {
+  _id: string;
+  appointmentId: string;
+  patientId: string;
+  doctorId: string;
+  date: string;
+  time: string;
+  type: string;
+  status: string;
+  reason?: string;
+  patientName?: string;
+  doctorName?: string;
+}
+
+const extractList = <T,>(rawData: any): T[] => {
+  if (Array.isArray(rawData)) {
+    return rawData as T[];
+  }
+  if (rawData && Array.isArray(rawData.data)) {
+    return rawData.data as T[];
+  }
+  if (rawData && Array.isArray(rawData.items)) {
+    return rawData.items as T[];
+  }
+  if (rawData && Array.isArray(rawData.results)) {
+    return rawData.results as T[];
+  }
+  if (rawData && Array.isArray(rawData.appointments)) {
+    return rawData.appointments as T[];
+  }
+  return [];
+};
+
 export function DoctorWorkstation() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [queuePatients, setQueuePatients] = useState<QueuePatient[]>([]);
+  const [scheduledAppointments, setScheduledAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Fetch queue data
+  // Fetch queue data and today's appointments
   useEffect(() => {
-    const fetchQueue = async () => {
+    const fetchData = async () => {
       if (!user?._id) return;
 
       try {
         setIsLoading(true);
         setError(null);
 
-        const response = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
-        if (response.success && response.data?.queue) {
-          const mappedQueue: QueuePatient[] = response.data.queue
+        // Fetch queue first
+        const queueResponse = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
+        let mappedQueue: QueuePatient[] = [];
+        const queuePatientIds = new Set<string>();
+        const queueAppointmentIds = new Set<string>();
+        
+        if (queueResponse.success && queueResponse.data?.queue) {
+          mappedQueue = queueResponse.data.queue
             .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
-            .map((entry) => ({
-              id: entry._id,
-              name: entry.patient.fullName,
-              age: entry.patient.age || "N/A",
-              gender: entry.patient.gender || "N/A",
-              phone: entry.patient.phone || "N/A",
-              email: entry.patient.email || "N/A",
-              appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              reason: entry.reason || "Consultation",
-              priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
-              waitTime: `${entry.wait_time} min`,
-              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
-              patientId: entry.patient._id,
-              status: entry.status,
-            }));
+            .map((entry) => {
+              const patientId = entry.patient._id || entry.patient.patientId;
+              queuePatientIds.add(patientId);
+              
+              // Collect appointment ID from queue entry (normalize to string)
+              if (entry.appointment) {
+                let aptId = "";
+                if (typeof entry.appointment === "string") {
+                  aptId = entry.appointment;
+                } else if (entry.appointment._id) {
+                  aptId = String(entry.appointment._id);
+                } else if (entry.appointment.appointmentId) {
+                  aptId = String(entry.appointment.appointmentId);
+                }
+                if (aptId) {
+                  queueAppointmentIds.add(aptId);
+                }
+              }
+              
+              return {
+                id: entry._id,
+                name: entry.patient.fullName,
+                age: entry.patient.age || "N/A",
+                gender: entry.patient.gender || "N/A",
+                phone: entry.patient.phone || "N/A",
+                email: entry.patient.email || "N/A",
+                appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+                reason: entry.reason || "Consultation",
+                priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
+                waitTime: `${entry.wait_time} min`,
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+                patientId: patientId,
+                status: entry.status,
+              };
+            });
           setQueuePatients(mappedQueue);
         }
+
+        // Fetch today's appointments
+        const today = new Date().toISOString().split("T")[0];
+        const appointmentsResponse = await get(`/api/appointments?date=${today}&limit=100`);
+        
+        if (appointmentsResponse.success) {
+          const appointmentsList = extractList<Appointment>(appointmentsResponse.data);
+          
+          // Normalize date for comparison
+          const normalizeDate = (dateStr: string | undefined): string => {
+            if (!dateStr) return "";
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              return dateStr;
+            }
+            if (dateStr.includes("T")) {
+              return dateStr.split("T")[0];
+            }
+            return dateStr;
+          };
+          
+          // Filter for scheduled appointments for today that are NOT checked-in and NOT in queue
+          const todayAppointments = appointmentsList.filter(
+            (apt) => {
+              const aptDate = normalizeDate(apt.date);
+              const status = (apt.status || "").toLowerCase();
+              const patientId = String(apt.patientId || "");
+              // Normalize appointment ID - try both _id and appointmentId
+              const appointmentId = String(apt._id || apt.appointmentId || "");
+              
+              // Exclude if:
+              // 1. Not today's date
+              // 2. Status is not "scheduled" (e.g., checked-in, completed, cancelled, in-progress)
+              // 3. Appointment is already in the queue (by appointment ID - primary check)
+              // 4. Patient is already in the queue (by patient ID - fallback check)
+              const isToday = aptDate === today;
+              const isScheduled = status === "scheduled";
+              const notInQueueByAppointmentId = !queueAppointmentIds.has(appointmentId);
+              const notInQueueByPatientId = !queuePatientIds.has(patientId);
+              const notCheckedIn = status !== "checked-in" && status !== "in-progress";
+              
+              // Only show if all conditions are met
+              return (
+                isToday &&
+                isScheduled &&
+                notCheckedIn &&
+                notInQueueByAppointmentId &&
+                notInQueueByPatientId
+              );
+            }
+          );
+          
+          setScheduledAppointments(todayAppointments);
+        }
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to load queue";
+        const message = err instanceof Error ? err.message : "Failed to load data";
         setError(message);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchQueue();
+    fetchData();
   }, [user]);
 
   // Auto-advance to next patient when returning from consultation
@@ -176,7 +292,61 @@ export function DoctorWorkstation() {
 
   const currentPatient = queuePatients[currentIndex];
 
-  if (!currentPatient) {
+  // Show scheduled appointments if no queue patients
+  if (!currentPatient && queuePatients.length === 0) {
+    if (scheduledAppointments.length > 0) {
+      return (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-foreground mb-1">
+                Today's Scheduled Appointments
+              </h2>
+              <p className="text-muted-foreground">
+                {scheduledAppointments.length} appointment{scheduledAppointments.length !== 1 ? 's' : ''} scheduled for today
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {scheduledAppointments.map((apt) => (
+              <Card key={apt._id || apt.appointmentId} className="border-border shadow-md">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <Avatar className="w-16 h-16">
+                        <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white text-lg font-bold">
+                          {(apt.patientName || "Unknown")
+                            .split(" ")
+                            .map((n) => n[0])
+                            .join("")}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <h3 className="text-xl font-semibold text-foreground">
+                          {apt.patientName || "Unknown Patient"}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {apt.time || "Time TBD"} • {apt.type || apt.reason || "Consultation"}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-sm">
+                      Scheduled
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-4">
+                    Patient will appear here once they check in at the reception.
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // No queue patients and no scheduled appointments
     return (
       <div className="flex items-center justify-center min-h-[600px]">
         <Card className="border-border shadow-lg max-w-md">
@@ -232,7 +402,9 @@ export function DoctorWorkstation() {
     );
   }
 
-  if (queuePatients.length === 0) {
+  // This check is now handled in the early return above
+  // Keeping this for safety but it should not be reached
+  if (queuePatients.length === 0 && scheduledAppointments.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center">

@@ -43,6 +43,95 @@ class QueueService:
         
         return count + 1
     
+    async def cleanup_all_stale_entries(self) -> None:
+        """Run all cleanup tasks to remove stale queue entries and appointments."""
+        await self._cleanup_stale_queue_entries()
+        await self._cleanup_old_checked_in_appointments()
+
+    async def _cleanup_stale_queue_entries(self) -> None:
+        """Cancel queue entries from previous days that never started."""
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        stale_entries = await self.queue_collection.find({
+            "checked_in_at": {"$lt": today_start},
+            "is_active": True,
+            "status": {"$in": ["waiting", "in-consultation"]}
+        }).to_list(length=None)
+
+        for entry in stale_entries:
+            entry_id = entry["_id"]
+            logger.info("Cancelling stale queue entry %s", entry_id)
+
+            await self.queue_collection.update_one(
+                {"_id": entry_id},
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "is_active": False,
+                        "cancelled_at": datetime.utcnow(),
+                        "cancellation_reason": "Auto-cancelled: Checked-in entry from previous day",
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+
+            appointment_id = entry.get("appointment")
+            if appointment_id:
+                if isinstance(appointment_id, str) and ObjectId.is_valid(appointment_id):
+                    appointment_id = ObjectId(appointment_id)
+                await self.db["appointments"].update_one(
+                    {"_id": appointment_id},
+                    {
+                        "$set": {
+                            "status": "cancelled",
+                            "cancelledAt": datetime.utcnow(),
+                            "cancellationReason": "Auto-cancelled: Queue entry from previous day",
+                            "updatedAt": datetime.utcnow()
+                        }
+                    }
+                )
+
+    async def _cleanup_old_checked_in_appointments(self) -> None:
+        """Cancel appointments that remain checked-in after their scheduled date."""
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+
+        stale_appointments = await self.db["appointments"].find({
+            "status": "checked-in",
+            "date": {"$lt": today_str}
+        }).to_list(length=None)
+
+        for appointment in stale_appointments:
+            appointment_id = appointment["_id"]
+            logger.info("Cancelling stale checked-in appointment %s", appointment_id)
+
+            await self.db["appointments"].update_one(
+                {"_id": appointment_id},
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "cancelledAt": datetime.utcnow(),
+                        "cancellationReason": "Auto-cancelled: Checked-in from previous day",
+                        "updatedAt": datetime.utcnow()
+                    }
+                }
+            )
+
+            await self.queue_collection.update_many(
+                {
+                    "appointment": appointment_id,
+                    "is_active": True
+                },
+                {
+                    "$set": {
+                        "status": "cancelled",
+                        "is_active": False,
+                        "cancelled_at": datetime.utcnow(),
+                        "cancellation_reason": "Auto-cancelled: Associated appointment from previous day",
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+    
     async def check_in_patient(self, check_in_data: QueueCheckIn, checked_in_by: str) -> QueueInDB:
         """Check in a patient to the queue via appointment."""
         try:
@@ -92,18 +181,52 @@ class QueueService:
             if isinstance(doctor_object_id, str):
                 doctor_object_id = ObjectId(doctor_object_id)
             
-            # Check if patient is already in queue (use ObjectId for comparison)
-            existing = await self.queue_collection.find_one({
-                "patient": patient_object_id,
-                "is_active": True,
-                "status": {"$in": ["waiting", "in-consultation"]}
-            })
-            
-            if existing:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Patient is already in the queue"
-                )
+            # Clean up any stale entries before attempting check-in
+            await self.cleanup_all_stale_entries()
+
+            # Check if patient already has an active queue entry for the same appointment time
+            appointment_date = appointment.get("date")
+            appointment_time = appointment.get("time")
+
+            if appointment_date and appointment_time:
+                existing_entries = await self.queue_collection.find({
+                    "patient": patient_object_id,
+                    "is_active": True,
+                    "status": {"$in": ["waiting", "in-consultation"]}
+                }).to_list(length=None)
+
+                for entry in existing_entries:
+                    existing_appointment_id = entry.get("appointment")
+                    if existing_appointment_id:
+                        if isinstance(existing_appointment_id, str) and ObjectId.is_valid(existing_appointment_id):
+                            existing_appointment_id = ObjectId(existing_appointment_id)
+                        existing_appointment = await self.db["appointments"].find_one({"_id": existing_appointment_id})
+                        if existing_appointment:
+                            if (
+                                existing_appointment.get("date") == appointment_date
+                                and existing_appointment.get("time") == appointment_time
+                            ):
+                                raise HTTPException(
+                                    status_code=status.HTTP_400_BAD_REQUEST,
+                                    detail="Patient already has an active appointment in the queue for this time"
+                                )
+                    else:
+                        # No appointment reference but entry still active
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Patient is already in the queue"
+                        )
+            else:
+                existing = await self.queue_collection.find_one({
+                    "patient": patient_object_id,
+                    "is_active": True,
+                    "status": {"$in": ["waiting", "in-consultation"]}
+                })
+                if existing:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Patient is already in the queue"
+                    )
             
             # Check if patient exists
             patient = await self.db["patients"].find_one({"_id": patient_object_id})

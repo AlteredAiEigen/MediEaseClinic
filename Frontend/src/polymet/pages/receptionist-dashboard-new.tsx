@@ -68,6 +68,7 @@ interface QueueEntry {
     firstName?: string;
     lastName?: string;
   };
+  appointment?: string;
   checked_in_at: string;
   status: string;
   queue_number: number;
@@ -164,6 +165,8 @@ export function ReceptionistDashboardNew() {
   }, []);
 
   useEffect(() => {
+    cleanupOldAppointments();
+
     fetchQueueData();
     fetchQueueStats();
     fetchPatients();
@@ -177,6 +180,17 @@ export function ReceptionistDashboardNew() {
     
     return () => clearInterval(interval);
   }, []);
+
+  const cleanupOldAppointments = async () => {
+    try {
+      const response = await post("/api/queue/cleanup");
+      if (!response.success) {
+        console.warn("Cleanup endpoint responded without success");
+      }
+    } catch (error) {
+      console.warn("Failed to run cleanup endpoint", error);
+    }
+  };
 
   const fetchQueueData = async () => {
     try {
@@ -858,6 +872,14 @@ const filteredCheckoutEntries = shouldFilterQueue
                 const isAlreadyCheckedIn = ["checked-in", "in-consultation", "ongoing", "checkout", "completed"].includes(
                   appointmentStatus
                 );
+                const isInQueue = queueList.some((queueEntry) => {
+                  const patientId = queueEntry.patient?._id || queueEntry.patient?.patientId;
+                  return (
+                    patientId === appointment.patientId &&
+                    ["waiting", "in-consultation"].includes(queueEntry.status)
+                  );
+                });
+                const shouldShowCheckInButton = !isAlreadyCheckedIn && !isInQueue;
                 const isProcessing = processingAppointmentId === appointmentKey;
                 const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
                 return (
@@ -881,11 +903,7 @@ const filteredCheckoutEntries = shouldFilterQueue
                         <span className="text-sm font-semibold text-foreground">
                           {formattedTime}
                         </span>
-                        {isAlreadyCheckedIn ? (
-                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                            Checked in
-                          </Badge>
-                        ) : (
+                        {shouldShowCheckInButton ? (
                           <Button
                             size="sm"
                             className="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -899,6 +917,10 @@ const filteredCheckoutEntries = shouldFilterQueue
                             )}
                             Move to check-in
                           </Button>
+                        ) : (
+                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            {isInQueue ? "In Queue" : "Checked in"}
+                          </Badge>
                         )}
                       </div>
                     </div>
@@ -965,6 +987,16 @@ const filteredCheckoutEntries = shouldFilterQueue
                 const appointmentKey =
                   appointment.mongoId || appointment.id || appointment.appointmentId;
                 const isProcessing = processingAppointmentId === appointmentKey;
+                const isAlreadyCheckedIn =
+                  (appointment.status ?? "").toLowerCase() === "checked-in";
+                const isInQueue = queueList.some((queueEntry) => {
+                  const patientId = queueEntry.patient?._id || queueEntry.patient?.patientId;
+                  return (
+                    patientId === appointment.patientId &&
+                    ["waiting", "in-consultation"].includes(queueEntry.status)
+                  );
+                });
+                const shouldShowCheckInButton = !isAlreadyCheckedIn && !isInQueue;
                 const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
                 return (
                   <div
@@ -987,19 +1019,25 @@ const filteredCheckoutEntries = shouldFilterQueue
                         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {formattedTime}
                         </span>
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          disabled={isProcessing}
-                          onClick={() => handleCheckInFromAppointment(appointment)}
-                        >
-                          {isProcessing ? (
-                            <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
-                          ) : (
-                            <CheckCircleIcon className="mr-2 h-3 w-3" />
-                          )}
-                          Move to check-in
-                        </Button>
+                        {shouldShowCheckInButton ? (
+                          <Button
+                            size="sm"
+                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                            disabled={isProcessing}
+                            onClick={() => handleCheckInFromAppointment(appointment)}
+                          >
+                            {isProcessing ? (
+                              <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                            ) : (
+                              <CheckCircleIcon className="mr-2 h-3 w-3" />
+                            )}
+                            Move to check-in
+                          </Button>
+                        ) : (
+                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            {isInQueue ? "In Queue" : "Checked in"}
+                          </Badge>
+                        )}
             </div>
                     </div>
                   </div>

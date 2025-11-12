@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/select";
 import { get, post, patch } from "@/lib/api-client";
 import { toast } from "@/components/ui/use-toast";
-import { cn } from "@/lib/utils";
 
 interface Patient {
   _id: string;
@@ -95,7 +94,7 @@ const extractList = <T,>(rawData: any): T[] => {
 };
 
 export function ReceptionistWorkstation() {
-  const [patients, setPatients] = useState<Patient[]>([]);
+const [, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -144,9 +143,22 @@ export function ReceptionistWorkstation() {
   const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
+  const cleanupOldAppointments = useCallback(async () => {
+    try {
+      const response = await post("/api/queue/cleanup");
+      if (!response.success) {
+        console.warn("Cleanup endpoint responded without success");
+      }
+    } catch (error) {
+      console.warn("Failed to run cleanup endpoint", error);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      await cleanupOldAppointments();
+
       const today = new Date().toISOString().split("T")[0];
       await Promise.all([
         fetchPatients(),
@@ -159,7 +171,7 @@ export function ReceptionistWorkstation() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [cleanupOldAppointments]);
 
   useEffect(() => {
     fetchData();
@@ -228,25 +240,7 @@ export function ReceptionistWorkstation() {
     );
   });
 
-  const filteredPatients = patients.filter((patient) => {
-    if (searchFilter !== "patient") return false;
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      patient.fullName.toLowerCase().includes(query) ||
-      patient.patientId.toLowerCase().includes(query) ||
-      patient.phone?.toLowerCase().includes(query) ||
-      patient.email?.toLowerCase().includes(query)
-    );
-  });
-
   // Get patients without appointments today
-  const patientsWithoutAppointments = filteredPatients.filter((patient) => {
-    const today = new Date().toISOString().split("T")[0];
-    return !appointments.some(
-      (apt) => apt.patientId === patient._id && apt.date === today && apt.status !== "cancelled"
-    );
-  });
 
   // Get queue entries by status
   const checkedInPatients = queueEntries.filter((entry) => entry.status === "waiting");
@@ -340,7 +334,7 @@ export function ReceptionistWorkstation() {
 
       const response = await post("/api/patients", patientData);
       if (response.success) {
-        const patientId = response.data?.patient?._id;
+        const patientId = (response.data as any)?.patient?._id;
         
         // Create appointment if requested
         if (createAppointmentOnRegister && patientId && appointmentDoctorId && appointmentDate && appointmentTime) {

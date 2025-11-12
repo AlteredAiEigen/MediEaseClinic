@@ -13,6 +13,7 @@ import time
 from app.config import settings
 from app.database import Database, init_db
 from app.middleware.audit_log import AuditLogMiddleware
+from app.services.queue_service import QueueService
 
 # Configure logging
 logging.basicConfig(
@@ -40,6 +41,15 @@ async def lifespan(app: FastAPI):
         # Initialize global database instance
         init_db()
         logger.info("Global database instance initialized")
+
+        # Cleanup stale queue entries and old checked-in appointments
+        try:
+            db = Database.get_database()
+            queue_service = QueueService(db)
+            await queue_service.cleanup_all_stale_entries()
+            logger.info("Startup cleanup completed successfully")
+        except Exception as cleanup_error:
+            logger.error(f"Startup cleanup failed: {cleanup_error}")
         
         yield
         

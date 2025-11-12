@@ -192,3 +192,16 @@ async def reorder_queue(
         message="Queue reordered successfully"
     )
 
+
+@router.post("/cleanup", response_model=dict)
+async def cleanup_stale_entries(
+    current_user: dict = Depends(require_roles(["admin", "receptionist"])),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Manually trigger cleanup of stale queue entries and old checked-in appointments."""
+    queue_service = QueueService(db)
+    await queue_service.cleanup_all_stale_entries()
+    return success_response(
+        message="Cleanup completed successfully"
+    )
+
