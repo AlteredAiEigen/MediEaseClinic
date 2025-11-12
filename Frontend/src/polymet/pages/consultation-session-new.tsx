@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,8 +64,12 @@ interface Recording {
 export function ConsultationSession() {
   const { patientId } = useParams();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const queueIdParam = searchParams.get("queueId");
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
+  const [queueEntryId, setQueueEntryId] = useState<string | null>(null);
+  const [resolvedPatientObjectId, setResolvedPatientObjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -102,40 +106,237 @@ export function ConsultationSession() {
   const [transcriptionPolling, setTranscriptionPolling] = useState<NodeJS.Timeout | null>(null);
   const [uploadedRecordingId, setUploadedRecordingId] = useState<string | null>(null);
 
+const defaultAiAnalysis = {
+  similarCases: 120,
+  riskLevel: "Medium",
+  successRate: "94%",
+  keyFindings: [
+    "Patient shows stable vitals with mild hypertension indicators.",
+    "Recent lab results indicate improved glycemic control.",
+    "No acute distress signals present during initial assessment.",
+  ],
+  recommendations: [
+    "Maintain current medication plan with minor dosage adjustments.",
+    "Schedule follow-up lab work in 2 weeks to monitor progress.",
+    "Encourage daily 20-minute moderate exercise with hydration tracking.",
+  ],
+};
+
+const aiAnalysis = defaultAiAnalysis;
+
+const defaultAppointmentTimeline = [
+  {
+    title: "Initial Consultation",
+    date: "2024-11-04",
+    notes: "Baseline assessment completed with stable vitals.",
+  },
+  {
+    title: "Follow-up Visit",
+    date: "2024-12-02",
+    notes: "Medications adjusted based on lab improvements.",
+  },
+  {
+    title: "Specialist Referral",
+    date: "2025-01-15",
+    notes: "Cardiology referral arranged for extended evaluation.",
+  },
+  {
+    title: "Therapy Session",
+    date: "2025-02-10",
+    notes: "Lifestyle coaching session completed.",
+  },
+  {
+    title: "Lab Review",
+    date: "2025-03-05",
+    notes: "Latest labs show favorable trends across key indicators.",
+  },
+];
+
+const appointmentTimeline = defaultAppointmentTimeline;
+
   // Fetch patient data and queue entry on component mount
   useEffect(() => {
     const fetchPatientData = async () => {
-      if (!patientId) return;
+      if (!patientId && !queueIdParam) return;
+
+      setIsLoading(true);
+      setError(null);
+
+      const fetchPatientByMongoId = async (id?: string | null) => {
+        if (!id) return null;
+        try {
+          const response = await get<{ patient: Patient }>(`/api/patients/${id}`);
+          if (response.success && response.data?.patient) {
+            return response.data.patient;
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch patient by ID ${id}:`, err);
+        }
+        return null;
+      };
+
+      const fetchPatientByFriendlyId = async (id?: string | null) => {
+        if (!id) return null;
+        try {
+          const response = await get<{ patient: Patient }>(`/api/patients/patient-id/${id}`);
+          if (response.success && response.data?.patient) {
+            return response.data.patient;
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch patient by patientId ${id}:`, err);
+        }
+        return null;
+      };
+
+      const fetchQueueEntry = async (id?: string | null) => {
+        if (!id) return null;
+        try {
+          const response = await get<any>(`/api/queue/${id}`);
+          if (response.success && response.data) {
+            const queueEntry = response.data;
+            const queuePatientField = queueEntry?.patient;
+            const fallbackPatientId =
+              typeof queuePatientField === "string"
+                ? queuePatientField
+                : queuePatientField?._id ?? queuePatientField?.id ?? null;
+            const patientSnapshot =
+              typeof queuePatientField === "object" ? queuePatientField : null;
+            const queueAppointment = queueEntry?.appointment;
+            const appointmentId =
+              typeof queueAppointment === "string"
+                ? queueAppointment
+                : queueAppointment?._id ?? null;
+
+            return {
+              entry: queueEntry,
+              queueId: queueEntry?._id ?? id,
+              patientId: fallbackPatientId,
+              patientSnapshot,
+              appointmentId,
+            };
+          }
+        } catch (err) {
+          console.warn(`Failed to load queue entry ${id}:`, err);
+        }
+        return null;
+      };
 
       try {
-        setIsLoading(true);
-        setError(null);
+        let resolvedPatientId: string | null = patientId ?? null;
+        let localQueueEntryId: string | null = queueIdParam ?? null;
+        let localAppointmentId: string | null = null;
+        let patientData: Patient | null = null;
+        let queueInfo: Awaited<ReturnType<typeof fetchQueueEntry>> | null = null;
 
-        // Fetch patient details
-        const patientResponse = await get<Patient>(`/api/patients/${patientId}`);
-        if (patientResponse.success && patientResponse.data) {
-          setPatient(patientResponse.data);
-        } else {
-          setError("Patient not found");
+        if (localQueueEntryId) {
+          queueInfo = await fetchQueueEntry(localQueueEntryId);
         }
 
-        // Fetch queue entry for this patient to get appointmentId
-        if (user?._id) {
+        if (!queueInfo && patientId) {
+          queueInfo = await fetchQueueEntry(patientId);
+        }
+
+        if (queueInfo) {
+          localQueueEntryId = queueInfo.queueId ?? localQueueEntryId;
+          if (queueInfo.patientId) {
+            resolvedPatientId = queueInfo.patientId;
+          }
+          if (queueInfo.appointmentId) {
+            localAppointmentId = queueInfo.appointmentId;
+          }
+          if (queueInfo.patientSnapshot) {
+            patientData = queueInfo.patientSnapshot as Patient;
+          }
+        }
+
+        if (!patientData && resolvedPatientId) {
+          patientData = await fetchPatientByMongoId(resolvedPatientId);
+          if (patientData) {
+            resolvedPatientId = patientData._id;
+          }
+        }
+
+        if (!patientData && queueInfo?.patientSnapshot?.patientId) {
+          patientData = await fetchPatientByFriendlyId(queueInfo.patientSnapshot.patientId);
+          if (patientData) {
+            resolvedPatientId = patientData._id;
+          }
+        }
+
+        if (!patientData && patientId) {
+          patientData = await fetchPatientByFriendlyId(patientId);
+          if (patientData) {
+            resolvedPatientId = patientData._id;
+          }
+        }
+
+        if (!patientData || !resolvedPatientId) {
+          setError("Patient not found");
+          return;
+        }
+
+        setPatient(patientData);
+        setResolvedPatientObjectId(resolvedPatientId);
+        if (localAppointmentId) {
+          setAppointmentId(localAppointmentId);
+        }
+        if (localQueueEntryId) {
+          setQueueEntryId(localQueueEntryId);
+        }
+
+        let hasAccess = false;
+
+        const queueDoctorField = queueInfo?.entry?.doctor;
+        const queueDoctorId =
+          typeof queueDoctorField === "string"
+            ? queueDoctorField
+            : queueDoctorField?._id ?? queueDoctorField?.id ?? null;
+        if (user?._id && queueDoctorId && queueDoctorId === user._id) {
+          hasAccess = true;
+        }
+
+        if (!hasAccess && user?._id) {
           try {
             const queueResponse = await get<{ queue: any[] }>(`/api/queue/doctor/${user._id}`);
             if (queueResponse.success && queueResponse.data?.queue) {
-              const activeEntry = queueResponse.data.queue.find(
-                (entry: any) => entry.patient?._id === patientId && 
-                (entry.status === "in-consultation" || entry.status === "waiting")
-              );
-              if (activeEntry?.appointment) {
-                setAppointmentId(activeEntry.appointment._id || activeEntry.appointment);
+              const activeEntry = queueResponse.data.queue.find((entry: any) => {
+                const entryPatient =
+                  typeof entry.patient === "string"
+                    ? entry.patient
+                    : entry.patient?._id ?? entry.patient?.id ?? null;
+                return (
+                  entryPatient === resolvedPatientId &&
+                  (entry.status === "in-consultation" || entry.status === "waiting")
+                );
+              });
+
+              if (activeEntry) {
+                hasAccess = true;
+
+                if (!localQueueEntryId && activeEntry?._id) {
+                  setQueueEntryId(activeEntry._id);
+                }
+
+                const entryAppointment = activeEntry?.appointment;
+                if (entryAppointment && !localAppointmentId) {
+                  const derivedAppointmentId =
+                    typeof entryAppointment === "string"
+                      ? entryAppointment
+                      : entryAppointment?._id ?? null;
+                  if (derivedAppointmentId) {
+                    setAppointmentId(derivedAppointmentId);
+                  }
+                }
               }
             }
           } catch (err) {
             console.warn("Could not fetch queue entry:", err);
-            // Continue without appointmentId - it's optional
           }
+        }
+
+        if (!hasAccess) {
+          setError("You don't have access to consult this patient. The patient may not be assigned to you.");
+          return;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load patient data";
@@ -146,7 +347,7 @@ export function ConsultationSession() {
     };
 
     fetchPatientData();
-  }, [patientId, user?._id]);
+  }, [patientId, queueIdParam, user?._id]);
 
   // Cleanup transcription polling on unmount
   useEffect(() => {
@@ -426,16 +627,21 @@ export function ConsultationSession() {
     );
   }
 
+  const patientName =
+    patient.fullName?.trim() ||
+    [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() ||
+    "Patient";
+
   return (
     <div className="space-y-6 pb-6">
       {/* Header with Patient Info and Controls */}
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <Avatar className="w-16 h-16 border-2 border-border">
-            <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patient.fullName)}&background=random&color=ffffff&size=64`} alt={patient.fullName} />
+            <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patientName)}&background=random&color=ffffff&size=64`} alt={patientName} />
 
             <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
-              {patient.fullName
+              {patientName
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
@@ -445,7 +651,7 @@ export function ConsultationSession() {
           </Avatar>
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              {patient.fullName}
+              {patientName}
             </h1>
             <div className="flex items-center gap-3 mt-1">
               <p className="text-sm text-muted-foreground">

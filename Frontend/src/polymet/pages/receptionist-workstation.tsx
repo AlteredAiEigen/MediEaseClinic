@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { get, post, patch } from "@/lib/api-client";
 import { toast } from "@/components/ui/use-toast";
+import { useQueueWebSocket } from "@/hooks/use-websocket";
 
 interface Patient {
   _id: string;
@@ -99,6 +100,9 @@ const [, setPatients] = useState<Patient[]>([]);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // WebSocket for real-time queue updates
+  const { lastMessage, isConnected } = useQueueWebSocket();
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -173,9 +177,45 @@ const [, setPatients] = useState<Patient[]>([]);
     }
   }, [cleanupOldAppointments]);
 
+  const fetchDataSilently = useCallback(async () => {
+    try {
+      await cleanupOldAppointments();
+
+      const today = new Date().toISOString().split("T")[0];
+      await Promise.all([
+        fetchPatients(),
+        fetchDoctors(),
+        fetchQueue(),
+        fetchAppointments(today),
+      ]);
+    } catch (err) {
+      console.error("Failed to fetch data silently:", err);
+    }
+  }, [cleanupOldAppointments]);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const handleQueueUpdate = async () => {
+      try {
+        if (lastMessage.type === 'patient_checked_in' ||
+            lastMessage.type === 'patient_status_updated' ||
+            lastMessage.type === 'queue_reordered') {
+          // Refresh data silently (no loading state)
+          await fetchDataSilently();
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
+    };
+
+    handleQueueUpdate();
+  }, [lastMessage]);
 
   const fetchPatients = async () => {
     try {
@@ -216,7 +256,7 @@ const [, setPatients] = useState<Patient[]>([]);
 
   const fetchAppointments = async (date: string) => {
     try {
-      const response = await get<Appointment[]>(`/api/appointments?date=${date}&limit=100`);
+      const response = await get<Appointment[]>(`/api/appointments?date=${date}&status=scheduled&limit=100`);
       if (response.success) {
         const appts = extractList<Appointment>(response.data);
         setAppointments(appts);
@@ -552,14 +592,23 @@ const [, setPatients] = useState<Patient[]>([]);
             </div>
           </CardContent>
         </Card>
-        <Button
-          onClick={() => setRegisterDialog(true)}
-          size="lg"
-          className="bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-600 hover:from-teal-700 hover:via-emerald-700 hover:to-teal-700 text-white shadow-xl font-bold px-8 py-6 h-auto whitespace-nowrap text-base border-2 border-teal-500/20 hover:border-teal-400/40 transition-all duration-200 hover:scale-105"
-        >
-          <UserPlusIcon className="h-5 w-5 mr-2.5" />
-          Register Patient
-        </Button>
+        <div className="flex items-center gap-4">
+          {/* WebSocket connection status */}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-xs text-muted-foreground">
+              {isConnected ? 'Live' : 'Offline'}
+            </span>
+          </div>
+          <Button
+            onClick={() => setRegisterDialog(true)}
+            size="lg"
+            className="bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-600 hover:from-teal-700 hover:via-emerald-700 hover:to-teal-700 text-white shadow-xl font-bold px-8 py-6 h-auto whitespace-nowrap text-base border-2 border-teal-500/20 hover:border-teal-400/40 transition-all duration-200 hover:scale-105"
+          >
+            <UserPlusIcon className="h-5 w-5 mr-2.5" />
+            Register Patient
+          </Button>
+        </div>
       </div>
 
       {/* Three Column Layout */}

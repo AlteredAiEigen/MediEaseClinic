@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { LabReportsCard } from "@/polymet/components/lab-reports-card";
 import { DashboardStatsSection } from "@/polymet/components/dashboard-stats-section";
 import { HealthInsightsSection } from "@/polymet/components/health-insights-section";
@@ -28,11 +28,14 @@ import {
   Loader2Icon,
   AlertCircleIcon,
 } from "lucide-react";
-import { get, put } from "@/lib/api-client";
+import { get, post, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
+import { useToast } from "@/components/ui/use-toast";
+import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
 
 interface QueuePatient {
   id: string;
+  patientId: string;
   name: string;
   avatar: string;
   time: string;
@@ -51,6 +54,8 @@ interface UpcomingAppointment {
   appointmentType: string;
   patientId?: string;
   doctorId?: string;
+  reason?: string;
+  priority?: string;
 }
 
 interface QueueEntry {
@@ -111,12 +116,17 @@ const extractList = <T,>(rawData: any): T[] => {
 
 export function DoctorDashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
   const [totalPatients, setTotalPatients] = useState(0);
   const [todayAppointments, setTodayAppointments] = useState(0);
   const [inQueue, setInQueue] = useState(0);
   const [completedToday, setCompletedToday] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // WebSocket for real-time queue updates
+  const { lastMessage, isConnected } = useDoctorQueueWebSocket(user?._id || "");
 
   // Dialog states
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
@@ -134,13 +144,16 @@ export function DoctorDashboard() {
   const [upcomingAppointments, setUpcomingAppointments] = useState<
     UpcomingAppointment[]
   >([]);
+  const [queueActionId, setQueueActionId] = useState<string | null>(null);
 
   // Fetch queue and appointments data
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (showLoading = true) => {
     if (!user?._id) return;
 
     try {
-      setIsLoading(true);
+      if (showLoading) {
+        setIsLoading(true);
+      }
       setError(null);
 
       // Fetch doctor's queue
@@ -148,11 +161,14 @@ export function DoctorDashboard() {
       if (queueResponse.success && queueResponse.data?.queue) {
         const mappedQueue: QueuePatient[] = queueResponse.data.queue
           .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
+          .filter((entry) => entry.doctor._id === user._id) // Extra safeguard: ensure patients belong to this doctor
           .map((entry) => ({
             id: entry._id,
+            patientId: entry.patient._id,
             name: entry.patient.fullName,
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
-            time: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+            time: new Date(entry.checked_in_at).toLocaleString("en-US", {
+              timeZone: "Asia/Kolkata",
               hour: "2-digit",
               minute: "2-digit",
             }),
@@ -190,16 +206,16 @@ export function DoctorDashboard() {
           return dateStr;
         };
         
-        // Filter for today's appointments (exclude completed and cancelled)
-        // Include scheduled, checked-in, and in-progress appointments
+        // Filter for today's scheduled appointments only
+        // Checked-in appointments should appear in the queue, not here
         const activeAppointments = appointmentsList.filter(
           (apt) => {
             const aptDate = normalizeDate(apt.date);
             const status = (apt.status || "").toLowerCase();
             const isToday = aptDate === today;
-            const isActive = status !== "completed" && status !== "cancelled" && status !== "no-show";
-            
-            return isToday && isActive;
+            const isScheduled = status === "scheduled";
+
+            return isToday && isScheduled;
           }
         );
         
@@ -211,15 +227,22 @@ export function DoctorDashboard() {
         });
         
         const mappedAppointments: UpcomingAppointment[] = activeAppointments.map(
-          (apt) => ({
+          (apt) => {
+            const appointmentReason =
+              apt.reason || apt.type || "Consultation";
+
+            return {
             id: apt._id || apt.appointmentId,
             name: apt.patientName || "Unknown Patient",
             avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName || "Unknown")}&background=random`,
             time: apt.time || "",
-            appointmentType: apt.type || apt.reason || "Consultation",
+              appointmentType: appointmentReason,
             patientId: apt.patientId,
             doctorId: apt.doctorId,
-          })
+              reason: appointmentReason,
+              priority: apt.priority || "medium",
+            };
+          }
         );
         setUpcomingAppointments(mappedAppointments);
         setTodayAppointments(mappedAppointments.length);
@@ -249,13 +272,35 @@ export function DoctorDashboard() {
       const message = err instanceof Error ? err.message : "Failed to load dashboard data";
       setError(message);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     fetchDashboardData();
   }, [user]);
+
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const handleQueueUpdate = async () => {
+      try {
+        if (lastMessage.type === 'patient_checked_in' ||
+            lastMessage.type === 'patient_status_updated' ||
+            lastMessage.type === 'queue_reordered') {
+          // Refresh queue data silently (no loading state)
+          await fetchDashboardData(false);
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
+    };
+
+    handleQueueUpdate();
+  }, [lastMessage]);
 
   // Lab reports data
   const [labReports, setLabReports] = useState<Array<{
@@ -343,38 +388,76 @@ export function DoctorDashboard() {
     }
   };
 
-  // Move patient from upcoming to queue
-  const moveToQueue = (appointmentId: string) => {
-    const appointment = upcomingAppointments.find(
-      (a) => a.id === appointmentId
-    );
-    if (appointment) {
+  // Move patient from upcoming to queue (persist to backend)
+  const moveToQueue = async (appointmentId: string) => {
+    const appointment = upcomingAppointments.find((a) => a.id === appointmentId);
+    if (!appointment) {
+      return;
+    }
+
+    try {
+      setQueueActionId(appointmentId);
+
+      const response = await post("/api/queue/check-in", {
+        appointmentId,
+        reason:
+          appointment.reason ||
+          appointment.appointmentType ||
+          "General Consultation",
+        priority: appointment.priority || "medium",
+        notes: "",
+      });
+
+      if (!response.success) {
+        throw new Error(response.message || "Failed to add appointment to queue");
+      }
+
+      // Optimistically remove from upcoming appointments while data refreshes
       setUpcomingAppointments((prev) =>
         prev.filter((a) => a.id !== appointmentId)
       );
-      setQueuePatients((prev) => [
-        ...prev,
-        {
-          id: appointment.id,
-          name: appointment.name,
-          avatar: appointment.avatar,
-          time: appointment.time,
-          appointmentType: appointment.appointmentType,
-          status: "waiting",
-        },
-      ]);
+
+      toast({
+        title: "Patient moved to queue",
+        description: `${appointment.name} is now waiting for consultation.`,
+      });
+
+      // Refresh dashboard data without triggering full-page loading state
+      await fetchDashboardData(false);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to move appointment to queue";
+
+      toast({
+        title: "Queue update failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setQueueActionId(null);
     }
   };
 
-  const startConsultation = async (patientId: string) => {
+  const startConsultation = async (queueEntryId: string) => {
     try {
-      const response = await put(`/api/queue/${patientId}/start-consultation`, {});
+      const response = await put(`/api/queue/${queueEntryId}/start-consultation`, {});
       if (response.success) {
-        setQueuePatients((prev) =>
-          prev.map((p) =>
-            p.id === patientId ? { ...p, status: "in-progress" as const } : p
-          )
-        );
+        // Find the patient to get patientId for navigation
+        const patient = queuePatients.find(p => p.id === queueEntryId);
+        if (patient) {
+          // Update local state
+          setQueuePatients((prev) =>
+            prev.map((p) =>
+              p.id === queueEntryId ? { ...p, status: "in-progress" as const } : p
+            )
+          );
+          // Navigate to consultation page using React Router
+          const targetPatientId = patient.patientId || patient.id;
+          const queueQuery = queueEntryId ? `?queueId=${queueEntryId}` : "";
+          navigate(`/consultation/${targetPatientId}${queueQuery}`);
+        }
       }
     } catch (err) {
       console.error("Failed to start consultation:", err);
@@ -457,9 +540,9 @@ export function DoctorDashboard() {
     setDraggedItem(null);
   };
 
-  const handleDropOnQueue = () => {
+  const handleDropOnQueue = async () => {
     if (draggedItem && draggedItem.source === "appointments") {
-      moveToQueue(draggedItem.id);
+      await moveToQueue(draggedItem.id);
     }
     setDraggedItem(null);
   };
@@ -530,6 +613,13 @@ export function DoctorDashboard() {
           <p className="text-sm text-muted-foreground">
             Welcome back, Dr. Mitchell! Here's your overview for today.
           </p>
+        </div>
+        {/* WebSocket connection status */}
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="text-xs text-muted-foreground">
+            {isConnected ? 'Live' : 'Offline'}
+          </span>
         </div>
       </div>
 
@@ -645,10 +735,20 @@ export function DoctorDashboard() {
                           <Button
                             size="sm"
                             className="h-6 px-2 text-[10px] bg-cyan-600 hover:bg-cyan-700 text-white flex-shrink-0 flex items-center gap-1"
-                            onClick={() => moveToQueue(appointment.id)}
+            onClick={() => moveToQueue(appointment.id)}
+            disabled={queueActionId === appointment.id}
                           >
-                            <ArrowRightIcon className="w-3 h-3" />
-                            Queue
+            {queueActionId === appointment.id ? (
+              <>
+                <Loader2Icon className="w-3 h-3 animate-spin" />
+                Moving...
+              </>
+            ) : (
+              <>
+                <ArrowRightIcon className="w-3 h-3" />
+                Queue
+              </>
+            )}
                           </Button>
                         </div>
                       </div>
@@ -768,11 +868,9 @@ export function DoctorDashboard() {
                             <Button
                               size="sm"
                               className="h-6 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
-                              asChild
+                              onClick={() => startConsultation(patient.id)}
                             >
-                              <Link to={`/consultation/${patient.id}`}>
-                                Start
-                              </Link>
+                              Start
                             </Button>
                           ) : (
                             <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0.5 flex-shrink-0">

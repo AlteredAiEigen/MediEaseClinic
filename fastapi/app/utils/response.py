@@ -40,12 +40,12 @@ def error_response(
 ) -> JSONResponse:
     """
     Create standardized error response.
-    
+
     Args:
         message: Error message
         errors: Additional error details
         status_code: HTTP status code
-    
+
     Returns:
         JSON response with error
     """
@@ -53,14 +53,35 @@ def error_response(
         "success": False,
         "message": message
     }
-    
+
     if errors:
         response["errors"] = errors
-    
+
     return JSONResponse(
         status_code=status_code,
         content=response
     )
+
+
+def error_response_ws(message: str, status_code: int = 1008) -> str:
+    """
+    Create standardized WebSocket error response.
+
+    Args:
+        message: Error message
+        status_code: WebSocket close code
+
+    Returns:
+        JSON string for WebSocket error
+    """
+    import json
+    response = {
+        "success": False,
+        "message": message,
+        "code": status_code
+    }
+
+    return json.dumps(response)
 
 
 def paginated_response(

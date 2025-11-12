@@ -11,6 +11,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.models.queue import Queue, QueueInDB
 from app.schemas.queue import QueueCheckIn, QueueStatusUpdate
+from app.services.websocket_service import WebSocketService
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class QueueService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.queue_collection = db.queue
+        self.websocket_service = WebSocketService()
 
     @staticmethod
     async def generate_queue_id() -> str:
@@ -307,6 +309,16 @@ class QueueService:
             )
             
             logger.info(f"Checked in appointment {check_in_data.appointment_id} - Queue #{queue_number}")
+
+            # Emit WebSocket event for real-time updates
+            try:
+                # Get the queue entry with populated patient and doctor info for broadcasting
+                queue_entry_for_broadcast = await self._get_populated_queue_entry(str(result.inserted_id))
+                if queue_entry_for_broadcast:
+                    await self.websocket_service.broadcast_patient_checked_in(queue_entry_for_broadcast)
+            except Exception as e:
+                logger.warning(f"Failed to broadcast queue check-in event: {e}")
+
             return QueueInDB(**queue_dict)
         
         except HTTPException:
@@ -317,6 +329,82 @@ class QueueService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to check in patient: {str(e)}"
             )
+
+    async def _get_populated_queue_entry(self, entry_id: str) -> Optional[Dict]:
+        """Get a queue entry with populated patient and doctor information."""
+        try:
+            pipeline = [
+                {"$match": {"_id": ObjectId(entry_id)}},
+                {
+                    "$lookup": {
+                        "from": "patients",
+                        "localField": "patient",
+                        "foreignField": "_id",
+                        "as": "patient_info"
+                    }
+                },
+                {
+                    "$lookup": {
+                        "from": "users",
+                        "localField": "doctor",
+                        "foreignField": "_id",
+                        "as": "doctor_info"
+                    }
+                }
+            ]
+
+            cursor = self.queue_collection.aggregate(pipeline)
+            entries = await cursor.to_list(length=None)
+
+            if not entries:
+                return None
+
+            entry = entries[0]
+
+            # Convert ObjectIds to strings and format response
+            entry["_id"] = str(entry["_id"])
+            if entry.get("patient") and isinstance(entry["patient"], ObjectId):
+                entry["patient"] = str(entry["patient"])
+            if entry.get("doctor") and isinstance(entry["doctor"], ObjectId):
+                entry["doctor"] = str(entry["doctor"])
+            if entry.get("appointment") and isinstance(entry["appointment"], ObjectId):
+                entry["appointment"] = str(entry["appointment"])
+            if entry.get("checked_in_by") and isinstance(entry["checked_in_by"], ObjectId):
+                entry["checked_in_by"] = str(entry["checked_in_by"])
+
+            # Format patient info
+            if entry.get("patient_info") and len(entry["patient_info"]) > 0:
+                patient = entry["patient_info"][0]
+                patient["_id"] = str(patient["_id"])
+                for key, value in patient.items():
+                    if isinstance(value, ObjectId):
+                        patient[key] = str(value)
+                if "fullName" not in patient:
+                    firstName = patient.get("firstName", "")
+                    lastName = patient.get("lastName", "")
+                    patient["fullName"] = f"{firstName} {lastName}".strip()
+                entry["patient"] = patient
+                del entry["patient_info"]
+
+            # Format doctor info
+            if entry.get("doctor_info") and len(entry["doctor_info"]) > 0:
+                doctor = entry["doctor_info"][0]
+                doctor["_id"] = str(doctor["_id"])
+                for key, value in doctor.items():
+                    if isinstance(value, ObjectId):
+                        doctor[key] = str(value)
+                if "fullName" not in doctor:
+                    firstName = doctor.get("firstName", "")
+                    lastName = doctor.get("lastName", "")
+                    doctor["fullName"] = f"{firstName} {lastName}".strip()
+                entry["doctor"] = doctor
+                del entry["doctor_info"]
+
+            return entry
+
+        except Exception as e:
+            logger.error(f"Error getting populated queue entry {entry_id}: {e}")
+            return None
     
     async def get_active_queue(self) -> List[Dict]:
         """Get today's active queue."""
@@ -560,6 +648,15 @@ class QueueService:
                     if isinstance(value, ObjectId):
                         result[key] = str(value)
                 logger.info(f"Updated queue entry {entry_id} to status {status_update.status}")
+
+                # Emit WebSocket event for real-time updates
+                try:
+                    populated_entry = await self._get_populated_queue_entry(entry_id)
+                    if populated_entry:
+                        await self.websocket_service.broadcast_patient_status_updated(populated_entry)
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast queue status update event: {e}")
+
                 return result
             return None
         
@@ -720,6 +817,13 @@ class QueueService:
 
         # Sort updates to match new queue_number ascending
         updates.sort(key=lambda entry: entry.get("queue_number", 0))
+
+        # Emit WebSocket event for queue reordering
+        try:
+            await self.websocket_service.broadcast_queue_reordered(doctor_id, updates)
+        except Exception as e:
+            logger.warning(f"Failed to broadcast queue reorder event: {e}")
+
         return updates
 
 

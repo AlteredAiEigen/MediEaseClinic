@@ -1,0 +1,155 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '@/context/auth-context';
+
+export interface QueueUpdateMessage {
+  type: 'patient_checked_in' | 'patient_status_updated' | 'queue_reordered' | 'queue_update';
+  timestamp: string;
+  data: any;
+}
+
+export interface WebSocketHookResult {
+  isConnected: boolean;
+  lastMessage: QueueUpdateMessage | null;
+  connectionError: string | null;
+  reconnect: () => void;
+}
+
+export function useWebSocket(
+  endpoint: string = 'queue',
+  doctorId?: string
+): WebSocketHookResult {
+  const { user, token } = useAuth();
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastMessage, setLastMessage] = useState<QueueUpdateMessage | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
+
+  const buildWebSocketUrl = useCallback(() => {
+    if (!token) return null;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = process.env.NODE_ENV === 'production'
+      ? window.location.host
+      : 'localhost:8000';
+
+    let url = `${protocol}//${host}/ws/${endpoint}?token=${encodeURIComponent(token)}`;
+
+    if (doctorId) {
+      url = `${protocol}//${host}/ws/queue/doctor/${doctorId}?token=${encodeURIComponent(token)}`;
+    }
+
+    return url;
+  }, [token, endpoint, doctorId]);
+
+  const connect = useCallback(() => {
+    if (!user || !token) return;
+
+    const url = buildWebSocketUrl();
+    if (!url) return;
+
+    try {
+      setConnectionError(null);
+      const ws = new WebSocket(url);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setIsConnected(true);
+        reconnectAttempts.current = 0;
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message: QueueUpdateMessage = JSON.parse(event.data);
+          setLastMessage(message);
+          console.log('WebSocket message received:', message);
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket disconnected:', event.code, event.reason);
+        setIsConnected(false);
+        wsRef.current = null;
+
+        // Attempt to reconnect if not a normal closure and within max attempts
+        if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current += 1;
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
+          console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`);
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connect();
+          }, delay);
+        } else if (event.code !== 1000) {
+          setConnectionError('Failed to reconnect after maximum attempts');
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setConnectionError('WebSocket connection error');
+      };
+
+    } catch (error) {
+      console.error('Failed to create WebSocket connection:', error);
+      setConnectionError('Failed to create WebSocket connection');
+    }
+  }, [user, token, buildWebSocketUrl]);
+
+  const disconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Component unmounting');
+      wsRef.current = null;
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    setIsConnected(false);
+  }, []);
+
+  const reconnect = useCallback(() => {
+    disconnect();
+    reconnectAttempts.current = 0;
+    connect();
+  }, [connect, disconnect]);
+
+  useEffect(() => {
+    connect();
+
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Reconnect when user or token changes
+  useEffect(() => {
+    if (user && token) {
+      reconnect();
+    } else {
+      disconnect();
+    }
+  }, [user, token, reconnect, disconnect]);
+
+  return {
+    isConnected,
+    lastMessage,
+    connectionError,
+    reconnect,
+  };
+}
+
+// Specialized hook for doctor queue updates
+export function useDoctorQueueWebSocket(doctorId: string): WebSocketHookResult {
+  return useWebSocket('queue', doctorId);
+}
+
+// Specialized hook for general queue updates (for receptionists/admins)
+export function useQueueWebSocket(): WebSocketHookResult {
+  return useWebSocket('queue');
+}

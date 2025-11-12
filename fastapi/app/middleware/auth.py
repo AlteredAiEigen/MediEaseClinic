@@ -169,3 +169,46 @@ class OptionalAuth:
 
 optional_auth = OptionalAuth()
 
+
+async def get_current_user_ws(token: str, db: AsyncIOMotorDatabase = None) -> Optional[dict]:
+    """
+    WebSocket authentication function.
+    Validates JWT token for WebSocket connections.
+
+    Args:
+        token: JWT token string
+        db: Database instance (will get from global if not provided)
+
+    Returns:
+        Current user data or None if authentication fails
+    """
+    try:
+        if not db:
+            from app.database import Database
+            db = Database.get_database()
+
+        # Decode token
+        payload = decode_token(token)
+
+        if not payload or payload.get("type") != "access":
+            return None
+
+        user_id = payload.get("user_id")
+        if not user_id:
+            return None
+
+        # Get user from database
+        from app.services.auth_service import auth_service
+        user = await auth_service.get_current_user(user_id)
+
+        if not user:
+            return None
+
+        if not user.get("isActive", True):
+            return None
+
+        return user
+
+    except Exception:
+        return None
+

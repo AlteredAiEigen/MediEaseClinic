@@ -25,7 +25,7 @@ router = APIRouter()
 @router.post("/check-in", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def check_in_patient(
     check_in_data: QueueCheckIn,
-    current_user: dict = Depends(require_roles(["receptionist", "admin"])),
+    current_user: dict = Depends(require_roles(["receptionist", "admin", "doctor"])),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """Check in a patient to the queue."""

@@ -160,6 +160,7 @@ from app.routers import (
     admin,
     lab_reports,
     messages,
+    websocket,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -171,6 +172,7 @@ app.include_router(prescriptions.router, prefix="/api/prescriptions", tags=["Pre
 app.include_router(recordings.router, prefix="/api/recordings", tags=["Recordings"])
 app.include_router(clinical_notes.router, prefix="/api/clinical-notes", tags=["Clinical Notes"])
 app.include_router(queue.router, prefix="/api/queue", tags=["Queue"])
+app.include_router(websocket.router, prefix="/ws", tags=["WebSocket"])
 app.include_router(doctors.router, prefix="/api/doctors", tags=["Doctors"])
 app.include_router(receptionists.router, prefix="/api/receptionists", tags=["Receptionists"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
