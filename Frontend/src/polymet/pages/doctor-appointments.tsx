@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,7 @@ import {
 import { get } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
+import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 
 const extractList = <T,>(rawData: any): T[] => {
   if (Array.isArray(rawData)) {
@@ -120,15 +121,23 @@ export function DoctorAppointments() {
     handleAppointmentUpdate();
   }, [lastMessage, user, date]);
 
-  const selectedDateStr = date ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-  const dateAppointments = appointments.filter(
-    (apt) => apt.date === selectedDateStr
+  const selectedDateStr = useMemo(
+    () => (date ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+    [date]
   );
 
-  const filteredAppointments =
-    statusFilter === "all"
-      ? dateAppointments
-      : dateAppointments.filter((apt) => apt.status === statusFilter);
+  const dateAppointments = useMemo(
+    () => appointments.filter((apt) => apt.date === selectedDateStr),
+    [appointments, selectedDateStr]
+  );
+
+  const filteredAppointments = useMemo(
+    () =>
+      statusFilter === "all"
+        ? dateAppointments
+        : dateAppointments.filter((apt) => apt.status === statusFilter),
+    [dateAppointments, statusFilter]
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -165,6 +174,16 @@ export function DoctorAppointments() {
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
     }
   };
+
+  if (isLoading) {
+    return (
+      <MediEaseLoader
+        message="Loading today’s appointments…"
+        subtext="Syncing schedules, patient details, and queue status"
+        minHeight="min-h-[480px]"
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -317,13 +336,7 @@ export function DoctorAppointments() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <p className="text-muted-foreground">Loading appointments...</p>
-                </div>
-              </div>
-            ) : filteredAppointments.length === 0 ? (
+            {filteredAppointments.length === 0 ? (
               <div className="text-center py-12">
                 <CalendarIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-muted-foreground">No appointments for this date</p>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { AddPatientDialog } from "@/polymet/components/add-patient-dialog";
 import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 import { Link } from "react-router-dom";
@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { MediEaseLogo } from "@/polymet/components/mediease-logo";
+import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 import {
   Select,
   SelectContent,
@@ -113,6 +115,8 @@ const normalizeDate = (value?: string) => {
   return parsed;
 };
 
+const PATIENTS_CACHE_TTL = 60_000; // 1 minute cache to keep tab snappy
+
 const startOfMonth = (reference: Date) => {
   const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
   start.setHours(0, 0, 0, 0);
@@ -148,6 +152,21 @@ export function DoctorPatients() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const latestPatientsStateRef = useRef({
+    patients: [] as Patient[],
+    appointments: [] as Appointment[],
+    doctorStats: null as DoctorStats | null,
+  });
+
+  useEffect(() => {
+    latestPatientsStateRef.current = { patients, appointments, doctorStats };
+  }, [patients, appointments, doctorStats]);
+
+  const patientsCacheKey = useMemo(
+    () => (user?._id ? `doctorPatientsCache:${user._id}` : null),
+    [user?._id]
+  );
+
   const todayRef = useMemo(() => new Date(), []);
   const monthStart = useMemo(() => startOfMonth(todayRef), [todayRef]);
   const monthEnd = useMemo(() => endOfMonth(todayRef), [todayRef]);
@@ -161,97 +180,156 @@ export function DoctorPatients() {
     []
   );
 
-  const fetchPatients = useCallback(async () => {
-    if (!user?._id) return;
-    
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      // Fetch doctor's patients from dedicated endpoint
-      const response = await get(`/api/doctors/me/patients?limit=100`);
-      let patientList: Patient[] = [];
-      
-      if (response.success) {
-        patientList = extractList<Patient>(response.data);
+  const fetchPatients = useCallback(
+    async (showLoading = true) => {
+      if (!user?._id) {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+        return;
       }
-      
-      // If no patients from doctor endpoint, try fallback
-      if (patientList.length === 0) {
-        console.warn("Doctor patients endpoint returned no patients, trying fallback...");
-        const fallbackResponse = await get(`/api/patients?limit=100`);
-        if (fallbackResponse.success) {
-          patientList = extractList<Patient>(fallbackResponse.data);
+
+      try {
+        if (showLoading) {
+          setIsLoading(true);
+        }
+        setError(null);
+
+        const doctorPatientsRequest = get(`/api/doctors/me/patients?limit=100`);
+        const statsRequest = get("/api/doctors/me/stats");
+        const appointmentsRequest = get(
+          `/api/appointments?limit=100${user?._id ? `&doctor_id=${user._id}` : ""}`
+        );
+
+        const [patientsResponse, statsResponse, appointmentsResponse] = await Promise.all([
+          doctorPatientsRequest,
+          statsRequest,
+          appointmentsRequest,
+        ]);
+
+        let patientList: Patient[] = [];
+
+        if (patientsResponse.success) {
+          patientList = extractList<Patient>(patientsResponse.data);
+        }
+
+        if (patientList.length === 0) {
+          console.warn("Doctor patients endpoint returned no patients, trying fallback...");
+          const fallbackResponse = await get(`/api/patients?limit=100`);
+          if (fallbackResponse.success) {
+            patientList = extractList<Patient>(fallbackResponse.data);
+          }
+        }
+
+        const normalized = patientList.map((patient: any) => {
+          const fullName =
+            (patient.fullName || "").trim() ||
+            [patient.firstName || "", patient.lastName || ""].filter(Boolean).join(" ").trim() ||
+            patient.patientId ||
+            "Unnamed Patient";
+
+          return {
+            _id: patient._id || patient.id,
+            patientId: patient.patientId || "",
+            fullName,
+            firstName: patient.firstName || "",
+            lastName: patient.lastName || "",
+            age: patient.age || "",
+            gender: patient.gender || "",
+            phone: patient.phone || "",
+            email: patient.email || "",
+            presentInClinic: Boolean(patient.presentInClinic),
+            chiefComplaint: patient.chiefComplaint || null,
+            createdAt: patient.createdAt,
+            registeredAt: patient.registeredAt,
+          } as Patient;
+        });
+
+        setPatients(normalized);
+
+        const resolvedDoctorStats = statsResponse.success
+          ? ((statsResponse.data as DoctorStats) ?? null)
+          : latestPatientsStateRef.current.doctorStats;
+        setDoctorStats(resolvedDoctorStats);
+
+        const resolvedAppointments = appointmentsResponse.success
+          ? extractList<Appointment>(appointmentsResponse.data)
+          : latestPatientsStateRef.current.appointments;
+        setAppointments(resolvedAppointments);
+
+        if (patientsCacheKey) {
+          sessionStorage.setItem(
+            patientsCacheKey,
+            JSON.stringify({
+              patients: normalized,
+              doctorStats: resolvedDoctorStats,
+              appointments: resolvedAppointments,
+              cachedAt: Date.now(),
+            })
+          );
+        }
+
+        if (normalized.length === 0) {
+          setError(null);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Failed to load patients";
+        if (message.includes("No patients") || message.includes("not found")) {
+          setPatients([]);
+          setError(null);
+        } else {
+          setError(message);
+        }
+        setDoctorStats(latestPatientsStateRef.current.doctorStats);
+        setAppointments(latestPatientsStateRef.current.appointments);
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
         }
       }
-      
-      // Normalize all patients to ensure all fields are available for search
-      const normalized = patientList.map((patient: any) => {
-        const fullName =
-          (patient.fullName || "").trim() ||
-          [patient.firstName || "", patient.lastName || ""].filter(Boolean).join(" ").trim() ||
-          patient.patientId ||
-          "Unnamed Patient";
-        
-        return {
-          _id: patient._id || patient.id,
-          patientId: patient.patientId || "",
-          fullName: fullName,
-          firstName: patient.firstName || "",
-          lastName: patient.lastName || "",
-          age: patient.age || "",
-          gender: patient.gender || "",
-          phone: patient.phone || "",
-          email: patient.email || "",
-          presentInClinic: Boolean(patient.presentInClinic),
-          chiefComplaint: patient.chiefComplaint || null,
-          createdAt: patient.createdAt,
-          registeredAt: patient.registeredAt,
-        } as Patient;
-      });
-      
-      setPatients(normalized);
-      if (normalized.length === 0) {
-        setError(null); // Empty state, not an error
-      } else {
-        setError(null);
-      }
-
-      const [statsResponse, appointmentsResponse] = await Promise.all([
-        get("/api/doctors/me/stats"),
-        get(`/api/appointments?limit=100${user?._id ? `&doctor_id=${user._id}` : ""}`),
-      ]);
-
-      if (statsResponse.success) {
-        setDoctorStats((statsResponse.data as DoctorStats) ?? null);
-      } else {
-        setDoctorStats(null);
-      }
-
-      if (appointmentsResponse.success) {
-        setAppointments(extractList<Appointment>(appointmentsResponse.data));
-      } else {
-        setAppointments([]);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load patients";
-      // Don't show error if it's just no patients
-      if (message.includes("No patients") || message.includes("not found")) {
-        setPatients([]);
-        setError(null);
-      } else {
-        setError(message);
-      }
-      setDoctorStats(null);
-      setAppointments([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
+    },
+    [user?._id, patientsCacheKey]
+  );
 
   useEffect(() => {
-    fetchPatients();
-  }, [fetchPatients]);
+    if (!user?._id || !patientsCacheKey) {
+      return;
+    }
+
+    let usedCache = false;
+
+    try {
+      const cachedRaw = sessionStorage.getItem(patientsCacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as {
+          patients?: Patient[];
+          doctorStats?: DoctorStats | null;
+          appointments?: Appointment[];
+          cachedAt?: number;
+        };
+
+        if (!cached.cachedAt || Date.now() - cached.cachedAt <= PATIENTS_CACHE_TTL) {
+          if (cached.patients) {
+            setPatients(cached.patients);
+          }
+          if (typeof cached.doctorStats !== "undefined") {
+            setDoctorStats(cached.doctorStats ?? null);
+          }
+          if (cached.appointments) {
+            setAppointments(cached.appointments);
+          }
+          setIsLoading(false);
+          usedCache = true;
+        } else {
+          sessionStorage.removeItem(patientsCacheKey);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load cached patient data", err);
+    }
+
+    fetchPatients(!usedCache);
+  }, [user?._id, patientsCacheKey, fetchPatients]);
 
   const totalPatientsCount = useMemo(() => {
     // Always use the actual patients array length to ensure it updates when new patients are added
@@ -362,29 +440,11 @@ export function DoctorPatients() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="border-border shadow-sm">
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-4">
-                  <div className="w-12 h-12 bg-muted rounded-xl" />
-                  <div className="space-y-2">
-                    <div className="w-16 h-4 bg-muted rounded" />
-                    <div className="w-12 h-6 bg-muted rounded" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <Card className="border-border shadow-sm">
-          <CardContent className="p-6 text-center">
-            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading patients...</p>
-          </CardContent>
-        </Card>
-      </div>
+      <MediEaseLoader
+        message="Preparing your patient roster…"
+        subtext="Syncing records, follow-ups, and upcoming appointments"
+        minHeight="min-h-[500px]"
+      />
     );
   }
 
@@ -415,7 +475,7 @@ export function DoctorPatients() {
       <AddPatientDialog
         open={addPatientOpen}
         onOpenChange={setAddPatientOpen}
-        onPatientAdded={fetchPatients}
+        onPatientAdded={() => fetchPatients(false)}
       />
 
       {/* Schedule Appointment Dialog */}

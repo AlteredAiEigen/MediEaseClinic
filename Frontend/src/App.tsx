@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { RequireAuth } from "@/components/require-auth";
 
 // Lazy load all page components for better performance
@@ -30,6 +30,7 @@ const RegisterPatient = lazy(() => import("@/polymet/pages/register-patient").th
 const PatientOverview = lazy(() => import("@/polymet/pages/patient-overview").then(module => ({ default: module.PatientOverview })));
 const ConsultationSession = lazy(() => import("@/polymet/pages/consultation-session-new").then(module => ({ default: module.ConsultationSession })));
 const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout").then(module => ({ default: module.HealthcareLayout })));
+const LoaderShowcasePage = lazy(() => import("@/polymet/pages/loader-showcase-page").then(module => ({ default: module.LoaderShowcasePage })));
 
 // Loading component for Suspense fallback
 const LoadingFallback = () => (
@@ -41,7 +42,52 @@ const LoadingFallback = () => (
   </div>
 );
 
+const prefetchModules = () => {
+  const modules = [
+    import("@/polymet/layouts/healthcare-layout"),
+    import("@/polymet/pages/doctor-dashboard"),
+    import("@/polymet/pages/doctor-appointments"),
+    import("@/polymet/pages/doctor-workstation"),
+    import("@/polymet/pages/doctor-patients"),
+  ];
+
+  modules.forEach((promise) => {
+    promise.catch(() => {
+      // Ignore prefetch failures; chunks will load on demand.
+    });
+  });
+};
+
+function usePrefetchDoctorRoutes() {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const win = window as unknown as {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+      setTimeout: typeof window.setTimeout;
+      clearTimeout: typeof window.clearTimeout;
+    };
+
+    if (win.requestIdleCallback) {
+      const idleId = win.requestIdleCallback(prefetchModules);
+      return () => {
+        if (win.cancelIdleCallback) {
+          win.cancelIdleCallback(idleId);
+        }
+      };
+    }
+
+    const timeoutId = win.setTimeout(prefetchModules, 1500);
+    return () => win.clearTimeout(timeoutId);
+  }, []);
+}
+
 export default function MediEaseClinicPrototype() {
+  usePrefetchDoctorRoutes();
+
   return (
     <Router>
       <Suspense fallback={<LoadingFallback />}>
@@ -60,6 +106,8 @@ export default function MediEaseClinicPrototype() {
           <Route path="/role-selection" element={<RoleSelection />} />
 
           <Route path="/auth" element={<AuthPage />} />
+
+          <Route path="/loader" element={<LoaderShowcasePage />} />
 
           {/* Admin Routes */}
           <Route

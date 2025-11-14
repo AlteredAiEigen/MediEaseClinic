@@ -21,6 +21,7 @@ import { useState, useEffect } from "react";
 import { get, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/hooks/use-toast";
+import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 
 interface DoctorProfile {
   _id: string;
@@ -247,13 +248,11 @@ export function DoctorSettings() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Profile</h2>
-          <p className="text-muted-foreground">Please wait...</p>
-        </div>
-      </div>
+      <MediEaseLoader
+        message="Loading your profile settings…"
+        subtext="Fetching personal details, clinic preferences, and notification rules"
+        minHeight="min-h-[520px]"
+      />
     );
   }
 

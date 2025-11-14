@@ -19,6 +19,7 @@ import {
 import { UserIcon, PhoneIcon, MailIcon, MapPinIcon, Loader2Icon } from "lucide-react";
 import { post } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
+import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 
 interface AddPatientDialogProps {
   open: boolean;

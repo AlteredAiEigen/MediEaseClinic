@@ -19,6 +19,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SearchIcon, CalendarIcon, ClockIcon, AlertCircleIcon, Loader2 } from "lucide-react";
 import { post, get } from "@/lib/api-client";
+import { useToast } from "@/hooks/use-toast";
+import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 
 interface Patient {
   _id: string;

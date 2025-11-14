@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { LabReportsCard } from "@/polymet/components/lab-reports-card";
 import { DashboardStatsSection } from "@/polymet/components/dashboard-stats-section";
@@ -32,6 +32,7 @@ import { get, post, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/components/ui/use-toast";
 import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
+import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 
 interface QueuePatient {
   id: string;
@@ -147,154 +148,235 @@ export function DoctorDashboard() {
   >([]);
   const [queueActionId, setQueueActionId] = useState<string | null>(null);
 
+  const latestDashboardStateRef = useRef({
+    queuePatients: [] as QueuePatient[],
+    upcomingAppointments: [] as UpcomingAppointment[],
+    todayAppointments: 0,
+    totalPatients: 0,
+    completedToday: 0,
+  });
+
+  useEffect(() => {
+    latestDashboardStateRef.current = {
+      queuePatients,
+      upcomingAppointments,
+      todayAppointments,
+      totalPatients,
+      completedToday,
+    };
+  }, [queuePatients, upcomingAppointments, todayAppointments, totalPatients, completedToday]);
+
+  const dashboardCacheKey = useMemo(
+    () => (user?._id ? `doctorDashboardCache:${user._id}` : null),
+    [user?._id]
+  );
+  const DASHBOARD_CACHE_TTL = 60_000; // 1 minute cache for faster perceived loads
+
   // Fetch queue and appointments data
-  const fetchDashboardData = async (showLoading = true) => {
-    if (!user?._id) {
-      if (showLoading) {
-        setIsLoading(false);
-      }
-      return;
-    }
-
-    try {
-      if (showLoading) {
-        setIsLoading(true);
-      }
-      setError(null);
-
-      // Fetch all data in parallel for better performance
-      const today = new Date().toISOString().split("T")[0];
-
-      const [queueResponse, appointmentsResponse, statsResponse] = await Promise.all([
-        get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`),
-        get(`/api/appointments?date=${today}&limit=100`),
-        get<{
-          totalPatients: number;
-          todayAppointments: number;
-          scheduledToday: number;
-          completedToday: number;
-          inQueue: number;
-          thisWeek: number;
-        }>("/api/doctors/me/stats")
-      ]);
-
-      // Process queue data
-      if (queueResponse.success && queueResponse.data?.queue) {
-        const mappedQueue: QueuePatient[] = queueResponse.data.queue
-          .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
-          .filter((entry) => entry.doctor._id === user._id) // Extra safeguard: ensure patients belong to this doctor
-          .map((entry) => ({
-            id: entry._id,
-            patientId: entry.patient._id,
-            name: entry.patient.fullName,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
-            time: new Date(entry.checked_in_at).toLocaleString("en-US", {
-              timeZone: "Asia/Kolkata",
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-            appointmentType: entry.reason || "Consultation",
-            status: entry.status === "in-consultation" ? "in-progress" : "waiting",
-            queueNumber: entry.queue_number,
-            priority: entry.priority,
-            reason: entry.reason,
-          }));
-        setQueuePatients(mappedQueue);
-        setInQueue(mappedQueue.length);
+  const fetchDashboardData = useCallback(
+    async (showLoading = true) => {
+      if (!user?._id) {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+        return;
       }
 
-      // Process appointments data
-      if (appointmentsResponse.success) {
-        // Extract appointments from response using helper
-        const appointmentsList = extractList<Appointment>(appointmentsResponse.data);
+      try {
+        if (showLoading) {
+          setIsLoading(true);
+        }
+        setError(null);
 
-        // Normalize date for comparison - handle both YYYY-MM-DD and ISO date strings
-        const normalizeDate = (dateStr: string | undefined): string => {
-          if (!dateStr) return "";
-          // If it's already in YYYY-MM-DD format, return as is
-          if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const today = new Date().toISOString().split("T")[0];
+
+        const [queueResponse, appointmentsResponse, statsResponse] = await Promise.all([
+          get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`),
+          get(`/api/appointments?date=${today}&limit=100`),
+          get<{
+            totalPatients: number;
+            todayAppointments: number;
+            scheduledToday: number;
+            completedToday: number;
+            inQueue: number;
+            thisWeek: number;
+          }>("/api/doctors/me/stats")
+        ]);
+
+        let nextQueuePatients: QueuePatient[] | null = null;
+        if (queueResponse.success && queueResponse.data?.queue) {
+          nextQueuePatients = queueResponse.data.queue
+            .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
+            .filter((entry) => entry.doctor._id === user._id)
+            .map((entry) => ({
+              id: entry._id,
+              patientId: entry.patient._id,
+              name: entry.patient.fullName,
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+              time: new Date(entry.checked_in_at).toLocaleString("en-US", {
+                timeZone: "Asia/Kolkata",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              appointmentType: entry.reason || "Consultation",
+              status: entry.status === "in-consultation" ? "in-progress" : "waiting",
+              queueNumber: entry.queue_number,
+              priority: entry.priority,
+              reason: entry.reason,
+            }));
+          setQueuePatients(nextQueuePatients);
+          setInQueue(nextQueuePatients.length);
+        }
+
+        let nextUpcomingAppointments: UpcomingAppointment[] | null = null;
+        let computedTodayAppointments = latestDashboardStateRef.current.todayAppointments;
+        if (appointmentsResponse.success) {
+          const appointmentsList = extractList<Appointment>(appointmentsResponse.data);
+
+          const normalizeDate = (dateStr: string | undefined): string => {
+            if (!dateStr) return "";
+            if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              return dateStr;
+            }
+            if (dateStr.includes("T")) {
+              return dateStr.split("T")[0];
+            }
             return dateStr;
-          }
-          // If it's an ISO string, extract the date part
-          if (dateStr.includes("T")) {
-            return dateStr.split("T")[0];
-          }
-          return dateStr;
-        };
+          };
 
-        // Filter for today's scheduled appointments only
-        // Checked-in appointments should appear in the queue, not here
-        const activeAppointments = appointmentsList.filter(
-          (apt) => {
+          const activeAppointments = appointmentsList.filter((apt) => {
             const aptDate = normalizeDate(apt.date);
             const status = (apt.status || "").toLowerCase();
             const isToday = aptDate === today;
             const isScheduled = status === "scheduled";
 
             return isToday && isScheduled;
-          }
-        );
+          });
 
-        // Sort by time
-        activeAppointments.sort((a, b) => {
-          const timeA = a.time || "";
-          const timeB = b.time || "";
-          return timeA.localeCompare(timeB);
-        });
+          activeAppointments.sort((a, b) => {
+            const timeA = a.time || "";
+            const timeB = b.time || "";
+            return timeA.localeCompare(timeB);
+          });
 
-        const mappedAppointments: UpcomingAppointment[] = activeAppointments.map(
-          (apt) => {
-            const appointmentReason =
-              apt.reason || apt.type || "Consultation";
-
+          nextUpcomingAppointments = activeAppointments.map((apt) => {
+            const appointmentReason = apt.reason || apt.type || "Consultation";
             return {
-            id: apt._id || apt.appointmentId,
-            name: apt.patientName || "Unknown Patient",
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName || "Unknown")}&background=random`,
-            time: apt.time || "",
+              id: apt._id || apt.appointmentId,
+              name: apt.patientName || "Unknown Patient",
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName || "Unknown")}&background=random`,
+              time: apt.time || "",
               appointmentType: appointmentReason,
-            patientId: apt.patientId,
-            doctorId: apt.doctorId,
+              patientId: apt.patientId,
+              doctorId: apt.doctorId,
               reason: appointmentReason,
               priority: apt.priority || "medium",
             };
-          }
-        );
-        setUpcomingAppointments(mappedAppointments);
-        setTodayAppointments(mappedAppointments.length);
-      } else {
-        // If API call failed, clear appointments
-        setUpcomingAppointments([]);
-        setTodayAppointments(0);
-      }
+          });
 
-      // Process stats data
-      if (statsResponse.success && statsResponse.data) {
-        setTotalPatients(statsResponse.data.totalPatients || 0);
-        setTodayAppointments(statsResponse.data.todayAppointments || 0);
-        setCompletedToday(statsResponse.data.completedToday || 0);
-        // inQueue is already set from queue response above
-      }
+          setUpcomingAppointments(nextUpcomingAppointments);
+          computedTodayAppointments = nextUpcomingAppointments.length;
+          setTodayAppointments(computedTodayAppointments);
+        }
 
-    } catch (err) {
-      console.error("Dashboard data fetch error:", err);
-      // Set empty data instead of showing error to allow dashboard to load
-      setQueuePatients([]);
-      setInQueue(0);
-      setUpcomingAppointments([]);
-      setTodayAppointments(0);
-      setTotalPatients(0);
-      setCompletedToday(0);
-    } finally {
-      if (showLoading) {
-        setIsLoading(false);
+        let nextTotalPatients: number | undefined;
+        let nextCompletedToday: number | undefined;
+        if (statsResponse.success && statsResponse.data) {
+          nextTotalPatients = statsResponse.data.totalPatients ?? latestDashboardStateRef.current.totalPatients;
+          nextCompletedToday = statsResponse.data.completedToday ?? latestDashboardStateRef.current.completedToday;
+          const statsTodayAppointments = statsResponse.data.todayAppointments ?? computedTodayAppointments;
+
+          setTotalPatients(nextTotalPatients ?? 0);
+          setCompletedToday(nextCompletedToday ?? 0);
+          setTodayAppointments(statsTodayAppointments ?? computedTodayAppointments);
+          computedTodayAppointments = statsTodayAppointments ?? computedTodayAppointments;
+        }
+
+        if (dashboardCacheKey) {
+          const finalQueuePatients =
+            nextQueuePatients ?? latestDashboardStateRef.current.queuePatients;
+          const finalUpcomingAppointments =
+            nextUpcomingAppointments ?? latestDashboardStateRef.current.upcomingAppointments;
+          const finalTodayAppointments =
+            computedTodayAppointments ?? latestDashboardStateRef.current.todayAppointments;
+          const finalTotalPatients =
+            nextTotalPatients ?? latestDashboardStateRef.current.totalPatients;
+          const finalCompletedToday =
+            nextCompletedToday ?? latestDashboardStateRef.current.completedToday;
+
+          sessionStorage.setItem(
+            dashboardCacheKey,
+            JSON.stringify({
+              queuePatients: finalQueuePatients,
+              upcomingAppointments: finalUpcomingAppointments,
+              todayAppointments: finalTodayAppointments,
+              totalPatients: finalTotalPatients,
+              completedToday: finalCompletedToday,
+              cachedAt: Date.now(),
+            })
+          );
+        }
+
+      } catch (err) {
+        console.error("Dashboard data fetch error:", err);
+        setError(err instanceof Error ? err.message : "Failed to load dashboard data");
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
       }
-    }
-  };
+    },
+    [user?._id, dashboardCacheKey]
+  );
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [user]);
+    if (!user?._id || !dashboardCacheKey) {
+      return;
+    }
+
+    let usedCache = false;
+
+    try {
+      const cachedRaw = sessionStorage.getItem(dashboardCacheKey);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw) as {
+          queuePatients?: QueuePatient[];
+          upcomingAppointments?: UpcomingAppointment[];
+          todayAppointments?: number;
+          totalPatients?: number;
+          completedToday?: number;
+          cachedAt?: number;
+        };
+
+        if (!cached.cachedAt || Date.now() - cached.cachedAt <= DASHBOARD_CACHE_TTL) {
+          if (cached.queuePatients) {
+            setQueuePatients(cached.queuePatients);
+            setInQueue(cached.queuePatients.length);
+          }
+          if (cached.upcomingAppointments) {
+            setUpcomingAppointments(cached.upcomingAppointments);
+          }
+          if (typeof cached.todayAppointments === "number") {
+            setTodayAppointments(cached.todayAppointments);
+          }
+          if (typeof cached.totalPatients === "number") {
+            setTotalPatients(cached.totalPatients);
+          }
+          if (typeof cached.completedToday === "number") {
+            setCompletedToday(cached.completedToday);
+          }
+          setIsLoading(false);
+          usedCache = true;
+        } else {
+          sessionStorage.removeItem(dashboardCacheKey);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to load cached dashboard data", err);
+    }
+
+    fetchDashboardData(!usedCache);
+  }, [user?._id, dashboardCacheKey, fetchDashboardData]);
 
   // Handle WebSocket messages for real-time updates
   useEffect(() => {
@@ -577,13 +659,11 @@ export function DoctorDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Dashboard</h2>
-          <p className="text-muted-foreground">Please wait...</p>
-        </div>
-      </div>
+      <MediEaseLoader
+        message="Preparing your dashboard overview…"
+        subtext="Gathering patient queue, appointments, and analytics"
+        minHeight="min-h-[520px]"
+      />
     );
   }
 
