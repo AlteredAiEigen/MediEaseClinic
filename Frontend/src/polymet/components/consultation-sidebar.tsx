@@ -10,6 +10,7 @@ import {
   HeartPulseIcon,
   ThermometerIcon,
   WindIcon,
+  FileTextIcon,
 } from "lucide-react";
 
 interface ConsultationSidebarProps {
@@ -20,6 +21,11 @@ interface ConsultationSidebarProps {
   transcriptionStatus?: string;
   transcriptionText?: string;
   structuredNotes?: any;
+  allergies?: string[];
+  medications?: string[];
+  condition?: string;
+  carePlanSummary?: string;
+  followUpPlan?: string;
   onNotesChange: (notes: string) => void;
   onDiagnosisChange: (diagnosis: string) => void;
   onTreatmentChange: (treatment: string) => void;
@@ -35,6 +41,11 @@ export function ConsultationSidebar({
   transcriptionStatus,
   transcriptionText,
   structuredNotes,
+  allergies = [],
+  medications = [],
+  condition,
+  carePlanSummary,
+  followUpPlan,
   onNotesChange,
   onDiagnosisChange,
   onTreatmentChange,
@@ -132,18 +143,15 @@ export function ConsultationSidebar({
               Allergies
             </p>
             <div className="flex flex-wrap gap-1.5">
-              <Badge
-                variant="outline"
-                className="text-xs bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800"
-              >
-                Penicillin
-              </Badge>
-              <Badge
-                variant="outline"
-                className="text-xs bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800"
-              >
-                Sulfa drugs
-              </Badge>
+              {(allergies.length ? allergies : ["None"]).map((item, index) => (
+                <Badge
+                  key={`${item}-${index}`}
+                  variant="outline"
+                  className="text-xs bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800"
+                >
+                  {item}
+                </Badge>
+              ))}
             </div>
           </div>
 
@@ -155,10 +163,35 @@ export function ConsultationSidebar({
               Current Medications
             </p>
             <div className="space-y-1.5">
-              <div className="text-xs text-foreground">• Lisinopril 10mg</div>
-              <div className="text-xs text-foreground">• Atorvastatin 20mg</div>
-              <div className="text-xs text-foreground">• Metformin 500mg</div>
+              {(medications.length ? medications : ["No medications recorded"]).map(
+                (med, idx) => (
+                  <div key={`${med}-${idx}`} className="text-xs text-foreground">
+                    • {med}
+                  </div>
+                )
+              )}
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Current Condition */}
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+              Current Condition
+            </p>
+            <div className="text-sm text-foreground font-semibold">
+              {condition || "Under Observation"}
+            </div>
+            {carePlanSummary && (
+              <p className="text-xs text-muted-foreground mt-1.5">{carePlanSummary}</p>
+            )}
+            {followUpPlan && (
+              <p className="text-xs text-muted-foreground mt-1.5">
+                <span className="font-semibold text-foreground">Follow-up:</span>{" "}
+                {followUpPlan}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

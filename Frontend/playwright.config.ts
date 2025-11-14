@@ -16,6 +16,13 @@ export default defineConfig({
     video: "off",
     screenshot: "only-on-failure",
     viewport: { width: 1280, height: 720 },
+    permissions: ["microphone"],
+    launchOptions: {
+      args: [
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
+      ],
+    },
   },
   webServer: {
     command:

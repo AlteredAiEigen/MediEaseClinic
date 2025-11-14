@@ -453,6 +453,20 @@ export function DoctorDashboard() {
               p.id === queueEntryId ? { ...p, status: "in-progress" as const } : p
             )
           );
+          // Persist auto-recording intent so consultation page can pick it up
+          try {
+            sessionStorage.setItem(
+              "autoConsultationRecording",
+              JSON.stringify({
+                patientId: patient.patientId || patient.id,
+                queueId: queueEntryId,
+                createdAt: Date.now(),
+              })
+            );
+          } catch (err) {
+            console.warn("Unable to persist auto recording preference", err);
+          }
+
           // Navigate to consultation page using React Router
           const targetPatientId = patient.patientId || patient.id;
           const queueQuery = queueEntryId ? `?queueId=${queueEntryId}` : "";

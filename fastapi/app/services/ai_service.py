@@ -120,6 +120,49 @@ Important:
         
         return prompt
     
+    async def generate_response(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+    ) -> str:
+        """
+        Generate a raw text response from the configured AI provider.
+
+        Used by downstream services that expect free-form JSON/text outputs.
+        """
+        if not self.provider:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI service not configured. Please set OPENAI_API_KEY or GEMINI_API_KEY",
+            )
+        
+        system_prompt = system_prompt or "You are MediEase Clinic's clinical documentation assistant."
+        target_model = model or settings.openai_model
+        
+        try:
+            if self.provider == "openai":
+                response = self.client.chat.completions.create(
+                    model=target_model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.2,
+                )
+                return response.choices[0].message.content
+            
+            if self.provider == "gemini":
+                response = self.client.generate_content(f"{system_prompt}\n\n{prompt}")
+                return response.text
+        
+        except Exception as e:
+            logger.error(f"AI response generation failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate AI response: {str(e)}",
+            )
+
     async def _generate_with_openai(self, prompt: str) -> Dict:
         """Generate clinical notes using OpenAI."""
         try:

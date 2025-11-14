@@ -5,11 +5,18 @@ HIPAA Compliance: Sensitive fields are encrypted before storage.
 
 from datetime import datetime
 from typing import Optional, List, Dict
+from copy import deepcopy
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
-from app.models.patient import PatientCreate, PatientUpdate, patient_helper
+from app.models.patient import (
+    PatientCreate,
+    PatientUpdate,
+    patient_helper,
+    PatientInsights,
+    DEFAULT_PATIENT_INSIGHTS,
+)
 from app.utils.security import field_encryption
 
 
@@ -89,6 +96,17 @@ class PatientService:
         patient_dict["email"] = patient_dict["email"].lower()
         patient_dict["createdAt"] = datetime.utcnow()
         patient_dict["updatedAt"] = datetime.utcnow()
+        patient_dict.setdefault("condition", "Under Observation")
+        patient_dict.setdefault("carePlanSummary", "")
+        patient_dict.setdefault("followUpPlan", "")
+        patient_dict.setdefault("lastVisit", None)
+        if not patient_dict.get("insights"):
+            patient_dict["insights"] = deepcopy(DEFAULT_PATIENT_INSIGHTS)
+        else:
+            # Ensure insights contains all keys
+            merged_insights = deepcopy(DEFAULT_PATIENT_INSIGHTS)
+            merged_insights.update({k: v for k, v in (patient_dict.get("insights") or {}).items() if v is not None})
+            patient_dict["insights"] = merged_insights
         # Store clinic info for reference (which clinic created the patient)
         # but patients are universal and not restricted to this clinic
         if clinic_id:

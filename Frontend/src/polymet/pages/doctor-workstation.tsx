@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   ArrowRightIcon,
   ClockIcon,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { get, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
+import { ConsultationHistoryDialog } from "@/polymet/components/consultation-history-dialog";
 
 interface QueuePatient {
   id: string;
@@ -113,6 +115,7 @@ export function DoctorWorkstation() {
   const [error, setError] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [showConsultationHistory, setShowConsultationHistory] = useState(false);
 
   // Fetch queue data and today's appointments
   useEffect(() => {
@@ -237,21 +240,120 @@ export function DoctorWorkstation() {
   }, [user]);
 
   // Auto-advance to next patient when returning from consultation
-  useEffect(() => {
+  const checkConsultationCompletion = async () => {
     const consultationCompleted = sessionStorage.getItem(
       "consultationCompleted"
     );
     if (consultationCompleted === "true") {
-      // Clear the flag immediately
-      sessionStorage.removeItem("consultationCompleted");
-      // Move to next patient automatically
-      setCurrentIndex((prevIndex) => {
-        if (prevIndex < queuePatients.length - 1) {
-          return prevIndex + 1;
+      // Prevent multiple simultaneous checks
+      sessionStorage.setItem("consultationCompleted", "processing");
+
+      // Refresh queue data to get updated patient list
+      if (user?._id) {
+        try {
+          // Fetch updated queue data
+          const queueResponse = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
+          let mappedQueue: QueuePatient[] = [];
+          const queuePatientIds = new Set<string>();
+          const queueAppointmentIds = new Set<string>();
+
+          if (queueResponse.success && queueResponse.data?.queue) {
+            mappedQueue = queueResponse.data.queue
+              .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
+              .map((entry) => {
+                const patientId = entry.patient._id || entry.patient.patientId;
+                queuePatientIds.add(patientId);
+
+                // Collect appointment ID from queue entry (normalize to string)
+                if (entry.appointment) {
+                  let aptId = "";
+                  if (typeof entry.appointment === "string") {
+                    aptId = entry.appointment;
+                  } else if (entry.appointment._id) {
+                    aptId = String(entry.appointment._id);
+                  } else if (entry.appointment.appointmentId) {
+                    aptId = String(entry.appointment.appointmentId);
+                  }
+                  if (aptId) {
+                    queueAppointmentIds.add(aptId);
+                  }
+                }
+
+                return {
+                  id: entry._id,
+                  name: entry.patient.fullName,
+                  age: entry.patient.age || "N/A",
+                  gender: entry.patient.gender || "N/A",
+                  phone: entry.patient.phone || "N/A",
+                  email: entry.patient.email || "N/A",
+                  appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                  reason: entry.reason || "Consultation",
+                  priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
+                  waitTime: `${entry.wait_time} min`,
+                  avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+                  patientId: patientId,
+                  status: entry.status,
+                };
+              });
+            setQueuePatients(mappedQueue);
+          }
+
+          // Adjust current index if needed
+          setCurrentIndex((prevIndex) => {
+            if (mappedQueue.length === 0) {
+              return 0; // No patients left
+            }
+            if (prevIndex >= mappedQueue.length) {
+              return Math.max(0, mappedQueue.length - 1); // Adjust if index is out of bounds
+            }
+            return prevIndex; // Keep current index if still valid
+          });
+
+        } catch (err) {
+          console.error("Failed to refresh queue after consultation:", err);
         }
-        return prevIndex;
-      });
+      }
+
+      // Clear the processing flag
+      sessionStorage.removeItem("consultationCompleted");
+    } else if (consultationCompleted === "processing") {
+      // Already being processed, skip
+      return;
     }
+  };
+
+  useEffect(() => {
+    // Check on mount
+    checkConsultationCompletion();
+
+    // Check when window regains focus (user returns from consultation)
+    const handleWindowFocus = async () => {
+      await checkConsultationCompletion();
+    };
+
+    // Check when page becomes visible (handles tab switching)
+    const handleVisibilityChange = async () => {
+      if (!document.hidden) {
+        await checkConsultationCompletion();
+      }
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Also check periodically every 2 seconds in case other events miss it
+    const interval = setInterval(async () => {
+      await checkConsultationCompletion();
+    }, 2000);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(interval);
+    };
   }, []); // Run only once on mount
 
   const handleNext = () => {
@@ -429,6 +531,14 @@ export function DoctorWorkstation() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => setShowConsultationHistory(true)}
+            className="gap-2"
+          >
+            <FileTextIcon className="w-4 h-4" />
+            Consultation History
+          </Button>
           <Badge variant="secondary" className="text-sm px-4 py-2">
             <ClockIcon className="w-4 h-4 mr-2" />
 
@@ -761,6 +871,13 @@ export function DoctorWorkstation() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Consultation History Dialog */}
+      <ConsultationHistoryDialog
+        open={showConsultationHistory}
+        onOpenChange={setShowConsultationHistory}
+        doctorId={user?._id}
+      />
     </div>
   );
 }

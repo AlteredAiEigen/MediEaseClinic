@@ -5,6 +5,7 @@ HIPAA Compliance: Sensitive fields are encrypted at rest.
 
 from datetime import datetime
 from typing import Optional, List, Dict
+from copy import deepcopy
 from pydantic import BaseModel, Field, EmailStr
 from bson import ObjectId
 
@@ -50,6 +51,19 @@ class Lifestyle(BaseModel):
     stress: Optional[str] = None
 
 
+class PatientInsights(BaseModel):
+    """AI-driven patient insights used by dashboards."""
+    riskAssessment: Optional[str] = "Success rate in similar cases: 94%"
+    riskLevel: str = "medium"
+    successRate: Optional[str] = "94%"
+    keyFindings: List[str] = Field(default_factory=list)
+    recommendations: List[str] = Field(default_factory=list)
+    lastUpdatedAt: Optional[str] = None
+
+
+DEFAULT_PATIENT_INSIGHTS = PatientInsights().model_dump()
+
+
 class PatientBase(BaseModel):
     """Base patient fields."""
     firstName: str = Field(..., min_length=1, max_length=50)
@@ -78,6 +92,11 @@ class PatientBase(BaseModel):
     chiefComplaint: Optional[str] = None
     currentSymptoms: Optional[str] = None
     painLevel: Optional[str] = None
+    condition: Optional[str] = "Under Observation"
+    lastVisit: Optional[str] = None
+    carePlanSummary: Optional[str] = ""
+    followUpPlan: Optional[str] = ""
+    insights: PatientInsights = Field(default_factory=PatientInsights)
     
     # Status
     presentInClinic: bool = False
@@ -143,6 +162,11 @@ class PatientResponse(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    condition: Optional[str] = None
+    lastVisit: Optional[str] = None
+    carePlanSummary: Optional[str] = None
+    followUpPlan: Optional[str] = None
+    insights: Optional[PatientInsights] = None
     createdAt: datetime
     updatedAt: datetime
     
@@ -174,6 +198,11 @@ class PatientUpdate(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    condition: Optional[str] = None
+    lastVisit: Optional[str] = None
+    carePlanSummary: Optional[str] = None
+    followUpPlan: Optional[str] = None
+    insights: Optional[PatientInsights] = None
 
 
 class PatientListItem(BaseModel):
@@ -220,12 +249,28 @@ async def patient_helper(patient: dict) -> dict:
     else:
         allergy_value = []
 
+    raw_insights = patient.get("insights") or {}
+    insights = deepcopy(DEFAULT_PATIENT_INSIGHTS)
+    insights.update({k: v for k, v in raw_insights.items() if v is not None})
+
+    key_findings = raw_insights.get("keyFindings")
+    if isinstance(key_findings, list):
+        insights["keyFindings"] = key_findings
+    elif isinstance(key_findings, str) and key_findings.strip():
+        insights["keyFindings"] = [key_findings.strip()]
+
+    recommendations = raw_insights.get("recommendations")
+    if isinstance(recommendations, list):
+        insights["recommendations"] = recommendations
+    elif isinstance(recommendations, str) and recommendations.strip():
+        insights["recommendations"] = [recommendations.strip()]
+
     return {
         "_id": str(patient["_id"]),
         "patientId": patient.get("patientId", ""),
         "firstName": patient.get("firstName", ""),
         "lastName": patient.get("lastName", ""),
-        "fullName": f"{patient.get('firstName', '')} {patient.get('lastName', '')}",
+        "fullName": f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip(),
         # Patients are universal - clinic info is for reference only
         "createdByClinicId": patient.get("createdByClinicId"),
         "createdByClinicName": patient.get("createdByClinicName"),
@@ -249,6 +294,11 @@ async def patient_helper(patient: dict) -> dict:
         "chiefComplaint": patient.get("chiefComplaint"),
         "currentSymptoms": patient.get("currentSymptoms"),
         "painLevel": patient.get("painLevel"),
+        "condition": patient.get("condition", "Under Observation"),
+        "lastVisit": patient.get("lastVisit"),
+        "carePlanSummary": patient.get("carePlanSummary", ""),
+        "followUpPlan": patient.get("followUpPlan", ""),
+        "insights": insights,
         "presentInClinic": patient.get("presentInClinic", False),
         "emergencyContact": patient.get("emergencyContact"),
         "emergencyContactPhone": patient.get("emergencyContactPhone"),

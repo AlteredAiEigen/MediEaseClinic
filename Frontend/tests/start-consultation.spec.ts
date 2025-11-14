@@ -211,7 +211,9 @@ test("doctor can open consultation session from patient queue", async ({ page })
 
   const queueCard = page
     .locator("div")
-    .filter({ hasText: patientRecord ? patientRecord.fullName ?? "UI Patient" : "UI Patient" })
+    .filter({
+      hasText: patientRecord ? patientRecord.fullName ?? "UI Patient" : "UI Patient",
+    })
     .last();
 
   const startButtonLocator = queueCard.locator('button:has-text("Start")');
@@ -223,7 +225,9 @@ test("doctor can open consultation session from patient queue", async ({ page })
     await page.goto(`/consultation/${targetPatientId}?queueId=${queueEntryId}`);
     await page.waitForURL("**/consultation/**", { timeout: 20_000 });
   } else {
-    throw new Error("Start button not found and queue entry details unavailable for direct navigation.");
+    throw new Error(
+      "Start button not found and queue entry details unavailable for direct navigation."
+    );
   }
 
   const workspaceLoader = page.getByText("Loading your workspace…", {
@@ -240,8 +244,17 @@ test("doctor can open consultation session from patient queue", async ({ page })
     await sessionLoader.first().waitFor({ state: "hidden", timeout: 20_000 }).catch(() => undefined);
   }
 
+  const stopRecordingButton = page.getByRole("button", { name: "Stop Recording" });
+  await expect(stopRecordingButton).toBeVisible({ timeout: 15_000 });
+  await stopRecordingButton.click();
+
   const pageSnapshot = await page.locator("body").innerText();
   console.log("Consultation page snapshot:", pageSnapshot.slice(0, 500));
+  await expect(
+    page.getByText("Transcription Complete", {
+      exact: false,
+    })
+  ).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "End Consultation" })).toBeVisible();
 });
 

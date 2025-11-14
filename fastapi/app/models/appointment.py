@@ -3,7 +3,7 @@ Appointment model for scheduling patient-doctor consultations.
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
@@ -45,6 +45,7 @@ class AppointmentBase(BaseModel):
     followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
     clinicId: Optional[str] = None
+    consultationSummary: Optional[Dict[str, Any]] = None
 
 
 class AppointmentCreate(AppointmentBase):
@@ -65,6 +66,7 @@ class AppointmentInDB(AppointmentBase):
     completedAt: Optional[datetime] = None
     cancelledAt: Optional[datetime] = None
     cancellationReason: Optional[str] = None
+    consultationSummary: Optional[Dict[str, Any]] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
     
@@ -98,6 +100,7 @@ class AppointmentResponse(BaseModel):
     completedAt: Optional[datetime] = None
     cancelledAt: Optional[datetime] = None
     cancellationReason: Optional[str] = None
+    consultationSummary: Optional[Dict[str, Any]] = None
     followUpRequired: bool
     followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
@@ -113,7 +116,7 @@ class AppointmentUpdate(BaseModel):
     date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: Optional[str] = Field(None, pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
     duration: Optional[int] = Field(None, ge=15, le=480)
-    status: Optional[str] = Field(None, pattern="^(scheduled|checked-in|in-progress|completed|cancelled|no-show)$")
+    status: Optional[str] = Field(None, pattern="^(scheduled|cancelled|checked-in|ongoing|checkout|completed|no-show)$")
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reason: Optional[str] = Field(None, max_length=500)
     notes: Optional[str] = Field(None, max_length=1000)
@@ -123,6 +126,8 @@ class AppointmentUpdate(BaseModel):
     followUpRequired: Optional[bool] = None
     followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
+    consultationSummary: Optional[Dict[str, Any]] = None
+    consultationSummary: Optional[Dict[str, Any]] = None
 
 
 async def appointment_helper(appointment: dict) -> dict:
@@ -165,5 +170,6 @@ async def appointment_helper(appointment: dict) -> dict:
         "consultationNotes": appointment.get("consultationNotes"),
         "transcription": appointment.get("transcription"),
         "structuredNotes": appointment.get("structuredNotes"),
+        "consultationSummary": appointment.get("consultationSummary"),
     }
 

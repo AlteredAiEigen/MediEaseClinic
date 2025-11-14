@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   MicIcon,
   MicOffIcon,
@@ -19,11 +20,12 @@ import {
   Loader2Icon,
   UploadIcon,
   FileAudioIcon,
+  EyeIcon,
 } from "lucide-react";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
-import { get, post } from "@/lib/api-client";
+import { get, post, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 
 interface Patient {
@@ -64,8 +66,8 @@ interface Recording {
 export function ConsultationSession() {
   const { patientId } = useParams();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const queueIdParam = searchParams.get("queueId");
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [queueEntryId, setQueueEntryId] = useState<string | null>(null);
@@ -81,6 +83,7 @@ export function ConsultationSession() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -104,7 +107,14 @@ export function ConsultationSession() {
   const [transcriptionText, setTranscriptionText] = useState<string>("");
   const [structuredNotes, setStructuredNotes] = useState<any>(null);
   const [transcriptionPolling, setTranscriptionPolling] = useState<NodeJS.Timeout | null>(null);
+  const [showTranscriptionView, setShowTranscriptionView] = useState<boolean>(false);
   const [uploadedRecordingId, setUploadedRecordingId] = useState<string | null>(null);
+  const [autoRecordingIntent, setAutoRecordingIntent] = useState<{
+    patientId: string;
+    queueId?: string;
+    createdAt?: number;
+  } | null>(null);
+  const [autoRecordingActive, setAutoRecordingActive] = useState(false);
 
 const defaultAiAnalysis = {
   similarCases: 120,
@@ -153,6 +163,14 @@ const defaultAppointmentTimeline = [
 ];
 
 const appointmentTimeline = defaultAppointmentTimeline;
+  const consultationIdentifiers = useMemo(
+    () => ({
+      mongoId: resolvedPatientObjectId || patient?._id || null,
+      friendlyId: patient?.patientId || null,
+      queueId: queueEntryId,
+    }),
+    [resolvedPatientObjectId, patient?._id, patient?.patientId, queueEntryId]
+  );
 
   // Fetch patient data and queue entry on component mount
   useEffect(() => {
@@ -349,6 +367,80 @@ const appointmentTimeline = defaultAppointmentTimeline;
     fetchPatientData();
   }, [patientId, queueIdParam, user?._id]);
 
+  useEffect(() => {
+    if (!patient || autoRecordingIntent) return;
+    try {
+      const stored = sessionStorage.getItem("autoConsultationRecording");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+
+      const matchesPatient =
+        parsed?.patientId &&
+        [consultationIdentifiers.mongoId, consultationIdentifiers.friendlyId]
+          .filter(Boolean)
+          .includes(parsed.patientId);
+      const matchesQueue =
+        parsed?.queueId &&
+        consultationIdentifiers.queueId &&
+        parsed.queueId === consultationIdentifiers.queueId;
+
+      if (matchesPatient || matchesQueue) {
+        setAutoRecordingIntent(parsed);
+        sessionStorage.removeItem("autoConsultationRecording");
+      }
+    } catch (err) {
+      console.warn("Failed to read auto consultation recording flag", err);
+      sessionStorage.removeItem("autoConsultationRecording");
+    }
+  }, [patient, consultationIdentifiers, autoRecordingIntent]);
+
+  useEffect(() => {
+    if (!autoRecordingIntent || autoRecordingActive || isRecording || isLoading) return;
+
+    let cancelled = false;
+    const startAutoRecording = async () => {
+      try {
+        await startRecording();
+        if (!cancelled) {
+          setAutoRecordingActive(true);
+          setAutoRecordingIntent(null);
+        }
+      } catch (err) {
+        console.warn("Auto recording failed to start:", err);
+        if (!cancelled) {
+          setAutoRecordingIntent(null);
+        }
+      }
+    };
+
+    startAutoRecording();
+    return () => {
+      cancelled = true;
+    };
+  }, [autoRecordingIntent, autoRecordingActive, isRecording, isLoading]);
+
+  useEffect(() => {
+    if (!autoRecordingActive) return;
+    if (isRecording) return;
+    if (!audioBlob || isUploading) return;
+
+    let cancelled = false;
+    const finalizeRecording = async () => {
+      try {
+        await uploadRecording();
+      } finally {
+        if (!cancelled) {
+          setAutoRecordingActive(false);
+        }
+      }
+    };
+
+    finalizeRecording();
+    return () => {
+      cancelled = true;
+    };
+  }, [autoRecordingActive, isRecording, audioBlob, isUploading]);
+
   // Cleanup transcription polling on unmount
   useEffect(() => {
     return () => {
@@ -401,7 +493,7 @@ const appointmentTimeline = defaultAppointmentTimeline;
     }
   };
 
-  const stopRecording = () => {
+  const stopRecording = async () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
@@ -410,12 +502,38 @@ const appointmentTimeline = defaultAppointmentTimeline;
         setRecordingInterval(null);
       }
       setFinalRecordingDuration(recordingDuration);
+
+      // Automatically start upload and transcription process
+      setTimeout(() => {
+        uploadRecording();
+      }, 100); // Small delay to ensure audioBlob is ready
     }
   };
 
   const uploadRecording = async () => {
-    if (!audioBlob || !patientId || !user?._id) {
-      alert("Missing required information: patient ID or doctor ID");
+    const targetPatientId =
+      resolvedPatientObjectId ||
+      patient?._id ||
+      patient?.id ||
+      patient?.patientId ||
+      consultationIdentifiers.mongoId ||
+      consultationIdentifiers.friendlyId ||
+      autoRecordingIntent?.patientId ||
+      patientId ||
+      "";
+
+    const doctorId = user?._id || user?.id || user?.doctorId || "";
+
+    if (!audioBlob) {
+      console.warn("Attempted to upload recording without audio blob");
+      return;
+    }
+
+    if (!targetPatientId || !doctorId) {
+      console.error("Missing required information for recording upload", {
+        targetPatientId,
+        doctorId,
+      });
       return;
     }
 
@@ -428,23 +546,26 @@ const appointmentTimeline = defaultAppointmentTimeline;
       : 0;
 
     try {
+      setTranscriptionStatus("uploading");
       setIsUploading(true);
 
-      // Create FormData for file upload
+      // Create FormData for file upload – must match backend's expected field names
       const formData = new FormData();
-      formData.append("recording", audioBlob, "consultation-recording.wav");
-      formData.append("patientId", patientId);
-      formData.append("doctorId", user._id);
+      formData.append("file", audioBlob, "consultation-recording.wav");
+      formData.append("patient_id", targetPatientId);
+      formData.append("doctor_id", doctorId);
       formData.append("duration", duration.toString());
       
       // Add appointmentId if available
       if (appointmentId) {
-        formData.append("appointmentId", appointmentId);
+        formData.append("appointment_id", appointmentId);
       } else {
         // Try to find appointment from today's appointments
         try {
           const today = new Date().toISOString().split("T")[0];
-          const appointmentsResponse = await get(`/api/appointments?patientId=${patientId}&date=${today}&status=checked-in`);
+          const appointmentsResponse = await get(
+            `/api/appointments?patientId=${targetPatientId}&date=${today}&status=checked-in`
+          );
           if (appointmentsResponse.success && appointmentsResponse.data?.data) {
             const appointments = Array.isArray(appointmentsResponse.data.data) 
               ? appointmentsResponse.data.data 
@@ -453,7 +574,7 @@ const appointmentTimeline = defaultAppointmentTimeline;
               apt.status === "checked-in" || apt.status === "in-progress"
             );
             if (activeAppointment?._id) {
-              formData.append("appointmentId", activeAppointment._id);
+              formData.append("appointment_id", activeAppointment._id);
             }
           }
         } catch (err) {
@@ -461,23 +582,28 @@ const appointmentTimeline = defaultAppointmentTimeline;
         }
       }
 
-      const response = await post("/api/recordings/", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
+      const response = await post("/api/recordings/", formData);
 
       if (response.success && response.data) {
         console.log("Recording uploaded and transcribed successfully:", response.data);
         const recording = response.data.recording;
         const recordingId = recording.recordingId || recording.id;
         setUploadedRecordingId(recordingId);
+        setAudioBlob(null);
+        if (recording.presignedUrl || recording.fileUrl) {
+          setRecordingUrl(recording.presignedUrl || recording.fileUrl);
+        }
 
-        // Since transcription is now synchronous, we get results immediately
-        if (recording.status === "processed" && recording.transcription) {
+        // Handle different processing statuses
+        if (recording.status === "uploaded") {
+          setTranscriptionStatus("transcribing");
+        } else if (recording.status === "transcribed") {
+          setTranscriptionStatus("extracting_info");
+        } else if (recording.status === "processed" && recording.transcription) {
           setTranscriptionText(recording.transcription);
           setStructuredNotes(recording.aiProcessing?.structuredNotes || null);
           setTranscriptionStatus("completed");
+          setFinalRecordingDuration("");
 
           // Auto-fill clinical notes from structured notes
           if (recording.aiProcessing?.structuredNotes) {
@@ -595,6 +721,30 @@ const appointmentTimeline = defaultAppointmentTimeline;
   const handleEndConsultation = async () => {
     // Save clinical notes first
     await saveClinicalNotes();
+
+    // If we have a queue entry, mark it as completed so it disappears from the queue
+    const targetQueueId = queueEntryId || queueIdParam;
+    if (targetQueueId) {
+      try {
+        await put(`/api/queue/${targetQueueId}/status`, {
+          status: "completed",
+        });
+      } catch (err) {
+        console.error("Failed to update queue status:", err);
+      }
+    }
+
+    // Update appointment status to checkout so receptionist can proceed
+    if (appointmentId) {
+      try {
+        await put(`/api/appointments/${appointmentId}`, {
+          status: "checkout",
+        });
+      } catch (err) {
+        console.error("Failed to update appointment status:", err);
+      }
+    }
+
     // Set flag to indicate consultation completed
     sessionStorage.setItem("consultationCompleted", "true");
   };
@@ -627,10 +777,32 @@ const appointmentTimeline = defaultAppointmentTimeline;
     );
   }
 
-  const patientName =
-    patient.fullName?.trim() ||
-    [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() ||
-    "Patient";
+  const displayPatient = {
+    fullName:
+      patient.fullName?.trim() ||
+      [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() ||
+      "Patient",
+    patientId: patient.patientId || patient._id || consultationIdentifiers.friendlyId || consultationIdentifiers.mongoId || "Unknown",
+    age: patient.age || "",
+    gender: patient.gender || "",
+    bloodGroup: patient.insights?.bloodGroup || patient.bloodGroup || "",
+    phone: patient.phone || "",
+    email: patient.email || "",
+    condition: patient.condition || patient.insights?.riskAssessment || "Under Observation",
+    lastVisit: patient.lastVisit || patient.insights?.lastUpdatedAt || "",
+    carePlanSummary: patient.carePlanSummary || patient.insights?.recommendations?.join("; ") || "",
+    followUpPlan: patient.followUpPlan || patient.insights?.followUpInstructions || "",
+    allergies:
+      Array.isArray(patient.allergies)
+        ? patient.allergies
+        : typeof patient.allergies === "string" && patient.allergies.trim()
+        ? patient.allergies.split(",").map((entry) => entry.trim())
+        : [],
+    medications:
+      Array.isArray(patient.currentMedication)
+        ? patient.currentMedication
+        : (patient.currentMedication || "").split(",").map((entry) => entry.trim()).filter(Boolean)
+  };
 
   return (
     <div className="space-y-6 pb-6">
@@ -638,10 +810,10 @@ const appointmentTimeline = defaultAppointmentTimeline;
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <Avatar className="w-16 h-16 border-2 border-border">
-            <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patientName)}&background=random&color=ffffff&size=64`} alt={patientName} />
+            <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayPatient.fullName)}&background=random&color=ffffff&size=64`} alt={displayPatient.fullName} />
 
             <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
-              {patientName
+              {displayPatient.fullName
                 .split(" ")
                 .map((n) => n[0])
                 .join("")
@@ -651,17 +823,19 @@ const appointmentTimeline = defaultAppointmentTimeline;
           </Avatar>
           <div>
             <h1 className="text-2xl font-bold text-foreground">
-              {patientName}
+                {displayPatient.fullName}
             </h1>
             <div className="flex items-center gap-3 mt-1">
               <p className="text-sm text-muted-foreground">
-                {patient.age} years • {patient.gender} • ID: {patient.patientId}
+                  {displayPatient.age ? `${displayPatient.age} years` : ""}{" "}
+                  {displayPatient.gender ? `• ${displayPatient.gender}` : ""}{" "}
+                  • ID: {displayPatient.patientId}
               </p>
               <Badge
                 variant="outline"
                 className="text-xs bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800"
               >
-                {patient.condition}
+                  {displayPatient.condition}
               </Badge>
             </div>
           </div>
@@ -697,45 +871,30 @@ const appointmentTimeline = defaultAppointmentTimeline;
             </div>
           )}
 
-          {!isRecording && audioBlob && (
+          {!isRecording && audioBlob && !isUploading && transcriptionStatus === "not_started" && (
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg">
                 <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                  Recorded: {finalRecordingDuration}
+                  Recorded: {finalRecordingDuration} - Processing will start automatically...
                 </span>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={uploadRecording}
-                disabled={isUploading}
-                className="gap-2"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2Icon className="w-4 h-4 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <UploadIcon className="w-4 h-4" />
-                    Upload & Generate Notes
-                  </>
-                )}
-              </Button>
               {recordingUrl && (
                 <Button
                   variant="outline"
                   size="sm"
+                  disabled={isPlaying}
                   onClick={() => {
                     const audio = new Audio(recordingUrl);
+                    setIsPlaying(true);
                     audio.play();
+                    audio.onended = () => setIsPlaying(false);
+                    audio.onerror = () => setIsPlaying(false);
                   }}
                   className="gap-2"
                 >
                   <FileAudioIcon className="w-4 h-4" />
-                  Play
+                  {isPlaying ? "Playing..." : "Play"}
                 </Button>
               )}
             </div>
@@ -744,11 +903,27 @@ const appointmentTimeline = defaultAppointmentTimeline;
           {/* Transcription Status */}
           {transcriptionStatus !== "not_started" && (
             <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-              {transcriptionStatus === "processing" && (
+              {transcriptionStatus === "uploading" && (
                 <>
                   <Loader2Icon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
                   <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
-                    Transcribing & Analyzing...
+                    Uploading recording...
+                  </span>
+                </>
+              )}
+              {transcriptionStatus === "transcribing" && (
+                <>
+                  <Loader2Icon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                    Transcribing audio...
+                  </span>
+                </>
+              )}
+              {transcriptionStatus === "extracting_info" && (
+                <>
+                  <Loader2Icon className="w-4 h-4 text-blue-600 dark:text-blue-400 animate-spin" />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-400">
+                    Extracting medical information...
                   </span>
                 </>
               )}
@@ -756,30 +931,61 @@ const appointmentTimeline = defaultAppointmentTimeline;
                 <>
                   <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                   <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                    Transcription Complete
+                    Processing Complete
                   </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-2 h-6 px-2 text-xs border-emerald-200 hover:border-emerald-300 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/30"
+                    onClick={() => setShowTranscriptionView(true)}
+                  >
+                    <EyeIcon className="w-3 h-3 mr-1" />
+                    View
+                  </Button>
                 </>
               )}
               {transcriptionStatus === "error" && (
                 <>
                   <AlertCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
                   <span className="text-sm font-medium text-red-700 dark:text-red-400">
-                    Transcription Failed
+                    Processing Failed
                   </span>
                 </>
               )}
             </div>
           )}
 
-          <Link to="/doctor-workstation">
-            <Button
-              onClick={handleEndConsultation}
-              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              <CheckCircleIcon className="w-4 h-4" />
-              End Consultation
-            </Button>
-          </Link>
+          <Button
+            onClick={async (e) => {
+              e.preventDefault();
+              await handleEndConsultation();
+              navigate("/doctor-workstation");
+            }}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <CheckCircleIcon className="w-4 h-4" />
+            End Consultation
+          </Button>
+          {!isRecording && !audioBlob && recordingUrl && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isPlaying}
+                onClick={() => {
+                  const audio = new Audio(recordingUrl);
+                  setIsPlaying(true);
+                  audio.play();
+                  audio.onended = () => setIsPlaying(false);
+                  audio.onerror = () => setIsPlaying(false);
+                }}
+                className="gap-2"
+              >
+                <FileAudioIcon className="w-4 h-4" />
+                {isPlaying ? "Playing..." : "Play"}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -876,6 +1082,11 @@ const appointmentTimeline = defaultAppointmentTimeline;
           transcriptionStatus={transcriptionStatus}
           transcriptionText={transcriptionText}
           structuredNotes={structuredNotes}
+          allergies={displayPatient.allergies}
+          medications={displayPatient.medications}
+          condition={displayPatient.condition}
+          carePlanSummary={displayPatient.carePlanSummary}
+          followUpPlan={displayPatient.followUpPlan}
           onNotesChange={setNotes}
           onDiagnosisChange={setDiagnosis}
           onTreatmentChange={setTreatment}
@@ -957,6 +1168,82 @@ const appointmentTimeline = defaultAppointmentTimeline;
           </div>
         </div>
       )}
+
+      {/* Transcription Viewer Dialog */}
+      <Dialog open={showTranscriptionView} onOpenChange={setShowTranscriptionView}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileAudioIcon className="w-5 h-5 text-emerald-600" />
+              Consultation Transcription
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                  <CheckCircleIcon className="w-3 h-3 mr-1" />
+                  Transcription Complete
+                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {displayPatient.fullName} - {new Date().toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+
+            <ScrollArea className="h-[400px] w-full border rounded-lg p-4 bg-muted/30">
+              {transcriptionText ? (
+                <div className="prose prose-sm max-w-none">
+                  <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+                    {transcriptionText}
+                  </pre>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <FileAudioIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No transcription text available</p>
+                  </div>
+                </div>
+              )}
+            </ScrollArea>
+
+            {structuredNotes && (
+              <div className="border rounded-lg p-4 bg-blue-50 dark:bg-blue-950/30">
+                <h4 className="font-semibold text-sm mb-2 text-blue-900 dark:text-blue-100">
+                  AI-Generated Structured Notes
+                </h4>
+                <div className="space-y-2 text-sm">
+                  {structuredNotes.chiefComplaint && (
+                    <div>
+                      <span className="font-medium">Chief Complaint:</span> {structuredNotes.chiefComplaint}
+                    </div>
+                  )}
+                  {structuredNotes.assessment && (
+                    <div>
+                      <span className="font-medium">Assessment:</span> {structuredNotes.assessment}
+                    </div>
+                  )}
+                  {structuredNotes.plan && (
+                    <div>
+                      <span className="font-medium">Plan:</span> {structuredNotes.plan}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowTranscriptionView(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

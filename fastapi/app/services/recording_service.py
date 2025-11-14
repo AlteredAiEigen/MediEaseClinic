@@ -3,12 +3,14 @@ Recording service for managing consultation audio recordings with transcription.
 """
 
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+from copy import deepcopy
 from fastapi import HTTPException, status, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from app.models.recording import RecordingUpdate, recording_helper
+from app.models.patient import DEFAULT_PATIENT_INSIGHTS
 from app.services.aws_service import aws_service
 from app.config import settings
 
@@ -242,14 +244,24 @@ class RecordingService:
             # Update appointment with structured notes
             if recording.get("appointmentId"):
                 appointment_notes = self._format_notes_for_appointment(structured_notes)
+                appointment_summary = self._build_appointment_summary(structured_notes)
+                appointment_updates = {
+                    "consultationNotes": appointment_notes,
+                    "transcription": transcript,
+                    "structuredNotes": structured_notes,
+                    "consultationSummary": appointment_summary,
+                    "followUpNotes": structured_notes.get("followUpInstructions"),
+                    "updatedAt": datetime.utcnow()
+                }
+                appointment = await self.appointments_collection.find_one({"_id": ObjectId(recording["appointmentId"])})
+                if appointment:
+                    if structured_notes.get("chiefComplaint"):
+                        appointment_updates["reason"] = structured_notes["chiefComplaint"]
+                    if structured_notes.get("historyOfPresentIllness"):
+                        appointment_updates["notes"] = structured_notes["historyOfPresentIllness"]
                 await self.appointments_collection.update_one(
                     {"_id": ObjectId(recording["appointmentId"])},
-                    {"$set": {
-                        "consultationNotes": appointment_notes,
-                        "transcription": transcript,
-                        "structuredNotes": structured_notes,
-                        "updatedAt": datetime.utcnow()
-                    }}
+                    {"$set": appointment_updates}
                 )
 
             # Update patient with medications and allergies
@@ -267,26 +279,64 @@ class RecordingService:
         if not patient_id or not structured_notes:
             return
 
-        patient_updates = {}
+        if not ObjectId.is_valid(patient_id):
+            return
 
+        patient = await self.patients_collection.find_one({"_id": ObjectId(patient_id)})
+        if not patient:
+            return
+        
+        patient_updates: Dict[str, any] = {}
+        now_iso = datetime.utcnow().isoformat()
+        
         # Extract medications
         if structured_notes.get("medications"):
             medications = structured_notes["medications"]
             if isinstance(medications, list) and len(medications) > 0:
                 patient_updates["currentMedication"] = ", ".join(medications)
-
+        
         # Extract allergies
         if structured_notes.get("allergies"):
             found_allergies = structured_notes["allergies"]
             if isinstance(found_allergies, list):
-                patient = await self.patients_collection.find_one({"_id": ObjectId(patient_id)})
-                if patient:
-                    existing_allergies = patient.get("allergies", [])
-                    if isinstance(existing_allergies, str):
-                        existing_allergies = [existing_allergies] if existing_allergies else []
-                    combined_allergies = list(set(existing_allergies + found_allergies))
-                    patient_updates["allergies"] = combined_allergies
+                existing_allergies = patient.get("allergies", [])
+                if isinstance(existing_allergies, str):
+                    existing_allergies = [existing_allergies] if existing_allergies else []
+                combined_allergies = list(set(existing_allergies + found_allergies))
+                patient_updates["allergies"] = combined_allergies
 
+        if structured_notes.get("assessment"):
+            patient_updates["condition"] = structured_notes["assessment"]
+        if structured_notes.get("plan"):
+            patient_updates["carePlanSummary"] = structured_notes["plan"]
+        if structured_notes.get("followUpInstructions"):
+            patient_updates["followUpPlan"] = structured_notes["followUpInstructions"]
+        if structured_notes.get("chiefComplaint"):
+            patient_updates["chiefComplaint"] = structured_notes["chiefComplaint"]
+        if structured_notes.get("historyOfPresentIllness"):
+            patient_updates["currentSymptoms"] = structured_notes["historyOfPresentIllness"]
+
+        patient_updates["lastVisit"] = now_iso.split("T")[0]
+
+        # Update insights for dashboards
+        insights_source = patient.get("insights") or deepcopy(DEFAULT_PATIENT_INSIGHTS)
+        insights = deepcopy(DEFAULT_PATIENT_INSIGHTS)
+        insights.update({k: v for k, v in insights_source.items() if v is not None})
+        key_findings: List[str] = []
+        for field in ["historyOfPresentIllness", "reviewOfSystems", "physicalExamination", "clinicalImpression"]:
+            value = structured_notes.get(field)
+            if value:
+                key_findings.append(value)
+        if key_findings:
+            insights["keyFindings"] = key_findings
+        plan_text = structured_notes.get("plan")
+        if plan_text:
+            insights["recommendations"] = [plan_text]
+        if structured_notes.get("assessment"):
+            insights["riskAssessment"] = structured_notes["assessment"]
+        insights["lastUpdatedAt"] = now_iso
+        patient_updates["insights"] = insights
+        
         if patient_updates:
             patient_updates["updatedAt"] = datetime.utcnow()
             await self.patients_collection.update_one(
@@ -372,15 +422,26 @@ class RecordingService:
 
             # Update appointment with structured notes if appointment exists
             if recording.get("appointmentId"):
-                appointment_notes = self._format_notes_for_appointment(notes_result.get("structured_notes", {}))
+                structured_payload = notes_result.get("structured_notes", {})
+                appointment_notes = self._format_notes_for_appointment(structured_payload)
+                appointment_summary = self._build_appointment_summary(structured_payload)
+                appointment_updates = {
+                    "consultationNotes": appointment_notes,
+                    "transcription": transcript,
+                    "structuredNotes": structured_payload,
+                    "consultationSummary": appointment_summary,
+                    "followUpNotes": structured_payload.get("followUpInstructions"),
+                    "updatedAt": datetime.utcnow()
+                }
+                appointment = await self.appointments_collection.find_one({"_id": ObjectId(recording["appointmentId"])})
+                if appointment:
+                    if structured_payload.get("chiefComplaint"):
+                        appointment_updates["reason"] = structured_payload["chiefComplaint"]
+                    if structured_payload.get("historyOfPresentIllness"):
+                        appointment_updates["notes"] = structured_payload["historyOfPresentIllness"]
                 await self.appointments_collection.update_one(
                     {"_id": ObjectId(recording["appointmentId"])},
-                    {"$set": {
-                        "consultationNotes": appointment_notes,
-                        "transcription": transcript,
-                        "structuredNotes": notes_result.get("structured_notes"),
-                        "updatedAt": datetime.utcnow()
-                    }}
+                    {"$set": appointment_updates}
                 )
 
             # Extract and update patient medications and allergies from structured notes
@@ -450,6 +511,20 @@ class RecordingService:
         else:
             # Still processing
             return await recording_helper(recording)
+    
+    def _build_appointment_summary(self, structured_notes: dict) -> Dict[str, Any]:
+        """Build a structured summary object for appointments."""
+        if not structured_notes:
+            return {}
+        summary = {
+            "chiefComplaint": structured_notes.get("chiefComplaint"),
+            "assessment": structured_notes.get("assessment"),
+            "plan": structured_notes.get("plan"),
+            "followUpInstructions": structured_notes.get("followUpInstructions"),
+            "differentialDiagnosis": structured_notes.get("differentialDiagnosis"),
+            "clinicalImpression": structured_notes.get("clinicalImpression"),
+        }
+        return summary
 
     def _format_notes_for_appointment(self, structured_notes: dict) -> str:
         """Format structured notes for appointment display."""

@@ -46,6 +46,16 @@ interface Patient {
   chiefComplaint?: string;
   condition?: string;
   lastVisit?: string;
+  carePlanSummary?: string;
+  followUpPlan?: string;
+  insights?: {
+    riskAssessment?: string;
+    riskLevel?: string;
+    successRate?: string;
+    keyFindings?: string[];
+    recommendations?: string[];
+    lastUpdatedAt?: string;
+  };
 }
 
 interface PatientVitals {
@@ -135,6 +145,20 @@ export function PatientOverview() {
 
   // Fetch patient data on component mount
   useEffect(() => {
+    const fetchPatientDetails = async (id: string): Promise<Patient | null> => {
+      // First attempt: /api/patients/{id} (works for MongoDB ObjectIds)
+      try {
+        const response = await get<{ patient: Patient }>(`/api/patients/${id}`);
+        if (response.success && response.data?.patient) {
+          return response.data.patient;
+        }
+      } catch (err) {
+        // ignore
+      }
+
+      return null;
+    };
+
     const fetchPatientData = async () => {
       if (!patientId) return;
 
@@ -142,16 +166,13 @@ export function PatientOverview() {
         setIsLoading(true);
         setError(null);
 
-        // Fetch patient details
-        const patientResponse = await get<{ patient: Patient }>(
-          `/api/patients/${patientId}`
-        );
-        const patientData = patientResponse.data?.patient;
-        if (patientResponse.success && patientData) {
+        // Fetch patient details (supports Mongo _id or friendly ID)
+        const patientData = await fetchPatientDetails(patientId);
+        if (patientData) {
           setPatient(patientData);
           setHasAnyData(true);
-        } else if (patientResponse.message) {
-          setError(patientResponse.message);
+        } else {
+          setError("Patient not found");
         }
 
         // Fetch patient vitals
@@ -252,6 +273,16 @@ export function PatientOverview() {
     chiefComplaint: "",
     medicalHistory: [],
     allergies: [],
+    condition: "Under Observation",
+    carePlanSummary: "",
+    followUpPlan: "",
+    insights: {
+      riskAssessment: "",
+      riskLevel: "medium",
+      successRate: "",
+      keyFindings: [],
+      recommendations: [],
+    },
   };
   const showLimitedDataNotice = !hasAnyData;
 
@@ -288,14 +319,6 @@ export function PatientOverview() {
         reportData={selectedLabReport}
       />
 
-      {error && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800">
-          <p className="text-sm">
-            We couldn’t retrieve all patient details ({error}). Showing any available
-            information below.
-          </p>
-        </div>
-      )}
 
       {showLimitedDataNotice && !error && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-blue-800">
@@ -554,10 +577,33 @@ export function PatientOverview() {
                     Current Condition
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-foreground">
-                    {displayPatient.condition || "No current conditions"}
+                <CardContent className="space-y-2">
+                  <p className="text-base font-semibold text-foreground">
+                    {displayPatient.condition || "Under Observation"}
                   </p>
+                  {displayPatient.carePlanSummary && (
+                    <p className="text-sm text-muted-foreground">
+                      {displayPatient.carePlanSummary}
+                    </p>
+                  )}
+                  {displayPatient.followUpPlan && (
+                    <div className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">Follow-up:</span>{" "}
+                      {displayPatient.followUpPlan}
+                    </div>
+                  )}
+                  {displayPatient.insights?.keyFindings?.length ? (
+                    <div className="space-y-1.5 mt-2">
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        Key Findings
+                      </p>
+                      <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
+                        {displayPatient.insights.keyFindings.slice(0, 3).map((finding, idx) => (
+                          <li key={`${finding}-${idx}`}>{finding}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             </div>

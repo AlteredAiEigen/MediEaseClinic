@@ -1,0 +1,275 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - link "MediEase Logo MediEase Clinic" [ref=e7] [cursor=pointer]:
+        - /url: /doctor-dashboard
+        - generic [ref=e8]:
+          - img "MediEase Logo" [ref=e9]
+          - generic [ref=e10]:
+            - generic [ref=e11]: MediEase
+            - generic [ref=e12]: Clinic
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - img "Dr UI" [ref=e18]
+          - button [ref=e19] [cursor=pointer]:
+            - img [ref=e20]
+        - generic [ref=e23]:
+          - heading "Dr UI" [level=3] [ref=e24]
+          - paragraph [ref=e25]: doctor
+          - generic [ref=e28]: Active
+      - navigation [ref=e29]:
+        - link "Dashboard" [ref=e30] [cursor=pointer]:
+          - /url: /doctor-dashboard
+          - img [ref=e31]
+          - text: Dashboard
+        - link "Work Station" [ref=e36] [cursor=pointer]:
+          - /url: /doctor-workstation
+          - img [ref=e37]
+          - text: Work Station
+        - link "Patients" [ref=e39] [cursor=pointer]:
+          - /url: /doctor-patients
+          - img [ref=e40]
+          - text: Patients
+        - link "Appointments" [ref=e45] [cursor=pointer]:
+          - /url: /doctor-appointments
+          - img [ref=e46]
+          - text: Appointments
+        - link "Settings" [ref=e48] [cursor=pointer]:
+          - /url: /doctor-settings
+          - img [ref=e49]
+          - text: Settings
+      - button "Logout" [ref=e53] [cursor=pointer]:
+        - img [ref=e54]
+        - text: Logout
+  - generic [ref=e57]:
+    - banner [ref=e58]:
+      - button "3" [ref=e60] [cursor=pointer]:
+        - img
+        - generic [ref=e62]: "3"
+    - main [ref=e63]:
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - generic [ref=e66]:
+            - img "UI Patient" [ref=e68]
+            - generic [ref=e69]:
+              - heading "UI Patient" [level=1] [ref=e70]
+              - paragraph [ref=e72]: "35 years • Male • ID: P011"
+          - generic [ref=e74]:
+            - button "Start Recording" [ref=e75] [cursor=pointer]:
+              - img
+              - text: Start Recording
+            - link "End Consultation" [ref=e76] [cursor=pointer]:
+              - /url: /doctor-workstation
+              - button "End Consultation" [ref=e77]:
+                - img
+                - text: End Consultation
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e80]:
+              - generic [ref=e82]:
+                - img [ref=e83]
+                - text: AI Health Analysis
+                - generic [ref=e85]: Based on 120 similar cases
+              - generic [ref=e86]:
+                - generic [ref=e87]:
+                  - generic [ref=e88]:
+                    - paragraph [ref=e89]: Risk Assessment
+                    - generic [ref=e90]: MEDIUM
+                  - paragraph [ref=e91]: "Success rate in similar cases: 94%"
+                - generic [ref=e92]:
+                  - heading "Key Findings" [level=4] [ref=e93]:
+                    - img [ref=e94]
+                    - text: Key Findings
+                  - list [ref=e96]:
+                    - listitem [ref=e97]:
+                      - img [ref=e98]
+                      - generic [ref=e100]: Patient shows stable vitals with mild hypertension indicators.
+                    - listitem [ref=e101]:
+                      - img [ref=e102]
+                      - generic [ref=e104]: Recent lab results indicate improved glycemic control.
+                    - listitem [ref=e105]:
+                      - img [ref=e106]
+                      - generic [ref=e108]: No acute distress signals present during initial assessment.
+                - generic [ref=e109]:
+                  - heading "AI Recommendations" [level=4] [ref=e110]:
+                    - img [ref=e111]
+                    - text: AI Recommendations
+                  - list [ref=e113]:
+                    - listitem [ref=e114]:
+                      - img [ref=e115]
+                      - generic [ref=e118]: Maintain current medication plan with minor dosage adjustments.
+                    - listitem [ref=e119]:
+                      - img [ref=e120]
+                      - generic [ref=e123]: Schedule follow-up lab work in 2 weeks to monitor progress.
+                    - listitem [ref=e124]:
+                      - img [ref=e125]
+                      - generic [ref=e128]: Encourage daily 20-minute moderate exercise with hydration tracking.
+            - generic [ref=e129]:
+              - generic [ref=e131]: Recent Lab Results
+              - generic [ref=e133]:
+                - generic [ref=e135]:
+                  - generic [ref=e136]:
+                    - paragraph [ref=e137]: Cholesterol
+                    - paragraph [ref=e138]: Jan 15, 2024
+                  - generic [ref=e139]:
+                    - paragraph [ref=e140]: 245 mg/dL
+                    - paragraph [ref=e141]: High
+                - generic [ref=e143]:
+                  - generic [ref=e144]:
+                    - paragraph [ref=e145]: HbA1c
+                    - paragraph [ref=e146]: Jan 15, 2024
+                  - generic [ref=e147]:
+                    - paragraph [ref=e148]: 6.2%
+                    - paragraph [ref=e149]: Normal
+                - generic [ref=e151]:
+                  - generic [ref=e152]:
+                    - paragraph [ref=e153]: Blood Glucose
+                    - paragraph [ref=e154]: Jan 15, 2024
+                  - generic [ref=e155]:
+                    - paragraph [ref=e156]: 105 mg/dL
+                    - paragraph [ref=e157]: Normal
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - generic [ref=e161]:
+                - img [ref=e162]
+                - text: Current Vitals
+              - generic [ref=e165]:
+                - generic [ref=e166]:
+                  - generic [ref=e167]:
+                    - img [ref=e168]
+                    - paragraph [ref=e171]: BP
+                  - paragraph [ref=e172]: 145/95
+                  - paragraph [ref=e173]: High
+                - generic [ref=e174]:
+                  - generic [ref=e175]:
+                    - img [ref=e176]
+                    - paragraph [ref=e179]: HR
+                  - paragraph [ref=e180]: "78"
+                  - paragraph [ref=e181]: bpm
+                - generic [ref=e182]:
+                  - generic [ref=e183]:
+                    - img [ref=e184]
+                    - paragraph [ref=e186]: Temp
+                  - paragraph [ref=e187]: 98.6°F
+                  - paragraph [ref=e188]: Normal
+                - generic [ref=e189]:
+                  - generic [ref=e190]:
+                    - img [ref=e191]
+                    - paragraph [ref=e195]: SpO2
+                  - paragraph [ref=e196]: 98%
+                  - paragraph [ref=e197]: Normal
+            - generic [ref=e198]:
+              - generic [ref=e200]: Quick Info
+              - generic [ref=e201]:
+                - generic [ref=e202]:
+                  - paragraph [ref=e203]: Allergies
+                  - generic [ref=e204]:
+                    - generic [ref=e205]: Penicillin
+                    - generic [ref=e206]: Sulfa drugs
+                - generic [ref=e207]:
+                  - paragraph [ref=e208]: Current Medications
+                  - generic [ref=e209]:
+                    - generic [ref=e210]: • Lisinopril 10mg
+                    - generic [ref=e211]: • Atorvastatin 20mg
+                    - generic [ref=e212]: • Metformin 500mg
+            - generic [ref=e213]:
+              - generic [ref=e215]: Clinical Notes
+              - generic [ref=e216]:
+                - generic [ref=e217]:
+                  - text: Diagnosis
+                  - textbox "Diagnosis" [ref=e218]:
+                    - /placeholder: Primary diagnosis...
+                - generic [ref=e219]:
+                  - text: Treatment Plan
+                  - textbox "Treatment Plan" [ref=e220]:
+                    - /placeholder: Treatment recommendations and medications...
+                - generic [ref=e221]:
+                  - text: Follow-up Instructions
+                  - textbox "Follow-up Instructions" [ref=e222]:
+                    - /placeholder: When to follow up, what to monitor...
+                - generic [ref=e223]:
+                  - text: Detailed Notes
+                  - textbox "Detailed Notes" [ref=e224]:
+                    - /placeholder: Additional observations, patient concerns, and clinical details...
+                - generic [ref=e225]:
+                  - paragraph [ref=e226]: 0 characters total
+                  - button "Save Draft" [ref=e227] [cursor=pointer]
+        - generic [ref=e229]:
+          - generic [ref=e230]:
+            - generic [ref=e231]:
+              - img [ref=e232]
+              - heading "Recent Visit History" [level=3] [ref=e234]
+              - generic [ref=e235]: 4 visits
+            - link "View Full History" [ref=e236] [cursor=pointer]:
+              - /url: /patient-overview/undefined
+              - button "View Full History" [ref=e237]:
+                - img
+                - text: View Full History
+          - generic [ref=e238]:
+            - generic [ref=e241] [cursor=pointer]:
+              - generic [ref=e242]:
+                - generic [ref=e244]:
+                  - img [ref=e245]
+                  - generic [ref=e247]: 2024-12-02
+                  - generic [ref=e248]: •
+                  - img [ref=e249]
+                - heading "Follow-up Visit" [level=4] [ref=e253]
+                - paragraph
+                - generic [ref=e254]:
+                  - img [ref=e255]
+                  - generic [ref=e258]: Dr.
+              - button [ref=e259]:
+                - img
+            - generic [ref=e262] [cursor=pointer]:
+              - generic [ref=e263]:
+                - generic [ref=e265]:
+                  - img [ref=e266]
+                  - generic [ref=e268]: 2025-01-15
+                  - generic [ref=e269]: •
+                  - img [ref=e270]
+                - heading "Specialist Referral" [level=4] [ref=e274]
+                - paragraph
+                - generic [ref=e275]:
+                  - img [ref=e276]
+                  - generic [ref=e279]: Dr.
+              - button [ref=e280]:
+                - img
+            - generic [ref=e283] [cursor=pointer]:
+              - generic [ref=e284]:
+                - generic [ref=e286]:
+                  - img [ref=e287]
+                  - generic [ref=e289]: 2025-02-10
+                  - generic [ref=e290]: •
+                  - img [ref=e291]
+                - heading "Therapy Session" [level=4] [ref=e295]
+                - paragraph
+                - generic [ref=e296]:
+                  - img [ref=e297]
+                  - generic [ref=e300]: Dr.
+              - button [ref=e301]:
+                - img
+            - generic [ref=e304] [cursor=pointer]:
+              - generic [ref=e305]:
+                - generic [ref=e307]:
+                  - img [ref=e308]
+                  - generic [ref=e310]: 2025-03-05
+                  - generic [ref=e311]: •
+                  - img [ref=e312]
+                - heading "Lab Review" [level=4] [ref=e316]
+                - paragraph
+                - generic [ref=e317]:
+                  - img [ref=e318]
+                  - generic [ref=e321]: Dr.
+              - button [ref=e322]:
+                - img
+          - link "View All 4 Visits" [ref=e324] [cursor=pointer]:
+            - /url: /patient-overview/undefined
+            - button "View All 4 Visits" [ref=e325]:
+              - text: View All 4 Visits
+              - img
+        - button [ref=e326] [cursor=pointer]:
+          - img
+```

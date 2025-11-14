@@ -34,6 +34,11 @@ class PatientCreateRequest(BaseModel):
     chiefComplaint: Optional[str] = None
     currentSymptoms: Optional[str] = None
     painLevel: Optional[str] = None
+    condition: Optional[str] = None
+    lastVisit: Optional[str] = None
+    carePlanSummary: Optional[str] = ""
+    followUpPlan: Optional[str] = ""
+    insights: Optional[dict] = None
     
     # Emergency contact
     emergencyContact: Optional[str] = None
@@ -71,6 +76,11 @@ class PatientUpdateRequest(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    condition: Optional[str] = None
+    lastVisit: Optional[str] = None
+    carePlanSummary: Optional[str] = None
+    followUpPlan: Optional[str] = None
+    insights: Optional[dict] = None
     # Note: Patients are universal. Clinic info is for reference only
 
 
