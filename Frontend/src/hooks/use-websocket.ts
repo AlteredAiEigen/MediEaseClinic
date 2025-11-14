@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
+import { getStoredAccessToken } from '@/lib/api-client';
 
 export interface QueueUpdateMessage {
   type: 'patient_checked_in' | 'patient_status_updated' | 'queue_reordered' | 'queue_update';
@@ -18,7 +19,7 @@ export function useWebSocket(
   endpoint: string = 'queue',
   doctorId?: string
 ): WebSocketHookResult {
-  const { user, token } = useAuth();
+  const { user } = useAuth();
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<QueueUpdateMessage | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export function useWebSocket(
   const maxReconnectAttempts = 5;
 
   const buildWebSocketUrl = useCallback(() => {
+    const token = getStoredAccessToken();
     if (!token) return null;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -42,10 +44,10 @@ export function useWebSocket(
     }
 
     return url;
-  }, [token, endpoint, doctorId]);
+  }, [endpoint, doctorId]);
 
   const connect = useCallback(() => {
-    if (!user || !token) return;
+    if (!user) return;
 
     const url = buildWebSocketUrl();
     if (!url) return;
@@ -127,14 +129,14 @@ export function useWebSocket(
     };
   }, [connect, disconnect]);
 
-  // Reconnect when user or token changes
+  // Reconnect when user changes
   useEffect(() => {
-    if (user && token) {
+    if (user) {
       reconnect();
     } else {
       disconnect();
     }
-  }, [user, token, reconnect, disconnect]);
+  }, [user, reconnect, disconnect]);
 
   return {
     isConnected,

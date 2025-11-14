@@ -625,7 +625,7 @@ export function DoctorDashboard() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground">
-            Welcome back, Dr. Mitchell! Here's your overview for today.
+            Welcome back, Dr. {user.firstName} {user.lastName}! Here's your overview for today.
           </p>
         </div>
         {/* WebSocket connection status */}
