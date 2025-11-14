@@ -47,7 +47,6 @@ export function RequireAuth({ children, role }: RequireAuthProps) {
     const defaultRoute = roleDefaultRoutes[user.role] ?? "/";
     return <Navigate to={defaultRoute} replace />;
   }
-
   return <>{children}</>;
 }
 

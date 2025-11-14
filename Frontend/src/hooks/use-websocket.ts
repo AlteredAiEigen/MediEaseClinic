@@ -101,7 +101,7 @@ export function useWebSocket(
       console.error('Failed to create WebSocket connection:', error);
       setConnectionError('Failed to create WebSocket connection');
     }
-  }, [user, token, buildWebSocketUrl]);
+  }, [user, buildWebSocketUrl]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {

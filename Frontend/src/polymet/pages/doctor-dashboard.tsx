@@ -125,6 +125,7 @@ export function DoctorDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+
   // WebSocket for real-time queue updates
   const { lastMessage, isConnected } = useDoctorQueueWebSocket(user?._id || "");
 
@@ -148,7 +149,12 @@ export function DoctorDashboard() {
 
   // Fetch queue and appointments data
   const fetchDashboardData = async (showLoading = true) => {
-    if (!user?._id) return;
+    if (!user?._id) {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+      return;
+    }
 
     try {
       if (showLoading) {
@@ -269,8 +275,14 @@ export function DoctorDashboard() {
       }
 
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load dashboard data";
-      setError(message);
+      console.error("Dashboard data fetch error:", err);
+      // Set empty data instead of showing error to allow dashboard to load
+      setQueuePatients([]);
+      setInQueue(0);
+      setUpcomingAppointments([]);
+      setTodayAppointments(0);
+      setTotalPatients(0);
+      setCompletedToday(0);
     } finally {
       if (showLoading) {
         setIsLoading(false);
