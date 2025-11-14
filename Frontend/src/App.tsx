@@ -1,254 +1,305 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { HealthcareLanding } from "@/polymet/pages/healthcare-landing";
-import { FeaturesPage } from "@/polymet/pages/features-page";
-import { SolutionsPage } from "@/polymet/pages/solutions-page";
-import { SecurityPage } from "@/polymet/pages/security-page";
-import { RoadmapPage } from "@/polymet/pages/roadmap-page";
-import { RoleSelection } from "@/polymet/pages/role-selection";
-import { AuthPage } from "@/polymet/pages/auth-page";
-import { AdminDashboard } from "@/polymet/pages/admin-dashboard";
-import { AdminCredentials } from "@/polymet/pages/admin-credentials";
-import { AdminUserProfile } from "@/polymet/pages/admin-user-profile";
-import { AdminPatients } from "@/polymet/pages/admin-patients";
-import { AdminAppointments } from "@/polymet/pages/admin-appointments";
-import { AdminSettings } from "@/polymet/pages/admin-settings";
-import { DoctorDashboard } from "@/polymet/pages/doctor-dashboard";
-import { DoctorPatients } from "@/polymet/pages/doctor-patients";
-import { DoctorWorkstation } from "@/polymet/pages/doctor-workstation";
-import { DoctorAppointments } from "@/polymet/pages/doctor-appointments";
-import { DoctorSettings } from "@/polymet/pages/doctor-settings";
-import { ReceptionistDashboardNew } from "@/polymet/pages/receptionist-dashboard-new";
-import { ReceptionistPatients } from "@/polymet/pages/receptionist-patients";
-import { ReceptionistAppointments } from "@/polymet/pages/receptionist-appointments";
-import { ReceptionistSettings } from "@/polymet/pages/receptionist-settings";
-import { ReceptionistWorkstation } from "@/polymet/pages/receptionist-workstation";
-import { RegisterPatient } from "@/polymet/pages/register-patient";
-import { PatientOverview } from "@/polymet/pages/patient-overview";
-import { ConsultationSession } from "@/polymet/pages/consultation-session-new";
-import { HealthcareLayout } from "@/polymet/layouts/healthcare-layout";
+import { lazy, Suspense } from "react";
 import { RequireAuth } from "@/components/require-auth";
+
+// Lazy load all page components for better performance
+const HealthcareLanding = lazy(() => import("@/polymet/pages/healthcare-landing").then(module => ({ default: module.HealthcareLanding })));
+const FeaturesPage = lazy(() => import("@/polymet/pages/features-page").then(module => ({ default: module.FeaturesPage })));
+const SolutionsPage = lazy(() => import("@/polymet/pages/solutions-page").then(module => ({ default: module.SolutionsPage })));
+const SecurityPage = lazy(() => import("@/polymet/pages/security-page").then(module => ({ default: module.SecurityPage })));
+const RoadmapPage = lazy(() => import("@/polymet/pages/roadmap-page").then(module => ({ default: module.RoadmapPage })));
+const RoleSelection = lazy(() => import("@/polymet/pages/role-selection").then(module => ({ default: module.RoleSelection })));
+const AuthPage = lazy(() => import("@/polymet/pages/auth-page").then(module => ({ default: module.AuthPage })));
+const AdminDashboard = lazy(() => import("@/polymet/pages/admin-dashboard").then(module => ({ default: module.AdminDashboard })));
+const AdminCredentials = lazy(() => import("@/polymet/pages/admin-credentials").then(module => ({ default: module.AdminCredentials })));
+const AdminUserProfile = lazy(() => import("@/polymet/pages/admin-user-profile").then(module => ({ default: module.AdminUserProfile })));
+const AdminPatients = lazy(() => import("@/polymet/pages/admin-patients").then(module => ({ default: module.AdminPatients })));
+const AdminAppointments = lazy(() => import("@/polymet/pages/admin-appointments").then(module => ({ default: module.AdminAppointments })));
+const AdminSettings = lazy(() => import("@/polymet/pages/admin-settings").then(module => ({ default: module.AdminSettings })));
+const DoctorDashboard = lazy(() => import("@/polymet/pages/doctor-dashboard").then(module => ({ default: module.DoctorDashboard })));
+const DoctorPatients = lazy(() => import("@/polymet/pages/doctor-patients").then(module => ({ default: module.DoctorPatients })));
+const DoctorWorkstation = lazy(() => import("@/polymet/pages/doctor-workstation").then(module => ({ default: module.DoctorWorkstation })));
+const DoctorAppointments = lazy(() => import("@/polymet/pages/doctor-appointments").then(module => ({ default: module.DoctorAppointments })));
+const DoctorSettings = lazy(() => import("@/polymet/pages/doctor-settings").then(module => ({ default: module.DoctorSettings })));
+const ReceptionistDashboardNew = lazy(() => import("@/polymet/pages/receptionist-dashboard-new").then(module => ({ default: module.ReceptionistDashboardNew })));
+const ReceptionistPatients = lazy(() => import("@/polymet/pages/receptionist-patients").then(module => ({ default: module.ReceptionistPatients })));
+const ReceptionistAppointments = lazy(() => import("@/polymet/pages/receptionist-appointments").then(module => ({ default: module.ReceptionistAppointments })));
+const ReceptionistSettings = lazy(() => import("@/polymet/pages/receptionist-settings").then(module => ({ default: module.ReceptionistSettings })));
+const ReceptionistWorkstation = lazy(() => import("@/polymet/pages/receptionist-workstation").then(module => ({ default: module.ReceptionistWorkstation })));
+const RegisterPatient = lazy(() => import("@/polymet/pages/register-patient").then(module => ({ default: module.RegisterPatient })));
+const PatientOverview = lazy(() => import("@/polymet/pages/patient-overview").then(module => ({ default: module.PatientOverview })));
+const ConsultationSession = lazy(() => import("@/polymet/pages/consultation-session-new").then(module => ({ default: module.ConsultationSession })));
+const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout").then(module => ({ default: module.HealthcareLayout })));
+
+// Loading component for Suspense fallback
+const LoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-teal-50 dark:from-background dark:via-background dark:to-teal-950/30">
+    <div className="flex flex-col items-center gap-3 text-center">
+      <span className="h-12 w-12 rounded-full border-4 border-transparent border-t-[#00C4B3] animate-spin" />
+      <p className="text-muted-foreground text-sm">Loading page...</p>
+    </div>
+  </div>
+);
 
 export default function MediEaseClinicPrototype() {
   return (
     <Router>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<HealthcareLanding />} />
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<HealthcareLanding />} />
 
-        <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/features" element={<FeaturesPage />} />
 
-        <Route path="/solutions" element={<SolutionsPage />} />
+          <Route path="/solutions" element={<SolutionsPage />} />
 
-        <Route path="/security" element={<SecurityPage />} />
+          <Route path="/security" element={<SecurityPage />} />
 
-        <Route path="/roadmap" element={<RoadmapPage />} />
+          <Route path="/roadmap" element={<RoadmapPage />} />
 
-        <Route path="/role-selection" element={<RoleSelection />} />
+          <Route path="/role-selection" element={<RoleSelection />} />
 
-        <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth" element={<AuthPage />} />
 
-        {/* Admin Routes */}
-        <Route
-          path="/admin-dashboard"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <AdminDashboard />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          {/* Admin Routes */}
+          <Route
+            path="/admin-dashboard"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminDashboard />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/admin-credentials"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <AdminCredentials />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/admin-credentials"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminCredentials />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/admin/user-profile/:userId"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <AdminUserProfile />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/admin/user-profile/:userId"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminUserProfile />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/admin-patients"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <AdminPatients />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/admin-patients"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminPatients />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/admin-appointments"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <AdminAppointments />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/admin-appointments"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminAppointments />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/admin-settings"
-          element={
-            <RequireAuth role="admin">
-              <HealthcareLayout>
-                <AdminSettings />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/admin-settings"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminSettings />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        {/* Doctor Routes */}
-        <Route
-          path="/doctor-dashboard"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <DoctorDashboard />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          {/* Doctor Routes */}
+          <Route
+            path="/doctor-dashboard"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <DoctorDashboard />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/doctor-patients"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <DoctorPatients />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/doctor-patients"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <DoctorPatients />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/doctor-workstation"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <DoctorWorkstation />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/doctor-workstation"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <DoctorWorkstation />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/doctor-appointments"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <DoctorAppointments />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/doctor-appointments"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <DoctorAppointments />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/doctor-settings"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <DoctorSettings />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/doctor-settings"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <DoctorSettings />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/patient-overview/:patientId"
-          element={
-            <RequireAuth role={["doctor", "admin", "receptionist"]}>
-              <HealthcareLayout>
-                <PatientOverview />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/patient-overview/:patientId"
+            element={
+              <RequireAuth role={["doctor", "admin", "receptionist"]}>
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <PatientOverview />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/consultation/:patientId"
-          element={
-            <RequireAuth role="doctor">
-              <HealthcareLayout>
-                <ConsultationSession />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/consultation/:patientId"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <ConsultationSession />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        {/* Receptionist Routes */}
-        <Route
-          path="/receptionist-dashboard"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <ReceptionistDashboardNew />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          {/* Receptionist Routes */}
+          <Route
+            path="/receptionist-dashboard"
+            element={
+              <RequireAuth role="receptionist">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <ReceptionistDashboardNew />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/receptionist-patients"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <ReceptionistPatients />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/receptionist-patients"
+            element={
+              <RequireAuth role="receptionist">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <ReceptionistPatients />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/receptionist-appointments"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <ReceptionistAppointments />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/receptionist-appointments"
+            element={
+              <RequireAuth role="receptionist">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <ReceptionistAppointments />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/register-patient"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <RegisterPatient />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/register-patient"
+            element={
+              <RequireAuth role="receptionist">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <RegisterPatient />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-        <Route
-          path="/receptionist-settings"
-          element={
-            <RequireAuth role="receptionist">
-              <HealthcareLayout>
-                <ReceptionistSettings />
-              </HealthcareLayout>
-            </RequireAuth>
-          }
-        />
+          <Route
+            path="/receptionist-settings"
+            element={
+              <RequireAuth role="receptionist">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <ReceptionistSettings />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
 
-      </Routes>
+        </Routes>
+      </Suspense>
     </Router>
   );
 }

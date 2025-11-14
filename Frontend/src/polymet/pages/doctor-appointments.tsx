@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { get } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
+import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
 
 const extractList = <T,>(rawData: any): T[] => {
   if (Array.isArray(rawData)) {
@@ -51,6 +52,9 @@ export function DoctorAppointments() {
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // WebSocket for real-time appointment updates
+  const { lastMessage, isConnected } = useDoctorQueueWebSocket(user?._id || "");
 
   // Fetch appointments on component mount and when date changes
   useEffect(() => {
@@ -84,6 +88,38 @@ export function DoctorAppointments() {
     fetchAppointments();
   }, [user, date]);
 
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const handleAppointmentUpdate = async () => {
+      try {
+        if (lastMessage.type === 'appointment_status_updated') {
+          // Refresh appointment data silently (no loading state)
+          const selectedDate = date ? date.toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+          const url = `/api/appointments?doctorId=${user._id}&date=${selectedDate}&limit=100`;
+          const response = await get(url);
+          if (response.success) {
+            const rawAppointments = extractList<any>(response.data);
+            const mappedAppointments = rawAppointments.map((apt: any) => ({
+              ...apt,
+              id: apt._id || apt.appointmentId,
+              avatar: apt.patientName
+                ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
+                : undefined,
+              reason: apt.reason || "General Consultation",
+            }));
+            setAppointments(mappedAppointments);
+          }
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
+    };
+
+    handleAppointmentUpdate();
+  }, [lastMessage, user, date]);
+
   const selectedDateStr = date ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
   const dateAppointments = appointments.filter(
     (apt) => apt.date === selectedDateStr
@@ -98,12 +134,18 @@ export function DoctorAppointments() {
     switch (status) {
       case "scheduled":
         return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
-      case "in-progress":
+      case "checked-in":
+        return "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400";
+      case "ongoing":
         return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
+      case "checkout":
+        return "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400";
       case "completed":
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
       case "cancelled":
         return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+      case "no-show":
+        return "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400";
       default:
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
     }
@@ -236,17 +278,6 @@ export function DoctorAppointments() {
                 />
               </div>
             </div>
-
-            <div className="mt-4 space-y-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => setDate(new Date())}
-              >
-                Jump to Today
-              </Button>
-            </div>
           </CardContent>
         </Card>
 
@@ -274,9 +305,12 @@ export function DoctorAppointments() {
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="in-progress">In Progress</SelectItem>
+                    <SelectItem value="checked-in">Checked In</SelectItem>
+                    <SelectItem value="ongoing">Ongoing</SelectItem>
+                    <SelectItem value="checkout">Checkout</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                     <SelectItem value="cancelled">Cancelled</SelectItem>
+                    <SelectItem value="no-show">No Show</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

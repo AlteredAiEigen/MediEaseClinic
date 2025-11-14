@@ -162,8 +162,23 @@ export function DoctorDashboard() {
       }
       setError(null);
 
-      // Fetch doctor's queue
-      const queueResponse = await get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`);
+      // Fetch all data in parallel for better performance
+      const today = new Date().toISOString().split("T")[0];
+
+      const [queueResponse, appointmentsResponse, statsResponse] = await Promise.all([
+        get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`),
+        get(`/api/appointments?date=${today}&limit=100`),
+        get<{
+          totalPatients: number;
+          todayAppointments: number;
+          scheduledToday: number;
+          completedToday: number;
+          inQueue: number;
+          thisWeek: number;
+        }>("/api/doctors/me/stats")
+      ]);
+
+      // Process queue data
       if (queueResponse.success && queueResponse.data?.queue) {
         const mappedQueue: QueuePatient[] = queueResponse.data.queue
           .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
@@ -188,16 +203,11 @@ export function DoctorDashboard() {
         setInQueue(mappedQueue.length);
       }
 
-      // Fetch today's appointments (all statuses for today, doctor auto-filtered by backend)
-      const today = new Date().toISOString().split("T")[0];
-      const appointmentsResponse = await get(
-        `/api/appointments?date=${today}&limit=100`
-      );
-      
+      // Process appointments data
       if (appointmentsResponse.success) {
         // Extract appointments from response using helper
         const appointmentsList = extractList<Appointment>(appointmentsResponse.data);
-        
+
         // Normalize date for comparison - handle both YYYY-MM-DD and ISO date strings
         const normalizeDate = (dateStr: string | undefined): string => {
           if (!dateStr) return "";
@@ -211,7 +221,7 @@ export function DoctorDashboard() {
           }
           return dateStr;
         };
-        
+
         // Filter for today's scheduled appointments only
         // Checked-in appointments should appear in the queue, not here
         const activeAppointments = appointmentsList.filter(
@@ -224,14 +234,14 @@ export function DoctorDashboard() {
             return isToday && isScheduled;
           }
         );
-        
+
         // Sort by time
         activeAppointments.sort((a, b) => {
           const timeA = a.time || "";
           const timeB = b.time || "";
           return timeA.localeCompare(timeB);
         });
-        
+
         const mappedAppointments: UpcomingAppointment[] = activeAppointments.map(
           (apt) => {
             const appointmentReason =
@@ -258,15 +268,7 @@ export function DoctorDashboard() {
         setTodayAppointments(0);
       }
 
-      // Fetch doctor-specific stats
-      const statsResponse = await get<{
-        totalPatients: number;
-        todayAppointments: number;
-        scheduledToday: number;
-        completedToday: number;
-        inQueue: number;
-        thisWeek: number;
-      }>("/api/doctors/me/stats");
+      // Process stats data
       if (statsResponse.success && statsResponse.data) {
         setTotalPatients(statsResponse.data.totalPatients || 0);
         setTodayAppointments(statsResponse.data.todayAppointments || 0);
@@ -893,10 +895,12 @@ export function DoctorDashboard() {
                           {patient.status === "waiting" ? (
                             <Button
                               size="sm"
-                              className="h-6 px-2 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white flex-shrink-0"
-                              onClick={() => startConsultation(patient.id)}
+                              className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                              asChild
                             >
-                              Start
+                              <Link to="/doctor-workstation">
+                                Open Workstation
+                              </Link>
                             </Button>
                           ) : (
                             <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0.5 flex-shrink-0">

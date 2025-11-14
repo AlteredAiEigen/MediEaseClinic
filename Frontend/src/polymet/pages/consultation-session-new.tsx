@@ -68,6 +68,7 @@ export function ConsultationSession() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const queueIdParam = searchParams.get("queueId");
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [queueEntryId, setQueueEntryId] = useState<string | null>(null);

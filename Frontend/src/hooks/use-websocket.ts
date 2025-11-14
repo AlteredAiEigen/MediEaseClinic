@@ -3,7 +3,7 @@ import { useAuth } from '@/context/auth-context';
 import { getStoredAccessToken } from '@/lib/api-client';
 
 export interface QueueUpdateMessage {
-  type: 'patient_checked_in' | 'patient_status_updated' | 'queue_reordered' | 'queue_update';
+  type: 'patient_checked_in' | 'patient_status_updated' | 'queue_reordered' | 'queue_update' | 'appointment_status_updated';
   timestamp: string;
   data: any;
 }

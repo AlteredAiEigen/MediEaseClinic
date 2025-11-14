@@ -9,6 +9,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from app.models.appointment import AppointmentCreate, AppointmentUpdate, appointment_helper
+from app.services.websocket_service import WebSocketService
 
 
 class AppointmentService:
@@ -355,10 +356,18 @@ class AppointmentService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Appointment not found"
             )
-        
+
         # Retrieve updated appointment
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
-        
+
+        # Broadcast appointment status update via WebSocket
+        try:
+            websocket_service = WebSocketService()
+            await websocket_service.broadcast_appointment_status_update(updated_appointment)
+        except Exception as e:
+            # Log but don't fail the operation
+            print(f"Failed to broadcast appointment update: {e}")
+
         return await appointment_helper(updated_appointment)
     
     async def delete_appointment(self, appointment_id: str) -> bool:

@@ -163,3 +163,28 @@ class WebSocketService:
             {"doctor_id": doctor_id, "queue": updated_queue},
             [doctor_id]
         )
+
+    async def broadcast_appointment_status_update(self, appointment: dict):
+        """Broadcast when appointment status is updated."""
+        try:
+            message = {
+                "type": "appointment_status_updated",
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": {
+                    "appointment": appointment,
+                    "appointmentId": str(appointment.get("_id", "")),
+                    "status": appointment.get("status"),
+                    "doctorId": appointment.get("doctorId")
+                }
+            }
+
+            # Broadcast to general channel for all clients to receive appointment updates
+            await self.broadcast_to_channel(message, "queue_updates")
+
+            # Also broadcast to doctor's specific channel if doctorId is available
+            doctor_id = appointment.get("doctorId")
+            if doctor_id:
+                await self.broadcast_to_channel(message, "doctor_queue", str(doctor_id))
+
+        except Exception as e:
+            logger.error(f"Error broadcasting appointment status update: {e}")
