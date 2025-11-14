@@ -90,7 +90,7 @@ async def transcribe_recording(
 @router.get("/")
 async def list_recordings(
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=1000),
     patient_id: Optional[str] = Query(None),
     doctor_id: Optional[str] = Query(None),
     status: Optional[str] = Query(None),

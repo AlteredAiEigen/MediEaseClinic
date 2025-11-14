@@ -247,7 +247,31 @@ export function AddPatientDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex gap-6 flex-1 overflow-hidden">
+        {isSubmitting ? (
+          <MediEaseLoader>
+            <div className="flex gap-6 flex-1 overflow-hidden min-h-[400px]">
+              {/* Keep the form visible but dimmed */}
+              <div className="flex-1 flex flex-col min-w-0 border-r border-border pr-6 overflow-y-auto opacity-50">
+                <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wide">
+                  Basic Information
+                </h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">First Name</Label>
+                      <Input value={formData.firstName} disabled />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Last Name</Label>
+                      <Input value={formData.lastName} disabled />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </MediEaseLoader>
+        ) : (
+          <div className="flex gap-6 flex-1 overflow-hidden">
           {/* Left Side - Basic Information */}
           <div className="flex-1 flex flex-col min-w-0 border-r border-border pr-6 overflow-y-auto">
             <h3 className="text-sm font-semibold mb-4 text-muted-foreground uppercase tracking-wide">
@@ -508,6 +532,7 @@ export function AddPatientDialog({
             </div>
           </div>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

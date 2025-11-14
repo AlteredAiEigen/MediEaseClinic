@@ -49,8 +49,8 @@ export function NewAppointmentDialog({
   onOpenChange,
 }: NewAppointmentDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
-  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
   const [appointmentType, setAppointmentType] = useState("");
@@ -61,6 +61,15 @@ export function NewAppointmentDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedPatient = useMemo(
+    () => patients.find((patient) => patient._id === selectedPatientId) ?? null,
+    [patients, selectedPatientId]
+  );
+  const selectedDoctor = useMemo(
+    () => doctors.find((doctor) => doctor._id === selectedDoctorId) ?? null,
+    [doctors, selectedDoctorId]
+  );
 
   // Fetch patients and doctors when dialog opens
   useEffect(() => {
@@ -73,18 +82,30 @@ export function NewAppointmentDialog({
           // Fetch patients
           const patientsResponse = await get<Patient[]>("/api/patients?limit=100");
           if (patientsResponse.success && Array.isArray(patientsResponse.data)) {
+            const normalizedPatients = patientsResponse.data.map((patient) => ({
+              ...patient,
+              _id: String((patient as any)._id ?? (patient as any).id ?? patient.patientId ?? ""),
+              patientId:
+                patient.patientId ??
+                (patient as any).patientId ??
+                String((patient as any)._id ?? (patient as any).id ?? ""),
+            }));
+
             setPatients(
-              [...patientsResponse.data].sort((a, b) =>
-                a.fullName.localeCompare(b.fullName)
-              )
+              [...normalizedPatients].sort((a, b) => a.fullName.localeCompare(b.fullName))
             );
           }
 
           // Fetch doctors
           const doctorsResponse = await get<Doctor[]>("/api/doctors?limit=50");
           if (doctorsResponse.success && Array.isArray(doctorsResponse.data)) {
+            const normalizedDoctors = doctorsResponse.data.map((doctor) => ({
+              ...doctor,
+              _id: String((doctor as any)._id ?? (doctor as any).id ?? ""),
+            }));
+
             setDoctors(
-              [...doctorsResponse.data].sort((a, b) =>
+              [...normalizedDoctors].sort((a, b) =>
                 `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
               )
             );
@@ -100,8 +121,8 @@ export function NewAppointmentDialog({
       fetchData();
     } else {
       // Reset form when dialog closes
-      setSelectedPatient(null);
-      setSelectedDoctor(null);
+      setSelectedPatientId("");
+      setSelectedDoctorId("");
       setAppointmentDate("");
       setAppointmentTime("");
       setAppointmentType("");
@@ -124,7 +145,7 @@ export function NewAppointmentDialog({
   }, [patients, searchQuery]);
 
   const handleSubmit = async () => {
-    if (!selectedPatient || !selectedDoctor || !appointmentDate || !appointmentTime) {
+    if (!selectedPatientId || !selectedDoctorId || !appointmentDate || !appointmentTime) {
       setError("Please fill in all required fields");
       return;
     }
@@ -134,8 +155,8 @@ export function NewAppointmentDialog({
 
     try {
       const payload = {
-        patientId: selectedPatient._id,
-        doctorId: selectedDoctor._id,
+        patientId: selectedPatientId,
+        doctorId: selectedDoctorId,
         date: appointmentDate,
         time: appointmentTime,
         type: appointmentType,
@@ -169,6 +190,32 @@ export function NewAppointmentDialog({
             New Appointment
           </DialogTitle>
         </DialogHeader>
+
+        {isSubmitting ? (
+          <MediEaseLoader>
+            <div className="min-h-[400px] p-6">
+              {/* Keep the form visible but dimmed */}
+              <div className="opacity-50 space-y-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Patient</label>
+                    <div className="p-2 border rounded">
+                      {patients.find(p => p._id === selectedPatientId)?.fullName}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Doctor</label>
+                    <div className="p-2 border rounded">
+                      {selectedDoctor
+                        ? `${selectedDoctor.firstName} ${selectedDoctor.lastName}`.trim()
+                        : ""}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </MediEaseLoader>
+        ) : (
 
         <div className="flex gap-6 flex-1 overflow-hidden">
           {/* Left Side - Patient Search */}
@@ -204,9 +251,9 @@ export function NewAppointmentDialog({
                 filteredPatients.map((patient) => (
                   <div
                     key={patient._id}
-                    onClick={() => setSelectedPatient(patient)}
+                    onClick={() => setSelectedPatientId(patient._id)}
                     className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                      selectedPatient?._id === patient._id
+                      selectedPatientId === patient._id
                         ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20"
                         : "border-border hover:bg-accent"
                     }`}
@@ -242,14 +289,14 @@ export function NewAppointmentDialog({
                 </div>
               )}
 
-              {selectedPatient && (
+              {selectedPatientId && (
                 <div className="p-4 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
                   <p className="text-xs text-muted-foreground mb-1">
                     Selected Patient
                   </p>
-                  <p className="font-semibold">{selectedPatient.fullName}</p>
+                  <p className="font-semibold">{patients.find(p => p._id === selectedPatientId)?.fullName}</p>
                   <p className="text-xs text-muted-foreground">
-                    {selectedPatient.patientId}
+                    {patients.find(p => p._id === selectedPatientId)?.patientId}
                   </p>
                 </div>
               )}
@@ -259,11 +306,8 @@ export function NewAppointmentDialog({
                   Select Doctor
                 </Label>
                 <Select
-                  value={selectedDoctor?._id || ""}
-                  onValueChange={(value) => {
-                    const doctor = doctors.find(d => d._id === value);
-                    setSelectedDoctor(doctor || null);
-                  }}
+                  value={selectedDoctorId}
+                  onValueChange={(value) => setSelectedDoctorId(value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select doctor" />
@@ -355,7 +399,7 @@ export function NewAppointmentDialog({
               <Button
                 onClick={handleSubmit}
                 disabled={
-                  !selectedPatient || !selectedDoctor || !appointmentDate || !appointmentTime || isSubmitting
+                  !selectedPatientId || !selectedDoctorId || !appointmentDate || !appointmentTime || isSubmitting
                 }
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
               >
@@ -371,6 +415,7 @@ export function NewAppointmentDialog({
             </div>
           </div>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

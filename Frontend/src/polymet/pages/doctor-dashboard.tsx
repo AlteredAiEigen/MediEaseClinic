@@ -659,11 +659,51 @@ export function DoctorDashboard() {
 
   if (isLoading) {
     return (
-      <MediEaseLoader
-        message="Preparing your dashboard overview…"
-        subtext="Gathering patient queue, appointments, and analytics"
-        minHeight="min-h-[520px]"
-      />
+      <MediEaseLoader>
+        {/* Render the dashboard skeleton/layout while loading */}
+        <div className="space-y-6">
+          {/* Stats Section Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="border-border shadow-sm rounded-lg p-6 bg-card">
+                <div className="animate-pulse space-y-4">
+                  <div className="w-12 h-12 bg-muted rounded-xl" />
+                  <div className="space-y-2">
+                    <div className="w-16 h-4 bg-muted rounded" />
+                    <div className="w-12 h-6 bg-muted rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Appointments/Queue Section Skeleton */}
+          <div className="grid lg:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="border-border shadow-md rounded-lg bg-card">
+                <div className="border-b p-4">
+                  <div className="animate-pulse">
+                    <div className="w-32 h-4 bg-muted rounded mb-2" />
+                  </div>
+                </div>
+                <div className="p-4 space-y-3">
+                  {[...Array(3)].map((_, j) => (
+                    <div key={j} className="animate-pulse">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-muted rounded-full" />
+                        <div className="flex-1 space-y-2">
+                          <div className="w-24 h-3 bg-muted rounded" />
+                          <div className="w-16 h-2 bg-muted rounded" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </MediEaseLoader>
     );
   }
 

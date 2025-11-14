@@ -32,43 +32,59 @@ class AppointmentService:
         date: str,
         time: str,
         duration: int,
+        patient_id: Optional[str] = None,
         exclude_appointment_id: Optional[str] = None
     ) -> bool:
         """
         Check if time slot conflicts with existing appointments.
-        
+
         Returns:
             True if conflict exists, False otherwise
         """
+        blocking_statuses = {"checked-in", "in-progress", "ongoing"}
+
         # Parse time
         hour, minute = map(int, time.split(':'))
         start_minutes = hour * 60 + minute
         end_minutes = start_minutes + duration
-        
+
         # Build query
         query = {
             "doctorId": doctor_id,
             "date": date,
             "status": {"$nin": ["cancelled", "no-show"]}
         }
-        
+
         if exclude_appointment_id:
             query["appointmentId"] = {"$ne": exclude_appointment_id}
-        
+
         # Get existing appointments
         cursor = self.appointments_collection.find(query)
         existing_appointments = await cursor.to_list(length=None)
-        
+
         # Check for overlaps
         for apt in existing_appointments:
             apt_hour, apt_minute = map(int, apt["time"].split(':'))
             apt_start = apt_hour * 60 + apt_minute
             apt_end = apt_start + apt.get("duration", 30)
-            
-            # Check if time slots overlap
-            if not (end_minutes <= apt_start or start_minutes >= apt_end):
+
+            # Skip if time slots do not overlap
+            if end_minutes <= apt_start or start_minutes >= apt_end:
+                continue
+
+            apt_status = apt.get("status")
+            apt_patient_id = apt.get("patientId")
+
+            # If we know the patient being booked, only block when that patient already has a blocking status appointment
+            if patient_id:
+                if apt_patient_id == patient_id and apt_status in blocking_statuses:
+                    return True
+                continue
+
+            # Fallback: if patient id is unknown, keep previous behaviour and block on active statuses
+            if apt_status in blocking_statuses:
                 return True
-        
+
         return False
     
     async def populate_names(self, appointment: dict) -> dict:
@@ -154,7 +170,8 @@ class AppointmentService:
             appointment_data.doctorId,
             appointment_data.date,
             appointment_data.time,
-            appointment_data.duration
+            appointment_data.duration,
+            patient_id=appointment_data.patientId
         )
         
         if has_conflict:
@@ -291,6 +308,7 @@ class AppointmentService:
                 new_date,
                 new_time,
                 new_duration,
+                patient_id=existing_appointment.get("patientId"),
                 exclude_appointment_id=existing_appointment["appointmentId"]
             )
             

@@ -248,11 +248,79 @@ export function DoctorSettings() {
 
   if (isLoading) {
     return (
-      <MediEaseLoader
-        message="Loading your profile settings…"
-        subtext="Fetching personal details, clinic preferences, and notification rules"
-        minHeight="min-h-[520px]"
-      />
+      <MediEaseLoader>
+        {/* Render the settings page skeleton/layout while loading */}
+        <div className="space-y-6">
+          {/* Profile Section Skeleton */}
+          <div className="border-border shadow-md rounded-lg bg-card">
+            <div className="border-b p-6">
+              <div className="animate-pulse">
+                <div className="w-32 h-6 bg-muted rounded mb-2" />
+                <div className="w-48 h-4 bg-muted rounded" />
+              </div>
+            </div>
+            <div className="p-6 space-y-6">
+              <div className="animate-pulse flex items-center gap-4">
+                <div className="w-16 h-16 bg-muted rounded-full" />
+                <div className="space-y-2">
+                  <div className="w-32 h-4 bg-muted rounded" />
+                  <div className="w-24 h-3 bg-muted rounded" />
+                </div>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="animate-pulse space-y-2">
+                    <div className="w-20 h-3 bg-muted rounded" />
+                    <div className="w-full h-10 bg-muted rounded" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Availability Section Skeleton */}
+          <div className="border-border shadow-md rounded-lg bg-card">
+            <div className="border-b p-6">
+              <div className="animate-pulse">
+                <div className="w-32 h-6 bg-muted rounded mb-2" />
+                <div className="w-48 h-4 bg-muted rounded" />
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="animate-pulse space-y-3">
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 p-3 rounded-lg border">
+                    <div className="w-6 h-6 bg-muted rounded" />
+                    <div className="flex-1 grid grid-cols-3 gap-3">
+                      <div className="w-16 h-4 bg-muted rounded" />
+                      <div className="w-full h-8 bg-muted rounded" />
+                      <div className="w-full h-8 bg-muted rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Notifications Section Skeleton */}
+          <div className="border-border shadow-md rounded-lg bg-card">
+            <div className="border-b p-6">
+              <div className="animate-pulse">
+                <div className="w-32 h-6 bg-muted rounded mb-2" />
+                <div className="w-48 h-4 bg-muted rounded" />
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="animate-pulse flex items-center justify-between">
+                  <div className="w-32 h-4 bg-muted rounded" />
+                  <div className="w-12 h-6 bg-muted rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </MediEaseLoader>
     );
   }
 

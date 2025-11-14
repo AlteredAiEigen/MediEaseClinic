@@ -398,72 +398,101 @@ export function DoctorWorkstation() {
   if (!currentPatient && queuePatients.length === 0) {
     if (scheduledAppointments.length > 0) {
       return (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-foreground mb-1">
-                Today's Scheduled Appointments
-              </h2>
-              <p className="text-muted-foreground">
-                {scheduledAppointments.length} appointment{scheduledAppointments.length !== 1 ? 's' : ''} scheduled for today
-              </p>
+        <>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground mb-1">
+                  Today's Scheduled Appointments
+                </h2>
+                <p className="text-muted-foreground">
+                  {scheduledAppointments.length} appointment{scheduledAppointments.length !== 1 ? 's' : ''} scheduled for today
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowConsultationHistory(true)}
+                  className="gap-2"
+                >
+                  <FileTextIcon className="w-4 h-4" />
+                  Consultation History
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              {scheduledAppointments.map((apt) => (
+                <Card key={apt._id || apt.appointmentId} className="border-border shadow-md">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <Avatar className="w-16 h-16">
+                          <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white text-lg font-bold">
+                            {(apt.patientName || "Unknown")
+                              .split(" ")
+                              .map((n) => n[0])
+                              .join("")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="text-xl font-semibold text-foreground">
+                            {apt.patientName || "Unknown Patient"}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {apt.time || "Time TBD"} • {apt.type || apt.reason || "Consultation"}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-sm">
+                        Scheduled
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-4">
+                      Patient will appear here once they check in at the reception.
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </div>
 
-          <div className="grid gap-4">
-            {scheduledAppointments.map((apt) => (
-              <Card key={apt._id || apt.appointmentId} className="border-border shadow-md">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="w-16 h-16">
-                        <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white text-lg font-bold">
-                          {(apt.patientName || "Unknown")
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <h3 className="text-xl font-semibold text-foreground">
-                          {apt.patientName || "Unknown Patient"}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {apt.time || "Time TBD"} • {apt.type || apt.reason || "Consultation"}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="text-sm">
-                      Scheduled
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-4">
-                    Patient will appear here once they check in at the reception.
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+          <ConsultationHistoryDialog
+            open={showConsultationHistory}
+            onOpenChange={setShowConsultationHistory}
+            doctorId={user?._id}
+          />
+        </>
       );
     }
 
     // No queue patients and no scheduled appointments
     return (
-      <div className="flex items-center justify-center min-h-[600px]">
-        <Card className="border-border shadow-lg max-w-md">
-          <CardContent className="p-12 text-center">
-            <CheckCircleIcon className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+      <>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center space-y-4">
+            <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">No Patients in Queue</h2>
+              <p className="text-muted-foreground">All consultations are complete!</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowConsultationHistory(true)}
+              className="gap-2 mx-auto"
+            >
+              <FileTextIcon className="w-4 h-4" />
+              Consultation History
+            </Button>
+          </div>
+        </div>
 
-            <h3 className="text-2xl font-bold text-foreground mb-2">
-              All Done!
-            </h3>
-            <p className="text-muted-foreground">
-              No patients in queue. Great work today!
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        <ConsultationHistoryDialog
+          open={showConsultationHistory}
+          onOpenChange={setShowConsultationHistory}
+          doctorId={user?._id}
+        />
+      </>
     );
   }
 
@@ -508,13 +537,31 @@ export function DoctorWorkstation() {
   // Keeping this for safety but it should not be reached
   if (queuePatients.length === 0 && scheduledAppointments.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">No Patients in Queue</h2>
-          <p className="text-muted-foreground">All consultations are complete!</p>
+      <>
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center space-y-4">
+            <CheckCircleIcon className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">No Patients in Queue</h2>
+              <p className="text-muted-foreground">All consultations are complete!</p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowConsultationHistory(true)}
+              className="gap-2 mx-auto"
+            >
+              <FileTextIcon className="w-4 h-4" />
+              Consultation History
+            </Button>
+          </div>
         </div>
-      </div>
+
+        <ConsultationHistoryDialog
+          open={showConsultationHistory}
+          onOpenChange={setShowConsultationHistory}
+          doctorId={user?._id}
+        />
+      </>
     );
   }
 

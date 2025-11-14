@@ -177,11 +177,71 @@ export function DoctorAppointments() {
 
   if (isLoading) {
     return (
-      <MediEaseLoader
-        message="Loading today’s appointments…"
-        subtext="Syncing schedules, patient details, and queue status"
-        minHeight="min-h-[480px]"
-      />
+      <MediEaseLoader>
+        {/* Render the appointments page skeleton/layout while loading */}
+        <div className="space-y-6">
+          {/* Stats Section Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="border-border shadow-sm hover:shadow-md transition-shadow rounded-lg p-6 bg-card">
+                <div className="animate-pulse space-y-4">
+                  <div className="w-12 h-12 bg-muted rounded-xl" />
+                  <div className="space-y-2">
+                    <div className="w-16 h-4 bg-muted rounded" />
+                    <div className="w-12 h-6 bg-muted rounded" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Main Content Skeleton */}
+          <div className="grid lg:grid-cols-3 gap-6">
+            {/* Calendar Skeleton */}
+            <div className="border-border shadow-md rounded-lg">
+              <div className="border-b p-4">
+                <div className="animate-pulse">
+                  <div className="w-16 h-4 bg-muted rounded" />
+                </div>
+              </div>
+              <div className="p-4">
+                <div className="animate-pulse space-y-4">
+                  <div className="w-full h-64 bg-muted rounded" />
+                  <div className="w-full h-8 bg-muted rounded" />
+                </div>
+              </div>
+            </div>
+
+            {/* Appointments List Skeleton */}
+            <div className="lg:col-span-2 border-border shadow-md rounded-lg">
+              <div className="border-b p-4">
+                <div className="animate-pulse">
+                  <div className="w-48 h-4 bg-muted rounded" />
+                </div>
+              </div>
+              <div className="p-6 space-y-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="animate-pulse flex items-center gap-4 p-4 rounded-lg border">
+                    <div className="w-12 h-12 bg-muted rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <div className="w-32 h-4 bg-muted rounded" />
+                      <div className="w-24 h-3 bg-muted rounded" />
+                      <div className="flex gap-2">
+                        <div className="w-16 h-6 bg-muted rounded" />
+                        <div className="w-20 h-6 bg-muted rounded" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="w-20 h-8 bg-muted rounded" />
+                      <div className="w-16 h-8 bg-muted rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </MediEaseLoader>
     );
   }
 

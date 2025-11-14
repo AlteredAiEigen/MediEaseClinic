@@ -18,7 +18,6 @@ import {
   BotIcon,
   XIcon,
   Loader2Icon,
-  UploadIcon,
   FileAudioIcon,
   EyeIcon,
 } from "lucide-react";
@@ -26,6 +25,11 @@ import { PatientVisitHistory } from "@/polymet/components/patient-visit-history"
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
 import { get, post, put } from "@/lib/api-client";
+import {
+  addPendingConsultationUpload,
+  removePendingConsultationUpload,
+  updatePendingConsultationUpload,
+} from "@/polymet/utils/pending-consultation-uploads";
 import { useAuth } from "@/context/auth-context";
 
 interface Patient {
@@ -87,6 +91,8 @@ export function ConsultationSession() {
   const [isPlaying, setIsPlaying] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const pendingUploadIdRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
 
   // Clinical notes
   const [notes, setNotes] = useState("");
@@ -451,6 +457,13 @@ const appointmentTimeline = defaultAppointmentTimeline;
     };
   }, [transcriptionPolling]);
 
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Recording functionality
   const startRecording = async () => {
     try {
@@ -495,27 +508,42 @@ const appointmentTimeline = defaultAppointmentTimeline;
   };
 
   const stopRecording = async () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      if (recordingInterval) {
-        clearInterval(recordingInterval);
-        setRecordingInterval(null);
-      }
-      setFinalRecordingDuration(recordingDuration);
+    if (!mediaRecorderRef.current || !isRecording) return;
 
-      // Automatically start upload and transcription process
-      setTimeout(() => {
-        uploadRecording();
-      }, 100); // Small delay to ensure audioBlob is ready
-    }
+    await new Promise<void>((resolve) => {
+      const recorder = mediaRecorderRef.current!;
+      const previousOnStop = recorder.onstop;
+
+      recorder.onstop = async (event: Event) => {
+        previousOnStop?.call(recorder, event as any);
+
+        if (recordingInterval) {
+          clearInterval(recordingInterval);
+          setRecordingInterval(null);
+        }
+
+        setIsRecording(false);
+        setFinalRecordingDuration(recordingDuration);
+
+        setTimeout(async () => {
+          try {
+            await uploadRecording();
+          } finally {
+            resolve();
+          }
+        }, 150);
+      };
+
+      recorder.stop();
+    });
   };
 
   const uploadRecording = async () => {
+    if (!isMountedRef.current) return;
+
     const targetPatientId =
       resolvedPatientObjectId ||
       patient?._id ||
-      patient?.id ||
       patient?.patientId ||
       consultationIdentifiers.mongoId ||
       consultationIdentifiers.friendlyId ||
@@ -523,7 +551,7 @@ const appointmentTimeline = defaultAppointmentTimeline;
       patientId ||
       "";
 
-    const doctorId = user?._id || user?.id || user?.doctorId || "";
+    const doctorId = user?._id || "";
 
     if (!audioBlob) {
       console.warn("Attempted to upload recording without audio blob");
@@ -546,83 +574,154 @@ const appointmentTimeline = defaultAppointmentTimeline;
         }, 0)
       : 0;
 
+    const nowIso = new Date().toISOString();
+    const patientFullName =
+      patient?.fullName ||
+      [patient?.firstName, patient?.lastName].filter(Boolean).join(" ") ||
+      "Patient";
+    const patientFriendlyId = patient?.patientId;
+
+    let resolvedAppointmentId = appointmentId ?? "";
+    let appointmentType: string | undefined;
+    let appointmentDate: string | undefined;
+    let appointmentTime: string | undefined;
+
+    if (!resolvedAppointmentId) {
+      try {
+        const today = new Date().toISOString().split("T")[0];
+        const appointmentsResponse = await get<any>(
+          `/api/appointments?patientId=${targetPatientId}&date=${today}&status=checked-in`
+        );
+        const appointmentPayload = appointmentsResponse.data?.data;
+        if (appointmentsResponse.success && appointmentPayload) {
+          const appointments = Array.isArray(appointmentPayload)
+            ? appointmentPayload
+            : Array.isArray(appointmentPayload?.data)
+            ? appointmentPayload.data
+            : [];
+          const activeAppointment = (appointments as any[]).find(
+            (apt) => apt?.status === "checked-in" || apt?.status === "in-progress"
+          );
+          if (activeAppointment?._id) {
+            resolvedAppointmentId = activeAppointment._id;
+            appointmentType = activeAppointment.type;
+            appointmentDate = activeAppointment.date;
+            appointmentTime = activeAppointment.time;
+            if (isMountedRef.current) {
+              setAppointmentId((prev) => prev || activeAppointment._id);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch appointment:", err);
+      }
+    }
+
+    const ensurePendingUpload = () => {
+      if (!user?._id || pendingUploadIdRef.current) return;
+      const pendingId = `pending-${Date.now()}`;
+      addPendingConsultationUpload({
+        id: pendingId,
+        doctorId: user._id,
+        patientId: targetPatientId,
+        patientFriendlyId,
+        patientName: patientFullName,
+        appointmentId: resolvedAppointmentId || undefined,
+        appointmentType,
+        appointmentDate,
+        appointmentTime,
+        status: "uploading",
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      });
+      pendingUploadIdRef.current = pendingId;
+    };
+
     try {
+      if (!isMountedRef.current) return;
+
       setTranscriptionStatus("uploading");
       setIsUploading(true);
 
-      // Create FormData for file upload – must match backend's expected field names
+      ensurePendingUpload();
+
       const formData = new FormData();
       formData.append("file", audioBlob, "consultation-recording.wav");
       formData.append("patient_id", targetPatientId);
       formData.append("doctor_id", doctorId);
       formData.append("duration", duration.toString());
-      
-      // Add appointmentId if available
-      if (appointmentId) {
-        formData.append("appointment_id", appointmentId);
-      } else {
-        // Try to find appointment from today's appointments
-        try {
-          const today = new Date().toISOString().split("T")[0];
-          const appointmentsResponse = await get(
-            `/api/appointments?patientId=${targetPatientId}&date=${today}&status=checked-in`
-          );
-          if (appointmentsResponse.success && appointmentsResponse.data?.data) {
-            const appointments = Array.isArray(appointmentsResponse.data.data) 
-              ? appointmentsResponse.data.data 
-              : appointmentsResponse.data.data?.data || [];
-            const activeAppointment = appointments.find((apt: any) => 
-              apt.status === "checked-in" || apt.status === "in-progress"
-            );
-            if (activeAppointment?._id) {
-              formData.append("appointment_id", activeAppointment._id);
-            }
-          }
-        } catch (err) {
-          console.warn("Could not fetch appointment:", err);
-        }
+
+      if (resolvedAppointmentId) {
+        formData.append("appointment_id", resolvedAppointmentId);
       }
 
-      const response = await post("/api/recordings/", formData);
+      const response = await post<any>("/api/recordings/", formData);
 
-      if (response.success && response.data) {
-        console.log("Recording uploaded and transcribed successfully:", response.data);
-        const recording = response.data.recording;
-        const recordingId = recording.recordingId || recording.id;
-        setUploadedRecordingId(recordingId);
-        setAudioBlob(null);
-        if (recording.presignedUrl || recording.fileUrl) {
-          setRecordingUrl(recording.presignedUrl || recording.fileUrl);
+      if (!response.success || !response.data) {
+        throw new Error(response.message || "Failed to upload recording");
+      }
+
+      if (!isMountedRef.current) {
+        if (pendingUploadIdRef.current) {
+          removePendingConsultationUpload(pendingUploadIdRef.current);
+          pendingUploadIdRef.current = null;
         }
+        return;
+      }
 
-        // Handle different processing statuses
-        if (recording.status === "uploaded") {
-          setTranscriptionStatus("transcribing");
-        } else if (recording.status === "transcribed") {
-          setTranscriptionStatus("extracting_info");
-        } else if (recording.status === "processed" && recording.transcription) {
-          setTranscriptionText(recording.transcription);
-          setStructuredNotes(recording.aiProcessing?.structuredNotes || null);
-          setTranscriptionStatus("completed");
-          setFinalRecordingDuration("");
+      console.log("Recording uploaded and transcribed successfully:", response.data);
+      const recording = response.data.recording;
+      const recordingId = recording.recordingId || recording.id;
+      setUploadedRecordingId(recordingId);
+      setAudioBlob(null);
+      if (recording.presignedUrl || recording.fileUrl) {
+        setRecordingUrl(recording.presignedUrl || recording.fileUrl);
+      }
 
-          // Auto-fill clinical notes from structured notes
-          if (recording.aiProcessing?.structuredNotes) {
-            const notes = recording.aiProcessing.structuredNotes;
-            if (notes.chiefComplaint && !notes) setNotes(`Chief Complaint: ${notes.chiefComplaint}`);
-            if (notes.assessment && !diagnosis) setDiagnosis(notes.assessment);
-            if (notes.plan && !treatment) setTreatment(notes.plan);
-          }
-        } else if (recording.status === "error") {
-          setTranscriptionStatus("error");
-          console.error("Transcription failed:", recording.errorMessage);
+      if (pendingUploadIdRef.current) {
+        removePendingConsultationUpload(pendingUploadIdRef.current);
+        pendingUploadIdRef.current = null;
+      }
+
+      // Handle different processing statuses
+      if (recording.status === "uploaded") {
+        setTranscriptionStatus("transcribing");
+      } else if (recording.status === "transcribed") {
+        setTranscriptionStatus("extracting_info");
+      } else if (recording.status === "processed" && recording.transcription) {
+        setTranscriptionText(recording.transcription);
+        setStructuredNotes(recording.aiProcessing?.structuredNotes || null);
+        setTranscriptionStatus("completed");
+        setFinalRecordingDuration("");
+
+        if (recording.aiProcessing?.structuredNotes) {
+          const notes = recording.aiProcessing.structuredNotes;
+          if (notes.chiefComplaint && !notes) setNotes(`Chief Complaint: ${notes.chiefComplaint}`);
+          if (notes.assessment && !diagnosis) setDiagnosis(notes.assessment);
+          if (notes.plan && !treatment) setTreatment(notes.plan);
         }
+      } else if (recording.status === "error") {
+        setTranscriptionStatus("error");
+        console.error("Transcription failed:", recording.errorMessage);
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to upload recording";
       console.error("Error uploading recording:", err);
-      alert(err instanceof Error ? err.message : "Failed to upload recording");
+      if (isMountedRef.current) {
+        setTranscriptionStatus("error");
+      }
+
+      if (pendingUploadIdRef.current) {
+        updatePendingConsultationUpload(pendingUploadIdRef.current, {
+          status: "error",
+          errorMessage: message,
+        });
+        pendingUploadIdRef.current = null;
+      }
     } finally {
-      setIsUploading(false);
+      if (isMountedRef.current) {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -720,6 +819,16 @@ const appointmentTimeline = defaultAppointmentTimeline;
   };
 
   const handleEndConsultation = async () => {
+    if (isRecording) {
+      void stopRecording().catch((err) =>
+        console.error("Failed to finalize recording before ending consultation", err)
+      );
+    } else if (audioBlob && !uploadedRecordingId && !isUploading) {
+      void uploadRecording().catch((err) =>
+        console.error("Failed to upload recording before ending consultation", err)
+      );
+    }
+
     // Save clinical notes first
     await saveClinicalNotes();
 
