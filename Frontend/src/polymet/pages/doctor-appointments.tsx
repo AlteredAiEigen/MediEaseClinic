@@ -13,6 +13,7 @@ import {
   PlusIcon,
   FilterIcon,
   TrendingUpIcon,
+  ArrowRightIcon,
 } from "lucide-react";
 import {
   Select,
@@ -173,6 +174,32 @@ export function DoctorAppointments() {
       default:
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
     }
+  };
+
+  const formatAppointmentTime = (time?: string) => {
+    if (!time) return "-- --";
+
+    const trimmed = time.trim();
+    if (/am|pm/i.test(trimmed)) {
+      const [timePart, period] = trimmed.split(/\s+/);
+      return `${timePart ?? trimmed}${period ? ` ${period.toUpperCase()}` : ""}`.trim();
+    }
+
+    const [rawHours, rawMinutes = "00"] = trimmed.split(":" );
+    const hoursNum = Number(rawHours);
+
+    if (Number.isNaN(hoursNum)) return trimmed;
+
+    const period = hoursNum >= 12 ? "PM" : "AM";
+    const normalizedHours = hoursNum % 12 || 12;
+    const hoursText = normalizedHours.toString().padStart(2, "0");
+    const minutesText = rawMinutes.padStart(2, "0");
+
+    return `${hoursText}:${minutesText} ${period}`;
+  };
+
+  const formatAppointmentDate = (date: Date | undefined) => {
+    return date?.toLocaleDateString() ?? "";
   };
 
   if (isLoading) {
@@ -407,75 +434,72 @@ export function DoctorAppointments() {
             ) : (
               <div className="space-y-3">
                 {filteredAppointments.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-border hover:shadow-md transition-all duration-200 bg-card"
-                >
-                  <div className="flex flex-col items-center justify-center px-4 py-2 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                    <span className="text-2xl font-bold text-foreground">
-                      {appointment.time ? appointment.time.split(":")[0] : "00"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {appointment.time ? (appointment.time.includes(" ") ? appointment.time.split(" ")[1] : "") : ""}
-                    </span>
-                  </div>
+                  <div
+                    key={appointment.id}
+                    className="flex items-center gap-4 p-4 rounded-xl border border-border hover:shadow-md transition-all duration-200 bg-card"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
+                          <h4 className="font-semibold text-foreground">
+                            {appointment.patientName}
+                          </h4>
+                          <p className="text-sm text-muted-foreground truncate">
+                            {appointment.reason}
+                          </p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge className={getTypeColor(appointment.type)}>
+                              {appointment.type}
+                            </Badge>
+                            <Badge className={getStatusColor(appointment.status)}>
+                              {appointment.status}
+                            </Badge>
+                          </div>
+                        </div>
 
-                  <Avatar className="w-12 h-12 border-2 border-background shadow-sm">
-                    <AvatarImage
-                      src={appointment.avatar}
-                      alt={appointment.patientName}
-                    />
-
-                    <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-500 text-white font-semibold">
-                      {appointment.patientName
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-foreground">
-                      {appointment.patientName}
-                    </h4>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {appointment.reason}
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge className={getTypeColor(appointment.type)}>
-                        {appointment.type}
-                      </Badge>
-                      <Badge className={getStatusColor(appointment.status)}>
-                        {appointment.status}
-                      </Badge>
+                        <div className="text-right">
+                          <p className="text-lg font-semibold text-foreground">
+                            {formatAppointmentTime(appointment.time)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="hover:bg-blue-50 dark:hover:bg-blue-950/20 border-blue-200 dark:border-blue-800"
-                      asChild
-                    >
-                      <Link to={`/patient-overview/${appointment.patientId || appointment.id}`}>
-                        View Details
-                      </Link>
-                    </Button>
-                    {appointment.status === "scheduled" && (
+                    <div className="flex items-center gap-3">
+                      {appointment.status === "scheduled" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleStartAppointment(appointment)}
+                          className="gap-2"
+                        >
+                          <PlayIcon className="w-4 h-4" />
+                          Start
+                        </Button>
+                      )}
+
+                      {(appointment.status === "checked-in" ||
+                        appointment.status === "ongoing") && (
+                        <Button
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                          onClick={() => handleStartAppointment(appointment)}
+                        >
+                          <ArrowRightIcon className="w-4 h-4" />
+                          Continue
+                        </Button>
+                      )}
+
                       <Button
                         size="sm"
-                        className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white"
-                        asChild
+                        variant="outline"
+                        onClick={() => handleViewDetails(appointment)}
                       >
-                        <Link to={`/consultation/${appointment.patientId || appointment.id}`}>
-                          Start
-                        </Link>
+                        View Details
                       </Button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
               </div>
             )}
           </CardContent>
