@@ -714,7 +714,7 @@ const filteredCheckoutEntries = shouldFilterQueue
                   {completedToday}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Successfully processed
+                  Successfully checkout
                 </p>
               </div>
               <div className="h-14 w-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">

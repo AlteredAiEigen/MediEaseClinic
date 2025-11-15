@@ -93,6 +93,7 @@ export function ReceptionistPatients() {
   const [error, setError] = useState<string | null>(null);
   const [appointmentsTodayCount, setAppointmentsTodayCount] = useState(0);
   const [appointmentsThisWeekCount, setAppointmentsThisWeekCount] = useState(0);
+  const [queueEntriesToday, setQueueEntriesToday] = useState<any[]>([]);
 
   const todayRef = useMemo(() => new Date(), []);
   const weekStart = useMemo(() => startOfWeek(todayRef), [todayRef]);
@@ -168,6 +169,70 @@ export function ReceptionistPatients() {
     fetchAppointmentStats();
   }, [todayRef, weekEnd, weekStart]);
 
+  useEffect(() => {
+    const fetchQueueEntries = async () => {
+      try {
+        const response = await get("/api/queue");
+        console.log('📡 Queue API response:', response);
+        
+        if (response.success) {
+          const payload = response.data as any;
+          // Handle response structure: { queue: [...] } or direct array
+          const queueList = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.queue)
+            ? payload.queue
+            : Array.isArray(payload?.data)
+            ? payload.data
+            : [];
+          
+          console.log('📋 All queue entries extracted:', queueList.length, queueList);
+          
+          // Filter queue entries from today that are NOT cancelled, completed, or closed
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const todayStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
+          
+          const todayQueueEntries = queueList.filter((entry: any) => {
+            const checkedInAt = entry.checked_in_at || entry.checkedInAt;
+            if (!checkedInAt) {
+              console.log('⚠️ Entry missing checked_in_at:', entry);
+              return false;
+            }
+            
+            // Parse date - handle ISO string format
+            const entryDate = new Date(checkedInAt);
+            const entryDateStr = entryDate.toISOString().split("T")[0];
+            
+            // Compare dates as strings (YYYY-MM-DD)
+            const isToday = entryDateStr === todayStr;
+            
+            // Check status - include: waiting, in-consultation, checkout (exclude: cancelled, completed, closed)
+            const status = (entry.status || "").toLowerCase();
+            const isActive = status && !["cancelled", "closed"].includes(status);
+            // Explicitly include checkout status (patient is still in clinic)
+            const isInClinic = ["waiting", "in-consultation", "completed"].includes(status);
+            
+            console.log(`🔍 Entry: date=${entryDateStr}, today=${todayStr}, isToday=${isToday}, status=${entry.status}, isActive=${isActive}, isInClinic=${isInClinic}`);
+            
+            return isToday && isInClinic;
+          });
+
+          console.log('🔄 Queue entries today (filtered):', todayQueueEntries.length, todayQueueEntries);
+          setQueueEntriesToday(todayQueueEntries);
+        } else {
+          console.warn('⚠️ Queue API response not successful:', response);
+          setQueueEntriesToday([]);
+        }
+      } catch (err) {
+        console.error("❌ Failed to load queue entries:", err);
+        setQueueEntriesToday([]);
+      }
+    };
+
+    fetchQueueEntries();
+  }, []);
+
   const filteredPatients = useMemo(() => {
     const query = debouncedSearchQuery.trim().toLowerCase();
     return patients.filter((patient) => {
@@ -184,10 +249,21 @@ export function ReceptionistPatients() {
     });
   }, [patients, debouncedSearchQuery, statusFilter]);
 
-  const inClinicCount = useMemo(
-    () => patients.filter((patient) => patient.presentInClinic).length,
-    [patients]
-  );
+  const inClinicCount = useMemo(() => {
+    // Calculate based on actual queue entries today, not just presentInClinic field
+    // Get unique patient IDs from today's active queue entries
+    const patientIdsInQueueToday = new Set<string>();
+    
+    queueEntriesToday.forEach((entry: any) => {
+      const patientId = entry.patient?._id || entry.patient?.patientId || entry.patient;
+      if (patientId) {
+        patientIdsInQueueToday.add(String(patientId));
+      }
+    });
+    
+    // Count patients who are in today's queue
+    return patientIdsInQueueToday.size;
+  }, [queueEntriesToday]);
 
   const newPatientsThisWeek = useMemo(() => {
     return patients.filter((patient) => {
@@ -205,8 +281,9 @@ export function ReceptionistPatients() {
     return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
   };
 
-  const getStatusText = (patient: Patient): string => {
-    return patient.presentInClinic ? "in-clinic" : "remote";
+  const getStatusText = (patient: Patient): string | null => {
+    // Only show status if patient is in-clinic, otherwise show nothing (blank)
+    return patient.presentInClinic ? "in-clinic" : null;
   };
 
   if (isLoading) {
@@ -414,9 +491,11 @@ export function ReceptionistPatients() {
                       <h4 className="font-semibold text-foreground">
                         {patient.fullName}
                       </h4>
-                      <Badge className={getStatusColor(patient)}>
-                        {getStatusText(patient)}
-                      </Badge>
+                      {getStatusText(patient) && (
+                        <Badge className={getStatusColor(patient)}>
+                          {getStatusText(patient)}
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">{patient.patientId}</p>
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">

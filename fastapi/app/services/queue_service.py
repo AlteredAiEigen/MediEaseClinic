@@ -49,6 +49,7 @@ class QueueService:
         """Run all cleanup tasks to remove stale queue entries and appointments."""
         await self._cleanup_stale_queue_entries()
         await self._cleanup_old_checked_in_appointments()
+        await self._update_present_in_clinic_from_queue()
 
     async def _cleanup_stale_queue_entries(self) -> None:
         """Cancel queue entries from previous days that never started."""
@@ -133,6 +134,79 @@ class QueueService:
                     }
                 }
             )
+    
+    async def _update_present_in_clinic_from_queue(self) -> None:
+        """Mark patients as in-clinic if they have active queue entries today with appointment date = today."""
+        today_str = datetime.utcnow().strftime("%Y-%m-%d")
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # Get all queue entries from today that are NOT cancelled, completed, or closed
+        active_queue_entries = await self.queue_collection.find({
+            "checked_in_at": {"$gte": today_start},
+            "status": {"$nin": ["cancelled", "completed", "closed"]}
+        }).to_list(length=None)
+        
+        patients_to_mark_in_clinic = set()
+        
+        for entry in active_queue_entries:
+            patient_id = entry.get("patient")
+            appointment_id = entry.get("appointment")
+            
+            if not patient_id or not appointment_id:
+                continue
+            
+            try:
+                # Convert patient_id to ObjectId if needed
+                if isinstance(patient_id, str) and ObjectId.is_valid(patient_id):
+                    patient_object_id = ObjectId(patient_id)
+                elif isinstance(patient_id, ObjectId):
+                    patient_object_id = patient_id
+                else:
+                    continue
+                
+                # Convert appointment_id to ObjectId if needed
+                if isinstance(appointment_id, str) and ObjectId.is_valid(appointment_id):
+                    appointment_object_id = ObjectId(appointment_id)
+                elif isinstance(appointment_id, ObjectId):
+                    appointment_object_id = appointment_id
+                else:
+                    continue
+                
+                # Get the appointment to check its date
+                appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+                
+                if appointment:
+                    appointment_date = appointment.get("date")
+                    # Normalize date format (handle both YYYY-MM-DD and datetime formats)
+                    if isinstance(appointment_date, datetime):
+                        appointment_date_str = appointment_date.strftime("%Y-%m-%d")
+                    else:
+                        appointment_date_str = str(appointment_date).split("T")[0] if appointment_date else ""
+                    
+                    # If appointment date is today, mark patient as in-clinic
+                    if appointment_date_str == today_str:
+                        patients_to_mark_in_clinic.add(patient_object_id)
+                        logger.debug(f"Patient {patient_id} has active queue entry today with appointment date = today")
+            
+            except Exception as e:
+                logger.warning(f"Error processing queue entry {entry.get('_id')} for patient {patient_id}: {e}")
+                continue
+        
+        # Update all identified patients to presentInClinic = True
+        for patient_id in patients_to_mark_in_clinic:
+            try:
+                await self.db["patients"].update_one(
+                    {"_id": patient_id},
+                    {
+                        "$set": {
+                            "presentInClinic": True,
+                            "updatedAt": datetime.utcnow()
+                        }
+                    }
+                )
+                logger.info(f"Marked patient {patient_id} as presentInClinic = True (has active queue entry today)")
+            except Exception as e:
+                logger.warning(f"Failed to update presentInClinic for patient {patient_id}: {e}")
     
     async def check_in_patient(self, check_in_data: QueueCheckIn, checked_in_by: str) -> QueueInDB:
         """Check in a patient to the queue via appointment."""
@@ -625,7 +699,7 @@ class QueueService:
             # Handle specific status transitions
             if status_update.status == "in-consultation":
                 update_data["consultation_started_at"] = datetime.utcnow()
-            elif status_update.status == "completed":
+            elif status_update.status in ["completed", "checkout"]:  # ✅ Handle both
                 update_data["consultation_ended_at"] = datetime.utcnow()
                 # Calculate wait time
                 entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})

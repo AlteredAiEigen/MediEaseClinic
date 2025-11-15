@@ -96,7 +96,7 @@ class PatientService:
         patient_dict["email"] = patient_dict["email"].lower()
         patient_dict["createdAt"] = datetime.utcnow()
         patient_dict["updatedAt"] = datetime.utcnow()
-        patient_dict.setdefault("condition", "Under Observation")
+        patient_dict.setdefault("condition", None)
         patient_dict.setdefault("carePlanSummary", "")
         patient_dict.setdefault("followUpPlan", "")
         patient_dict.setdefault("lastVisit", None)

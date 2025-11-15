@@ -273,7 +273,7 @@ export function PatientOverview() {
     chiefComplaint: "",
     medicalHistory: [],
     allergies: [],
-    condition: "Under Observation",
+    condition: "",
     carePlanSummary: "",
     followUpPlan: "",
     insights: {
@@ -579,7 +579,7 @@ export function PatientOverview() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <p className="text-base font-semibold text-foreground">
-                    {displayPatient.condition || "Under Observation"}
+                    {displayPatient.condition}
                   </p>
                   {displayPatient.carePlanSummary && (
                     <p className="text-sm text-muted-foreground">
