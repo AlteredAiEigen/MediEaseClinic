@@ -649,6 +649,47 @@ class QueueService:
                         result[key] = str(value)
                 logger.info(f"Updated queue entry {entry_id} to status {status_update.status}")
 
+                # Also update appointment status if appointment is linked
+                appointment_id = result.get("appointment")
+                if appointment_id:
+                    try:
+                        if isinstance(appointment_id, str) and ObjectId.is_valid(appointment_id):
+                            appointment_object_id = ObjectId(appointment_id)
+                        elif isinstance(appointment_id, ObjectId):
+                            appointment_object_id = appointment_id
+                        else:
+                            appointment_object_id = None
+                        
+                        if appointment_object_id:
+                            appointment_status_update = {}
+                            
+                            # Map queue status to appointment status
+                            if status_update.status == "checkout":
+                                appointment_status_update["status"] = "checkout"
+                                appointment_status_update["completedAt"] = datetime.utcnow()
+                            elif status_update.status == "completed":
+                                appointment_status_update["status"] = "completed"
+                                appointment_status_update["completedAt"] = datetime.utcnow()
+                            
+                            if appointment_status_update:
+                                appointment_status_update["updatedAt"] = datetime.utcnow()
+                                await self.db["appointments"].update_one(
+                                    {"_id": appointment_object_id},
+                                    {"$set": appointment_status_update}
+                                )
+                                logger.info(f"Updated appointment {appointment_id} status to {appointment_status_update.get('status')}")
+                                
+                                # Broadcast appointment status update via WebSocket
+                                try:
+                                    updated_appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+                                    if updated_appointment:
+                                        await self.websocket_service.broadcast_appointment_status_update(updated_appointment)
+                                except Exception as e:
+                                    logger.warning(f"Failed to broadcast appointment status update: {e}")
+                    except Exception as e:
+                        logger.warning(f"Failed to update appointment status: {e}")
+                        # Don't fail the queue status update if appointment update fails
+
                 # Emit WebSocket event for real-time updates
                 try:
                     populated_entry = await self._get_populated_queue_entry(entry_id)
@@ -669,10 +710,57 @@ class QueueService:
     
     async def start_consultation(self, entry_id: str) -> Optional[Dict]:
         """Start consultation for a queue entry."""
-        return await self.update_queue_status(
+        # First, get the queue entry to find the appointment ID
+        entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
+        if not entry:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Queue entry not found"
+            )
+        logger.info(f"Starting consultation for queue entry {entry_id}")
+        # Update queue status to in-consultation
+        result = await self.update_queue_status(
             entry_id,
             QueueStatusUpdate(status="in-consultation")
         )
+        
+        # Also update the appointment status to "in-progress" if appointment is linked
+        appointment_id = entry.get("appointment")
+        if appointment_id:
+            try:
+                if isinstance(appointment_id, str) and ObjectId.is_valid(appointment_id):
+                    appointment_object_id = ObjectId(appointment_id)
+                elif isinstance(appointment_id, ObjectId):
+                    appointment_object_id = appointment_id
+                else:
+                    appointment_object_id = None
+                
+                if appointment_object_id:
+                    # Update appointment status to "in-progress"
+                    await self.db["appointments"].update_one(
+                        {"_id": appointment_object_id},
+                        {
+                            "$set": {
+                                "status": "in-progress",
+                                "startedAt": datetime.utcnow(),
+                                "updatedAt": datetime.utcnow()
+                            }
+                        }
+                    )
+                    logger.info(f"Updated appointment {appointment_id} status to in-progress")
+                    
+                    # Broadcast appointment status update via WebSocket
+                    try:
+                        updated_appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+                        if updated_appointment:
+                            await self.websocket_service.broadcast_appointment_status_update(updated_appointment)
+                    except Exception as e:
+                        logger.warning(f"Failed to broadcast appointment status update: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to update appointment status: {e}")
+                # Don't fail the consultation start if appointment update fails
+        
+        return result
     
     async def check_out_patient(self, entry_id: str) -> Optional[Dict]:
         """Check out patient from queue."""

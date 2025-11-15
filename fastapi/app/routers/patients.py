@@ -13,6 +13,9 @@ from app.models.patient import PatientCreate
 from app.services.patient_service import PatientService
 from app.middleware.auth import get_current_active_user, require_any_role
 from app.utils.response import success_response, paginated_response
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -36,7 +39,10 @@ async def create_patient(
     try:
         patient_service = PatientService(db)
 
-        patient_payload = patient_data.model_dump()
+        # patient_payload = patient_data.model_dump()
+        # logger.info("patient_payload for creating patient %s", patient_payload)
+        patient_payload = patient_data.model_dump(exclude_none=True)
+        logger.info("patient_payload for creating patient %s", patient_payload)
 
         # Get clinic info for reference (which clinic created this patient)
         # Patients are universal and not restricted to this clinic

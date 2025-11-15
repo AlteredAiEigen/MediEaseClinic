@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import { useQueueWebSocket } from "@/hooks/use-websocket";
 
 interface Patient {
   _id: string;
@@ -158,6 +159,9 @@ export function ReceptionistDashboardNew() {
     useState<"checked-in" | "consultation">("checked-in");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [processingAppointmentId, setProcessingAppointmentId] = useState<string | null>(null);
+
+  // Add WebSocket for real-time updates
+  const { lastMessage, isConnected } = useQueueWebSocket();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -400,7 +404,8 @@ export function ReceptionistDashboardNew() {
   // Fetch appointments for today
   const fetchTodayAppointments = async () => {
     try {
-      const response = await get(`/api/appointments?limit=100`);
+      const today = new Date().toISOString().split("T")[0];
+      const response = await get(`/api/appointments?date=${today}&limit=100`); // Add date filter
       if (response.success) {
         const rawAppointments = extractList<any>(response.data);
         const mappedAppointments = rawAppointments.map((apt: any) => {
@@ -418,7 +423,7 @@ export function ReceptionistDashboardNew() {
             patientName: apt.patientName || apt.patient?.fullName || "Unknown Patient",
             time: apt.time ?? "—",
             date: apt.date ?? new Date().toISOString().split("T")[0],
-          reason: apt.reason || "General Consultation",
+            reason: apt.reason || "General Consultation",
             status: apt.status ?? "scheduled",
             type: apt.type || apt.appointmentType,
             doctorId: normalizeId(apt.doctorId) ?? normalizeId(apt.doctor?._id),
@@ -438,6 +443,32 @@ export function ReceptionistDashboardNew() {
   useEffect(() => {
     fetchTodayAppointments();
   }, []);
+
+  // Handle WebSocket messages for real-time updates
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const handleQueueUpdate = async () => {
+      try {
+        if (lastMessage.type === 'patient_checked_in' ||
+            lastMessage.type === 'patient_status_updated' ||
+            lastMessage.type === 'queue_reordered' ||
+            lastMessage.type === 'appointment_status_updated') {
+          // Refresh appointments and queue data silently (no loading state)
+          console.log('🔄 Refreshing queue data due to:', lastMessage.type);
+          await Promise.all([
+            fetchTodayAppointments(),
+            fetchQueueData(),
+            fetchQueueStats()
+          ]);
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
+    };
+
+    handleQueueUpdate();
+  }, [lastMessage]);
 
   const avgWaitTime = queueStats?.average_wait_time || 
     (queueList.length > 0 ? Math.floor(15 + Math.random() * 20) : 0);
@@ -594,6 +625,17 @@ const filteredCheckoutEntries = shouldFilterQueue
           <Badge className="bg-white/20 text-white border-0 backdrop-blur-sm">
             {queueList.length} Active Patients
           </Badge>
+          {isConnected ? (
+            <Badge variant="outline" className="text-xs">
+              <ActivityIcon className="w-3 h-3 mr-1 text-green-500" />
+              Live
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-xs">
+              <ActivityIcon className="w-3 h-3 mr-1 text-gray-400" />
+              Offline
+            </Badge>
+          )}
         </div>
       </div>
       {/* Stats Overview */}

@@ -362,6 +362,34 @@ export function DoctorWorkstation() {
     }
   };
 
+  const handleStartConsultation = async () => {
+    const currentPatient = queuePatients[currentIndex];
+    if (!currentPatient) return;
+
+    try {
+      // Call start-consultation API to update queue status to "in-consultation"
+      const response = await put(`/api/queue/${currentPatient.id}/start-consultation`, {});
+      
+      if (response.success) {
+        // Update local state to reflect the status change
+        setQueuePatients((prev) =>
+          prev.map((p, index) =>
+            index === currentIndex ? { ...p, status: "in-consultation" } : p
+          )
+        );
+        
+        // Navigate to consultation page
+        navigate(`/consultation/${currentPatient.patientId}?queueId=${currentPatient.id}`);
+      } else {
+        console.error("Failed to start consultation:", response.message);
+        alert(response.message || "Failed to start consultation. Please try again.");
+      }
+    } catch (err) {
+      console.error("Failed to start consultation:", err);
+      alert("Failed to start consultation. Please try again.");
+    }
+  };
+
   const handleComplete = async () => {
     const currentPatient = queuePatients[currentIndex];
     if (!currentPatient) return;
@@ -733,12 +761,10 @@ export function DoctorWorkstation() {
                       </Button>
                       <Button
                         className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg text-base px-6 py-6"
-                        asChild
+                        onClick={handleStartConsultation}
                       >
-                        <Link to={`/consultation/${currentPatient.id}`}>
-                          <ActivityIcon className="w-5 h-5 mr-2" />
-                          Start Consultation
-                        </Link>
+                        <ActivityIcon className="w-5 h-5 mr-2" />
+                        Start Consultation
                       </Button>
                     </div>
                     <div className="flex items-center gap-3">
