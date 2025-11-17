@@ -33,28 +33,79 @@ class AppointmentNotificationService:
     async def process_pre_appointment_reminders(self) -> None:
         """Send WhatsApp reminders 12 hours before the appointment."""
         if not self.whatsapp_service.is_configured():
-            logger.debug("WhatsApp service not configured. Skipping reminders.")
+            logger.warning("WhatsApp service not configured. Skipping reminders. Check Twilio credentials in .env file.")
             return
 
-        now = datetime.utcnow()
+        # Use local time for comparison since appointments are likely stored in local time
+        # This ensures the time delta calculation is correct
+        now = datetime.now()
         horizon = now + timedelta(hours=self.PRE_VISIT_REMINDER_HOURS + 2)
+        
+        logger.info("Current local time: %s", now.strftime("%Y-%m-%d %H:%M:%S"))
 
         query: Dict[str, Any] = {
             "status": {"$in": ["scheduled"]},
             "preVisitReminderSentAt": {"$exists": False},
             "date": {"$gte": now.strftime("%Y-%m-%d"), "$lte": horizon.strftime("%Y-%m-%d")},
         }
+        logger.info(
+            "Scanning for pre-visit reminders: status=scheduled, date between %s and %s, no preVisitReminderSentAt.",
+            now.strftime("%Y-%m-%d"),
+            horizon.strftime("%Y-%m-%d"),
+        )
         cursor = self.appointments.find(query).limit(250)
         appointments = await cursor.to_list(length=250)
+        logger.info(
+            "Pre-visit reminder scan found %s pending appointments (window=%sh).",
+            len(appointments),
+            self.PRE_VISIT_REMINDER_HOURS,
+        )
+        
+        # Log all appointment IDs found for debugging
+        if appointments:
+            apt_ids = [apt.get("appointmentId", "UNKNOWN") for apt in appointments]
+            logger.info("Appointments found in query: %s", ", ".join(apt_ids))
 
         for appointment in appointments:
+            apt_id = appointment.get("appointmentId", "UNKNOWN")
             appointment_dt = self._parse_datetime(appointment.get("date"), appointment.get("time"))
             if not appointment_dt:
+                logger.warning(
+                    "Appointment %s skipped: failed to parse datetime (date=%s, time=%s).",
+                    apt_id,
+                    appointment.get("date"),
+                    appointment.get("time"),
+                )
                 continue
 
             delta = appointment_dt - now
+            minutes_until = delta.total_seconds() / 60
+            
+            # Log detailed time comparison for debugging
+            logger.info(
+                "Appointment %s time check: appointment_dt=%s (parsed from date=%s, time=%s), now(local)=%s, delta=%.1f minutes",
+                apt_id,
+                appointment_dt,
+                appointment.get("date"),
+                appointment.get("time"),
+                now,
+                minutes_until,
+            )
+            
             if timedelta(seconds=0) <= delta <= timedelta(hours=self.PRE_VISIT_REMINDER_HOURS, minutes=15):
+                logger.info(
+                    "Appointment %s eligible for reminder (starts in %.1f minutes).",
+                    apt_id,
+                    minutes_until,
+                )
                 await self._send_whatsapp_reminder(appointment, appointment_dt)
+            else:
+                logger.info(
+                    "Appointment %s not in reminder window: %.1f minutes until appointment (window: 0 to %.1f minutes).",
+                    apt_id,
+                    minutes_until,
+                    (self.PRE_VISIT_REMINDER_HOURS * 60) + 15,
+                )
 
     async def process_post_appointment_lab_emails(self) -> None:
         """Email doctors 3 days after appointment completion."""
@@ -71,19 +122,38 @@ class AppointmentNotificationService:
 
         cursor = self.appointments.find(query).limit(250)
         appointments = await cursor.to_list(length=250)
+        logger.debug(
+            "Lab reminder scan found %s completed appointments awaiting notification.",
+            len(appointments),
+        )
 
         for appointment in appointments:
             await self._send_lab_email(appointment)
 
     async def _send_whatsapp_reminder(self, appointment: dict, appointment_dt: datetime) -> None:
-        patient = await self._get_patient(appointment.get("patientId"))
+        apt_id = appointment.get("appointmentId", "UNKNOWN")
+        patient_id = appointment.get("patientId")
+        
+        logger.info("Processing reminder for appointment %s (patientId=%s)", apt_id, patient_id)
+        
+        patient = await self._get_patient(patient_id)
         if not patient:
+            logger.warning(
+                "Appointment %s skipped: patient %s not found in database.",
+                apt_id,
+                patient_id,
+            )
             return
 
         phone = self._get_patient_whatsapp_number(patient)
         recipient = self._format_whatsapp_number(phone)
         if not recipient:
-            logger.warning("Patient %s has no valid phone for WhatsApp", patient.get("_id"))
+            logger.warning(
+                "Appointment %s skipped: patient %s has no valid WhatsApp phone number (raw phone: %s).",
+                apt_id,
+                patient_id,
+                phone,
+            )
             return
 
         doctor_name = appointment.get("doctorName") or await self._get_doctor_name(appointment.get("doctorId"))
@@ -94,6 +164,11 @@ class AppointmentNotificationService:
             "\nPlease call us if you need to reschedule or cancel your appointment."
         )
 
+        logger.info(
+            "Triggering WhatsApp reminder for appointment %s (patient=%s).",
+            appointment.get("appointmentId"),
+            patient.get("_id"),
+        )
         result = await self.whatsapp_service.send_message(
             to=recipient,
             message=message,
@@ -107,6 +182,12 @@ class AppointmentNotificationService:
                 {"$set": {"preVisitReminderSentAt": datetime.utcnow()}},
             )
             logger.info("WhatsApp reminder sent for appointment %s", appointment.get("appointmentId"))
+        else:
+            logger.warning(
+                "WhatsApp reminder failed for appointment %s: %s",
+                appointment.get("appointmentId"),
+                result.get("error_message") or result,
+            )
 
     async def _send_lab_email(self, appointment: dict) -> None:
         doctor = await self._get_doctor(appointment.get("doctorId"))
@@ -126,6 +207,11 @@ class AppointmentNotificationService:
             "alteredai@alertedai.care for quick review. Your prompt response helps us support your health better. Thank you!"
         )
 
+        logger.info(
+            "Triggering lab reminder email for appointment %s (doctor=%s).",
+            appointment.get("appointmentId"),
+            doctor.get("_id"),
+        )
         result = await self.email_service.send_email(
             to=doctor.get("email"),
             subject=subject,
@@ -138,6 +224,12 @@ class AppointmentNotificationService:
                 {"$set": {"labResultReminderSentAt": datetime.utcnow()}},
             )
             logger.info("Lab reminder email sent for appointment %s", appointment.get("appointmentId"))
+        else:
+            logger.warning(
+                "Lab reminder email failed for appointment %s: %s",
+                appointment.get("appointmentId"),
+                result.get("error"),
+            )
 
     async def _get_patient(self, patient_id: Optional[str]) -> Optional[dict]:
         if not patient_id or not ObjectId.is_valid(patient_id):
@@ -176,10 +268,18 @@ class AppointmentNotificationService:
 
     @staticmethod
     def _parse_datetime(date_str: Optional[str], time_str: Optional[str]) -> Optional[datetime]:
+        """
+        Parse appointment date/time strings into a datetime.
+        Assumes the stored time is in UTC (or server local time if consistent).
+        Returns naive datetime for comparison with datetime.utcnow().
+        """
         if not date_str or not time_str:
             return None
         try:
-            return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+            # Parse as naive datetime - will be compared with UTC time
+            # If appointments are stored in local time, this needs timezone conversion
+            parsed = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+            return parsed
         except ValueError:
             logger.warning("Unable to parse appointment datetime for %s %s", date_str, time_str)
             return None
@@ -225,12 +325,17 @@ class AppointmentNotificationScheduler:
         logger.info("Appointment notification scheduler stopped.")
 
     async def _run_loop(self) -> None:
+        logger.info("Notification scheduler loop started (checking every %s seconds).", self.interval_seconds)
+        iteration = 0
         while not self._stop_event.is_set():
+            iteration += 1
+            logger.info("Notification scheduler iteration #%s starting...", iteration)
             try:
                 await self.service.process_pre_appointment_reminders()
                 await self.service.process_post_appointment_lab_emails()
+                logger.info("Notification scheduler iteration #%s completed.", iteration)
             except Exception as exc:
-                logger.error("Notification scheduler iteration failed: %s", exc, exc_info=True)
+                logger.error("Notification scheduler iteration #%s failed: %s", iteration, exc, exc_info=True)
 
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=self.interval_seconds)
