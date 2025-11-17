@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     aws_transcribe_region: str = ""  # Optional, defaults to aws_region if not set
     aws_transcribe_language_options: str = "en-US,hi-IN"
     aws_transcribe_media_format: str = "mp3"
+
+    # Twilio / WhatsApp Configuration
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_whatsapp_number: str = "whatsapp:+14155238886"
     
     @property
     def effective_transcribe_region(self) -> str:

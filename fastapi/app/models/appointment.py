@@ -69,6 +69,8 @@ class AppointmentInDB(AppointmentBase):
     consultationSummary: Optional[Dict[str, Any]] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    preVisitReminderSentAt: Optional[datetime] = None
+    labResultReminderSentAt: Optional[datetime] = None
     
     class Config:
         populate_by_name = True
@@ -106,6 +108,8 @@ class AppointmentResponse(BaseModel):
     followUpNotes: Optional[str] = None
     createdAt: datetime
     updatedAt: datetime
+    preVisitReminderSentAt: Optional[datetime] = None
+    labResultReminderSentAt: Optional[datetime] = None
     
     class Config:
         populate_by_name = True
@@ -171,5 +175,7 @@ async def appointment_helper(appointment: dict) -> dict:
         "transcription": appointment.get("transcription"),
         "structuredNotes": appointment.get("structuredNotes"),
         "consultationSummary": appointment.get("consultationSummary"),
+        "preVisitReminderSentAt": appointment.get("preVisitReminderSentAt"),
+        "labResultReminderSentAt": appointment.get("labResultReminderSentAt"),
     }
 

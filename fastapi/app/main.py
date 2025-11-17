@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import Database, init_db
 from app.middleware.audit_log import AuditLogMiddleware
 from app.services.queue_service import QueueService
+from app.services.appointment_notification_service import AppointmentNotificationScheduler
 
 # Configure logging
 logging.basicConfig(
@@ -33,7 +34,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name} v{settings.app_version}")
     logger.info(f"Environment: {settings.environment}")
     
+    notification_scheduler = None
+
     try:
+
         # Connect to MongoDB
         await Database.connect_db()
         logger.info("Database connection established")
@@ -48,6 +52,9 @@ async def lifespan(app: FastAPI):
             queue_service = QueueService(db)
             await queue_service.cleanup_all_stale_entries()
             logger.info("Startup cleanup completed successfully")
+
+            notification_scheduler = AppointmentNotificationScheduler(db)
+            await notification_scheduler.start()
         except Exception as cleanup_error:
             logger.error(f"Startup cleanup failed: {cleanup_error}")
         
@@ -56,6 +63,11 @@ async def lifespan(app: FastAPI):
     finally:
         # Shutdown
         logger.info("Shutting down application...")
+        try:
+            if notification_scheduler:
+                await notification_scheduler.stop()
+        except Exception as scheduler_error:
+            logger.error("Failed to stop notification scheduler: %s", scheduler_error)
         await Database.close_db()
         logger.info("Application shutdown complete")
 
@@ -161,6 +173,7 @@ from app.routers import (
     lab_reports,
     messages,
     websocket,
+    whatsapp,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -178,6 +191,7 @@ app.include_router(receptionists.router, prefix="/api/receptionists", tags=["Rec
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(lab_reports.router, prefix="/api/lab-reports", tags=["Lab Reports"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
+app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
 
 
 if __name__ == "__main__":
