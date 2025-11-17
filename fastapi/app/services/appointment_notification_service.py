@@ -46,10 +46,11 @@ class AppointmentNotificationService:
         query: Dict[str, Any] = {
             "status": {"$in": ["scheduled"]},
             "preVisitReminderSentAt": {"$exists": False},
+            "preVisitReminderError": {"$exists": False},  # Exclude appointments with phone number errors
             "date": {"$gte": now.strftime("%Y-%m-%d"), "$lte": horizon.strftime("%Y-%m-%d")},
         }
         logger.info(
-            "Scanning for pre-visit reminders: status=scheduled, date between %s and %s, no preVisitReminderSentAt.",
+            "Scanning for pre-visit reminders: status=scheduled, date between %s and %s, no preVisitReminderSentAt, no preVisitReminderError.",
             now.strftime("%Y-%m-%d"),
             horizon.strftime("%Y-%m-%d"),
         )
@@ -148,11 +149,27 @@ class AppointmentNotificationService:
         phone = self._get_patient_whatsapp_number(patient)
         recipient = self._format_whatsapp_number(phone)
         if not recipient:
-            logger.warning(
-                "Appointment %s skipped: patient %s has no valid WhatsApp phone number (raw phone: %s).",
+            error_message = f"Invalid or missing WhatsApp phone number for patient {patient_id}. Raw phone: {phone or 'None'}"
+            logger.error(
+                "Appointment %s REMINDER FAILED: %s. Marking appointment with error to prevent repeated attempts.",
                 apt_id,
-                patient_id,
-                phone,
+                error_message,
+            )
+            # Mark appointment with error to prevent repeated attempts
+            await self.appointments.update_one(
+                {"_id": appointment["_id"]},
+                {
+                    "$set": {
+                        "preVisitReminderError": {
+                            "error": "INVALID_PHONE_NUMBER",
+                            "message": error_message,
+                            "patientId": patient_id,
+                            "rawPhone": phone,
+                            "occurredAt": datetime.utcnow(),
+                        },
+                        "updatedAt": datetime.utcnow(),
+                    }
+                },
             )
             return
 
@@ -181,13 +198,47 @@ class AppointmentNotificationService:
                 {"_id": appointment["_id"]},
                 {"$set": {"preVisitReminderSentAt": datetime.utcnow()}},
             )
-            logger.info("WhatsApp reminder sent for appointment %s", appointment.get("appointmentId"))
+            logger.info("WhatsApp reminder sent successfully for appointment %s", appointment.get("appointmentId"))
         else:
-            logger.warning(
-                "WhatsApp reminder failed for appointment %s: %s",
-                appointment.get("appointmentId"),
-                result.get("error_message") or result,
+            error_code = result.get("error_code", "UNKNOWN_ERROR")
+            error_msg = result.get("error_message", str(result))
+            
+            # Check if it's a phone number related error
+            is_phone_error = (
+                "phone" in error_msg.lower() 
+                or "invalid" in error_msg.lower() 
+                or error_code in ["INVALID_TO_NUMBER", "TWILIO_ERROR"]
             )
+            
+            if is_phone_error:
+                # Mark with error to prevent repeated attempts
+                logger.error(
+                    "Appointment %s REMINDER FAILED (phone error): %s. Marking appointment with error.",
+                    apt_id,
+                    error_msg,
+                )
+                await self.appointments.update_one(
+                    {"_id": appointment["_id"]},
+                    {
+                        "$set": {
+                            "preVisitReminderError": {
+                                "error": error_code,
+                                "message": error_msg,
+                                "patientId": patient_id,
+                                "phoneNumber": recipient,
+                                "occurredAt": datetime.utcnow(),
+                            },
+                            "updatedAt": datetime.utcnow(),
+                        }
+                    },
+                )
+            else:
+                # Other errors (Twilio config, network, etc.) - log but don't mark as permanent error
+                logger.warning(
+                    "WhatsApp reminder failed for appointment %s (non-phone error): %s. Will retry on next scheduler run.",
+                    apt_id,
+                    error_msg,
+                )
 
     async def _send_lab_email(self, appointment: dict) -> None:
         doctor = await self._get_doctor(appointment.get("doctorId"))
