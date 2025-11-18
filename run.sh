@@ -200,6 +200,12 @@ print_step "Starting FastAPI backend..."
 cd ../fastapi
 source venv/bin/activate
 
+# Install/update requirements
+print_step "Installing Python dependencies..."
+pip install -r requirements.txt
+
+print_success "Dependencies installed"
+
 # Start backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
 BACKEND_PID=$!

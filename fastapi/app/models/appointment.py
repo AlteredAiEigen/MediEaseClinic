@@ -46,6 +46,14 @@ class AppointmentBase(BaseModel):
     followUpNotes: Optional[str] = None
     clinicId: Optional[str] = None
     consultationSummary: Optional[Dict[str, Any]] = None
+    prescriptionFileUrl: Optional[str] = None
+    prescriptionFileKey: Optional[str] = None
+    prescriptionFileName: Optional[str] = None
+    prescriptionFileType: Optional[str] = None
+    prescriptionUploadedAt: Optional[datetime] = None
+    prescriptionUploadedBy: Optional[str] = None
+    prescriptionUploadedByName: Optional[str] = None
+    prescriptionNotes: Optional[str] = None
 
 
 class AppointmentCreate(AppointmentBase):
@@ -110,6 +118,14 @@ class AppointmentResponse(BaseModel):
     updatedAt: datetime
     preVisitReminderSentAt: Optional[datetime] = None
     labResultReminderSentAt: Optional[datetime] = None
+    prescriptionFileUrl: Optional[str] = None
+    prescriptionFileKey: Optional[str] = None
+    prescriptionFileName: Optional[str] = None
+    prescriptionFileType: Optional[str] = None
+    prescriptionUploadedAt: Optional[datetime] = None
+    prescriptionUploadedBy: Optional[str] = None
+    prescriptionUploadedByName: Optional[str] = None
+    prescriptionNotes: Optional[str] = None
     
     class Config:
         populate_by_name = True
@@ -131,7 +147,14 @@ class AppointmentUpdate(BaseModel):
     followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
     consultationSummary: Optional[Dict[str, Any]] = None
-    consultationSummary: Optional[Dict[str, Any]] = None
+    prescriptionFileUrl: Optional[str] = None
+    prescriptionFileKey: Optional[str] = None
+    prescriptionFileName: Optional[str] = None
+    prescriptionFileType: Optional[str] = None
+    prescriptionUploadedAt: Optional[datetime] = None
+    prescriptionUploadedBy: Optional[str] = None
+    prescriptionUploadedByName: Optional[str] = None
+    prescriptionNotes: Optional[str] = None
 
 
 async def appointment_helper(appointment: dict) -> dict:
@@ -177,5 +200,13 @@ async def appointment_helper(appointment: dict) -> dict:
         "consultationSummary": appointment.get("consultationSummary"),
         "preVisitReminderSentAt": appointment.get("preVisitReminderSentAt"),
         "labResultReminderSentAt": appointment.get("labResultReminderSentAt"),
+        "prescriptionFileUrl": appointment.get("prescriptionFileUrl"),
+        "prescriptionFileKey": appointment.get("prescriptionFileKey"),
+        "prescriptionFileName": appointment.get("prescriptionFileName"),
+        "prescriptionFileType": appointment.get("prescriptionFileType"),
+        "prescriptionUploadedAt": appointment.get("prescriptionUploadedAt"),
+        "prescriptionUploadedBy": appointment.get("prescriptionUploadedBy"),
+        "prescriptionUploadedByName": appointment.get("prescriptionUploadedByName"),
+        "prescriptionNotes": appointment.get("prescriptionNotes"),
     }
 

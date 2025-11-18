@@ -4,12 +4,15 @@ Appointment service for scheduling and managing appointments.
 
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
-from fastapi import HTTPException, status
+import mimetypes
+from fastapi import HTTPException, status, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from app.models.appointment import AppointmentCreate, AppointmentUpdate, appointment_helper
 from app.services.websocket_service import WebSocketService
+from app.services.s3_service import s3_service
+from app.config import settings
 
 
 class AppointmentService:
@@ -330,6 +333,109 @@ class AppointmentService:
         # Retrieve updated appointment
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         
+        return await appointment_helper(updated_appointment)
+    
+    async def upload_prescription_file(
+        self,
+        appointment_id: str,
+        file: UploadFile,
+        uploaded_by: str,
+        notes: Optional[str] = None
+    ) -> dict:
+        """Upload a prescription document to S3 and attach it to the appointment."""
+        if not ObjectId.is_valid(appointment_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found"
+            )
+
+        appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
+        if not appointment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found"
+            )
+
+        patient_id = appointment.get("patientId")
+        if not patient_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Appointment is not linked to a patient"
+            )
+
+        filename = (file.filename or "prescription").strip()
+        if not filename:
+            filename = "prescription"
+        filename = filename.replace(" ", "_")
+
+        file_extension = filename.split(".")[-1].lower() if "." in filename else ""
+        allowed_extensions = {"pdf", "jpg", "jpeg", "png"}
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file type. Allowed types: PDF, JPG, JPEG, PNG"
+            )
+
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is empty"
+            )
+
+        max_upload_size_mb = getattr(settings, "max_upload_size_mb", 10)
+        max_size_bytes = max_upload_size_mb * 1024 * 1024
+        if len(file_bytes) > max_size_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File size exceeds {max_upload_size_mb}MB limit"
+            )
+
+        content_type = file.content_type or mimetypes.guess_type(filename)[0] or ""
+        if not content_type:
+            if file_extension == "pdf":
+                content_type = "application/pdf"
+            else:
+                content_type = f"image/{'jpeg' if file_extension == 'jpg' else file_extension}"
+
+        clinic_id = appointment.get("clinicId") or "general"
+        appointment_identifier = appointment.get("appointmentId") or appointment_id
+        folder = f"clinic/{clinic_id}/patient/{patient_id}/appointment/{appointment_identifier}/prescriptions"
+
+        upload_result = await s3_service.upload_file(
+            file_content=file_bytes,
+            file_name=filename,
+            content_type=content_type,
+            folder=folder
+        )
+
+        uploader_name = None
+        if uploaded_by and ObjectId.is_valid(uploaded_by):
+            uploader = await self.users_collection.find_one({"_id": ObjectId(uploaded_by)})
+            if uploader:
+                first_name = uploader.get("firstName", "")
+                last_name = uploader.get("lastName", "")
+                uploader_name = f"{first_name} {last_name}".strip() or uploader.get("email")
+
+        timestamp = datetime.utcnow()
+        update_fields = {
+            "prescriptionFileUrl": upload_result.get("file_url"),
+            "prescriptionFileKey": upload_result.get("s3_key"),
+            "prescriptionFileName": filename,
+            "prescriptionFileType": content_type,
+            "prescriptionUploadedAt": timestamp,
+            "prescriptionUploadedBy": uploaded_by if uploaded_by else None,
+            "prescriptionUploadedByName": uploader_name,
+            "prescriptionNotes": notes.strip() if isinstance(notes, str) and notes.strip() else None,
+            "updatedAt": timestamp,
+        }
+
+        await self.appointments_collection.update_one(
+            {"_id": ObjectId(appointment_id)},
+            {"$set": update_fields}
+        )
+
+        updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         return await appointment_helper(updated_appointment)
     
     async def update_status(

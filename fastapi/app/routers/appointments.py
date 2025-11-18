@@ -2,7 +2,7 @@
 Appointment management router.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional
 
@@ -15,7 +15,7 @@ from app.schemas.appointment import (
 )
 from app.models.appointment import AppointmentCreate
 from app.services.appointment_service import AppointmentService
-from app.middleware.auth import get_current_active_user, require_any_role
+from app.middleware.auth import get_current_active_user, require_any_role, require_roles
 from app.utils.response import success_response, paginated_response
 
 router = APIRouter()
@@ -217,6 +217,38 @@ async def update_appointment_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Status update failed: {str(e)}"
+        )
+
+
+@router.post("/{appointment_id}/prescription-upload")
+async def upload_prescription(
+    appointment_id: str,
+    file: UploadFile = File(...),
+    notes: Optional[str] = Form(None),
+    current_user: dict = Depends(require_roles(["receptionist", "admin", "doctor"])),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Upload a scanned prescription and attach it to the appointment record."""
+    try:
+        appointment_service = AppointmentService(db)
+        appointment = await appointment_service.upload_prescription_file(
+            appointment_id=appointment_id,
+            file=file,
+            uploaded_by=str(current_user["_id"]),
+            notes=notes
+        )
+
+        return success_response(
+            message="Prescription uploaded successfully",
+            data={"appointment": appointment}
+        )
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prescription upload failed: {str(e)}"
         )
 
 

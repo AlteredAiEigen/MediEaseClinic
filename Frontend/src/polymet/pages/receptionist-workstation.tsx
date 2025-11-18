@@ -13,6 +13,7 @@ import {
   UploadIcon,
   CalendarIcon,
   FilterIcon,
+  AlertCircleIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -22,8 +23,19 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Select,
   SelectContent,
@@ -146,6 +158,7 @@ const [, setPatients] = useState<Patient[]>([]);
   const [selectedQueueEntry, setSelectedQueueEntry] = useState<QueueEntry | null>(null);
   const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showNoPrescriptionConfirm, setShowNoPrescriptionConfirm] = useState(false);
 
   const cleanupOldAppointments = useCallback(async () => {
     try {
@@ -196,6 +209,13 @@ const [, setPatients] = useState<Patient[]>([]);
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!checkoutDialog) {
+      setPrescriptionFile(null);
+      setShowNoPrescriptionConfirm(false);
+    }
+  }, [checkoutDialog]);
 
   // Handle WebSocket messages for real-time updates
   useEffect(() => {
@@ -504,8 +524,13 @@ const [, setPatients] = useState<Patient[]>([]);
   };
 
   // Handle complete checkout
-  const handleCompleteCheckout = async () => {
+  const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
     if (!selectedQueueEntry) return;
+
+    if (!prescriptionFile && !skipPrescriptionWarning) {
+      setShowNoPrescriptionConfirm(true);
+      return;
+    }
 
     try {
       setIsCheckingOut(true);
@@ -514,9 +539,19 @@ const [, setPatients] = useState<Patient[]>([]);
       if (prescriptionFile) {
         const formData = new FormData();
         formData.append("file", prescriptionFile);
-        formData.append("patientId", selectedQueueEntry.patient._id);
-        formData.append("notes", "");
-        // TODO: Implement prescription upload endpoint
+        if (selectedQueueEntry.reason) {
+          formData.append("notes", selectedQueueEntry.reason);
+        }
+
+        if (selectedQueueEntry.appointment?._id) {
+          await post(`/api/appointments/${selectedQueueEntry.appointment._id}/prescription-upload`, formData);
+        } else {
+          toast({
+            title: "Prescription not attached",
+            description: "Could not find an appointment to associate the uploaded prescription. Checkout will proceed without attaching the file.",
+            variant: "destructive",
+          });
+        }
       }
 
       // Update appointment status to completed
@@ -526,6 +561,16 @@ const [, setPatients] = useState<Patient[]>([]);
         });
       }
 
+      // Remove from queue
+      if (selectedQueueEntry._id) {
+        await post(`/api/queue/${selectedQueueEntry._id}/check-out`, {});
+      }
+
+      // Update queue entry status to checked-out to remove from active queue
+      await patch(`/api/queue/${selectedQueueEntry._id}/status`, {
+        status: "checked-out",
+      });
+
       toast({
         title: "Success",
         description: "Checkout completed successfully",
@@ -533,6 +578,7 @@ const [, setPatients] = useState<Patient[]>([]);
       setCheckoutDialog(false);
       setSelectedQueueEntry(null);
       setPrescriptionFile(null);
+      setQueueEntries((prev) => prev.filter((entry) => entry._id !== selectedQueueEntry._id));
       await fetchData();
     } catch (err) {
       toast({
@@ -542,7 +588,13 @@ const [, setPatients] = useState<Patient[]>([]);
       });
     } finally {
       setIsCheckingOut(false);
+      setShowNoPrescriptionConfirm(false);
     }
+  };
+
+  const confirmCheckoutWithoutPrescription = () => {
+    setShowNoPrescriptionConfirm(false);
+    void handleCompleteCheckout(true);
   };
 
   if (isLoading) {
@@ -1148,6 +1200,13 @@ const [, setPatients] = useState<Patient[]>([]);
                   {selectedQueueEntry.patient.patientId}
                 </p>
               </div>
+              <Alert className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                <AlertCircleIcon className="h-5 w-5" />
+                <AlertTitle>Upload the prescription if possible</AlertTitle>
+                <AlertDescription>
+                  Keeping a copy of the prescription ensures better continuity of care. You can still complete checkout without a file, but please try to attach it when available.
+                </AlertDescription>
+              </Alert>
               <div className="space-y-2">
                 <Label>Prescription File</Label>
                 <div className="flex items-center gap-2">
@@ -1158,6 +1217,7 @@ const [, setPatients] = useState<Patient[]>([]);
                       setPrescriptionFile(e.target.files?.[0] || null)
                     }
                     className="flex-1"
+                    disabled={isCheckingOut}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
@@ -1171,7 +1231,9 @@ const [, setPatients] = useState<Patient[]>([]);
               Cancel
             </Button>
             <Button
-              onClick={handleCompleteCheckout}
+              onClick={() => {
+                void handleCompleteCheckout();
+              }}
               disabled={isCheckingOut}
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
@@ -1190,6 +1252,36 @@ const [, setPatients] = useState<Patient[]>([]);
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={showNoPrescriptionConfirm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowNoPrescriptionConfirm(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="border border-amber-200 bg-amber-50/80 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Checkout without prescription?</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm">
+              Uploading prescriptions keeps patient records complete. Are you sure you want to finish checkout without attaching one?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-amber-200 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/40">
+              Go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCheckoutWithoutPrescription}
+              disabled={isCheckingOut}
+              className="bg-amber-600 hover:bg-amber-700 text-white shadow-md"
+            >
+              Yes, continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

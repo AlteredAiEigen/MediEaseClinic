@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
   TrendingUpIcon,
   FileTextIcon,
   Loader2Icon,
+  UploadIcon,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -29,7 +30,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { get, post } from "@/lib/api-client";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { get, post, patch } from "@/lib/api-client";
 import {
   Select,
   SelectContent,
@@ -159,6 +171,11 @@ export function ReceptionistDashboardNew() {
     useState<"checked-in" | "consultation">("checked-in");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [processingAppointmentId, setProcessingAppointmentId] = useState<string | null>(null);
+  const [checkoutDialog, setCheckoutDialog] = useState(false);
+  const [selectedQueueEntry, setSelectedQueueEntry] = useState<QueueEntry | null>(null);
+  const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [showNoPrescriptionConfirm, setShowNoPrescriptionConfirm] = useState(false);
 
   // Add WebSocket for real-time updates
   const { lastMessage, isConnected } = useQueueWebSocket();
@@ -169,23 +186,13 @@ export function ReceptionistDashboardNew() {
   }, []);
 
   useEffect(() => {
-    cleanupOldAppointments();
+    if (!checkoutDialog) {
+      setPrescriptionFile(null);
+      setShowNoPrescriptionConfirm(false);
+    }
+  }, [checkoutDialog]);
 
-    fetchQueueData();
-    fetchQueueStats();
-    fetchPatients();
-    fetchTodayAppointments();
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(() => {
-      fetchQueueData();
-      fetchQueueStats();
-    }, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
-
-  const cleanupOldAppointments = async () => {
+  const cleanupOldAppointments = useCallback(async () => {
     try {
       const response = await post("/api/queue/cleanup");
       if (!response.success) {
@@ -194,9 +201,9 @@ export function ReceptionistDashboardNew() {
     } catch (error) {
       console.warn("Failed to run cleanup endpoint", error);
     }
-  };
+  }, []);
 
-  const fetchQueueData = async () => {
+  const fetchQueueData = useCallback(async () => {
     try {
       const response = await get<{ queue?: QueueEntry[]; data?: QueueEntry[] | QueueEntry }>("/api/queue");
       if (response.success) {
@@ -219,9 +226,9 @@ export function ReceptionistDashboardNew() {
       console.error("Queue fetch error:", err);
       setQueueList([]);
     }
-  };
+  }, []);
 
-  const fetchPatients = async () => {
+  const fetchPatients = useCallback(async () => {
     try {
     const response = await get<{ data?: Patient[]; patients?: Patient[] }>(
       "/api/patients?limit=100"
@@ -233,9 +240,9 @@ export function ReceptionistDashboardNew() {
     } catch (err) {
       console.error("Failed to load patients:", err);
     }
-  };
+  }, []);
 
-  const fetchQueueStats = async () => {
+  const fetchQueueStats = useCallback(async () => {
     try {
       const response = await get<QueueStats>("/api/queue/stats");
       if (response.success && response.data) {
@@ -244,7 +251,7 @@ export function ReceptionistDashboardNew() {
     } catch (err) {
       console.error("Failed to load queue stats:", err);
     }
-  };
+  }, []);
 
   const handleAddPatient = async () => {
     if (!newPatient.firstName || !newPatient.lastName || !newPatient.email || !newPatient.phone) {
@@ -399,13 +406,12 @@ export function ReceptionistDashboardNew() {
   const waitingPatients = queueList.filter((q) => q.status === "waiting").length;
   const inConsultation = queueList.filter((q) => q.status === "in-consultation").length;
   const awaitingCheckout = queueList.filter((q) => q.status === "completed").length;
-  const completedToday = queueStats?.completed || 0;
+  const completedToday = queueStats?.checked_out ?? 0;
 
-  // Fetch appointments for today
-  const fetchTodayAppointments = async () => {
+  const fetchTodayAppointments = useCallback(async () => {
     try {
       const today = new Date().toISOString().split("T")[0];
-      const response = await get(`/api/appointments?date=${today}&limit=100`); // Add date filter
+      const response = await get(`/api/appointments?date=${today}&limit=100`);
       if (response.success) {
         const rawAppointments = extractList<any>(response.data);
         const mappedAppointments = rawAppointments.map((apt: any) => {
@@ -438,11 +444,31 @@ export function ReceptionistDashboardNew() {
     } catch (err) {
       console.error("Failed to load appointments:", err);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchTodayAppointments();
-  }, []);
+    const loadInitial = async () => {
+      await cleanupOldAppointments();
+      await Promise.all([
+        fetchQueueData(),
+        fetchQueueStats(),
+        fetchPatients(),
+        fetchTodayAppointments(),
+      ]);
+    };
+
+    loadInitial();
+
+    const interval = setInterval(() => {
+      void Promise.all([
+        fetchQueueData(),
+        fetchQueueStats(),
+        fetchTodayAppointments(),
+      ]);
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [cleanupOldAppointments, fetchQueueData, fetchQueueStats, fetchPatients, fetchTodayAppointments]);
 
   // Handle WebSocket messages for real-time updates
   useEffect(() => {
@@ -468,7 +494,7 @@ export function ReceptionistDashboardNew() {
     };
 
     handleQueueUpdate();
-  }, [lastMessage]);
+  }, [lastMessage, fetchTodayAppointments, fetchQueueData, fetchQueueStats]);
 
   const avgWaitTime = queueStats?.average_wait_time || 
     (queueList.length > 0 ? Math.floor(15 + Math.random() * 20) : 0);
@@ -587,6 +613,94 @@ const filteredConsultationEntries = shouldFilterQueue
 const filteredCheckoutEntries = shouldFilterQueue
   ? checkoutEntries.filter(matchesQueueEntry)
   : checkoutEntries;
+
+const resolveAppointmentIdForEntry = (entry: QueueEntry): string | undefined => {
+  const direct = normalizeId(entry.appointment);
+  if (direct) return direct;
+
+  const patientKey =
+    entry.patient?.patientId ??
+    normalizeId(entry.patient?._id) ??
+    normalizeId((entry as any)?.patientId);
+
+  if (!patientKey) return undefined;
+  const appointment = appointmentByPatientId.get(patientKey);
+  if (appointment?.mongoId) return appointment.mongoId;
+  if (appointment?.id) return appointment.id;
+  if (appointment?.appointmentId) return appointment.appointmentId;
+  return undefined;
+};
+
+const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
+  if (!selectedQueueEntry) return;
+
+  if (!prescriptionFile && !skipPrescriptionWarning) {
+    setShowNoPrescriptionConfirm(true);
+    return;
+  }
+
+  const appointmentId = resolveAppointmentIdForEntry(selectedQueueEntry);
+
+  if (!appointmentId) {
+    toast({
+      title: "Checkout unavailable",
+      description: "Unable to locate the appointment for this patient. Please check their appointment details and try again.",
+      variant: "destructive",
+    });
+    return;
+  }
+
+  try {
+    setIsCheckingOut(true);
+    const queueId = selectedQueueEntry.queue_id;
+
+    if (prescriptionFile) {
+      const formData = new FormData();
+      formData.append("file", prescriptionFile);
+      if (selectedQueueEntry.reason) {
+        formData.append("notes", selectedQueueEntry.reason);
+      }
+
+      await post(`/api/appointments/${appointmentId}/prescription-upload`, formData);
+    }
+
+    await patch(`/api/appointments/${appointmentId}/status`, {
+      status: "completed",
+    });
+
+    if (selectedQueueEntry._id) {
+      await post(`/api/queue/${selectedQueueEntry._id}/check-out`, {});
+    } else if (selectedQueueEntry.queue_id) {
+      await post(`/api/queue/${selectedQueueEntry.queue_id}/check-out`, {});
+    }
+
+    toast({
+      title: "Checkout completed",
+      description: `${selectedQueueEntry.patient.fullName} has been checked out successfully.`,
+    });
+
+    setCheckoutDialog(false);
+    setSelectedQueueEntry(null);
+    setPrescriptionFile(null);
+    setQueueList((prev) => prev.filter((entry) => entry.queue_id !== queueId));
+ 
+     await Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]);
+  } catch (err) {
+    toast({
+      title: "Checkout failed",
+      description: err instanceof Error ? err.message : "Unable to complete checkout. Please try again.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsCheckingOut(false);
+    setShowNoPrescriptionConfirm(false);
+  }
+};
+
+const confirmCheckoutWithoutPrescription = () => {
+  setShowNoPrescriptionConfirm(false);
+  void handleCompleteCheckout(true);
+};
 
   return (
     <div className="space-y-6 p-1">
@@ -1254,41 +1368,185 @@ const filteredCheckoutEntries = shouldFilterQueue
                 </p>
               </div>
             ) : (
-              filteredCheckoutEntries.map((entry) => (
-                <div
-                  key={entry.queue_id}
-                  className="rounded-lg border border-amber-100 bg-white/80 p-3 shadow-sm dark:border-amber-800/60 dark:bg-slate-900"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                        {entry.patient.fullName}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {entry.doctor?.fullName ||
-                          [entry.doctor?.firstName, entry.doctor?.lastName]
-                            .filter(Boolean)
-                            .join(" ") ||
-                          "Consultation complete"}
-                      </p>
+              filteredCheckoutEntries.map((entry) => {
+                const appointmentLookupKey =
+                  entry.patient?.patientId ??
+                  normalizeId(entry.patient?._id) ??
+                  normalizeId((entry as any)?.patientId);
+                const appointment = appointmentLookupKey
+                  ? appointmentByPatientId.get(appointmentLookupKey)
+                  : undefined;
+
+                return (
+                  <div
+                    key={entry.queue_id}
+                    className="rounded-lg border border-amber-100 bg-white/80 p-3 shadow-sm dark:border-amber-800/60 dark:bg-slate-900"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                          {entry.patient.fullName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {entry.doctor?.fullName ||
+                            [entry.doctor?.firstName, entry.doctor?.lastName]
+                              .filter(Boolean)
+                              .join(" ") ||
+                            "Consultation complete"}
+                        </p>
+                        {appointment?.time && (
+                          <p className="text-xs text-amber-600 mt-1">
+                            Appointment at {formatAppointmentTime(appointment.date, appointment.time)}
+                          </p>
+                        )}
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                      >
+                        Awaiting checkout
+                      </Badge>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className="border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300"
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {entry.reason || "Awaiting final paperwork"}
+                    </p>
+                    <Button
+                      size="sm"
+                      className="mt-3 w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-md"
+                      onClick={() => {
+                        setSelectedQueueEntry(entry);
+                        setCheckoutDialog(true);
+                      }}
+                      disabled={
+                        isCheckingOut &&
+                        selectedQueueEntry?.queue_id === entry.queue_id
+                      }
                     >
-                      Awaiting checkout
-                    </Badge>
+                      <UploadIcon className="mr-2 h-4 w-4" />
+                      Upload Prescription / Checkout
+                    </Button>
                   </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {entry.reason || "Awaiting final paperwork"}
-                  </p>
-                </div>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
       </div>
 
+      <Dialog
+        open={checkoutDialog}
+        onOpenChange={(open) => {
+          setCheckoutDialog(open);
+          if (!open) {
+            setSelectedQueueEntry(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Checkout Patient</DialogTitle>
+            <DialogDescription>
+              Upload the prescription (if available) and complete the checkout process.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedQueueEntry && (
+            <div className="space-y-4 py-4">
+              <div className="rounded-lg bg-muted p-3">
+                <p className="font-medium text-sm">
+                  {selectedQueueEntry.patient.fullName}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  ID: {selectedQueueEntry.patient.patientId}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {selectedQueueEntry.reason || "Awaiting checkout"}
+                </p>
+              </div>
+              <Alert className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                <AlertCircleIcon className="h-5 w-5" />
+                <AlertTitle>Upload the prescription if possible</AlertTitle>
+                <AlertDescription>
+                  Keeping a copy of the prescription ensures better continuity of care. You can still complete checkout without a file, but please try to attach it when available.
+                </AlertDescription>
+              </Alert>
+              <div className="space-y-2">
+                <Label>Prescription File</Label>
+                <Input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setPrescriptionFile(e.target.files?.[0] ?? null)}
+                  disabled={isCheckingOut}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Accepted formats: PDF, JPG, PNG
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCheckoutDialog(false);
+                setSelectedQueueEntry(null);
+              }}
+              disabled={isCheckingOut}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                void handleCompleteCheckout();
+              }}
+              disabled={isCheckingOut}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isCheckingOut ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <FileTextIcon className="h-4 w-4 mr-2" />
+                  Complete Checkout
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={showNoPrescriptionConfirm}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowNoPrescriptionConfirm(false);
+          }
+        }}
+      >
+        <AlertDialogContent className="border border-amber-200 bg-amber-50/80 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Checkout without prescription?</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm">
+              Uploading prescriptions keeps patient records complete. Are you sure you want to finish checkout without attaching one?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-amber-200 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/40">
+              Go back
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCheckoutWithoutPrescription}
+              disabled={isCheckingOut}
+              className="bg-amber-600 hover:bg-amber-700 text-white shadow-md"
+            >
+              Yes, continue
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+ 
       {/* Quick Actions */}
       <Card className="border border-border shadow-md bg-card">
         <CardHeader className="pb-4">

@@ -42,6 +42,14 @@ class AppointmentUpdateRequest(BaseModel):
     consultationNotes: Optional[str] = None
     transcription: Optional[str] = None
     structuredNotes: Optional[dict] = None
+    prescriptionFileUrl: Optional[str] = None
+    prescriptionFileKey: Optional[str] = None
+    prescriptionFileName: Optional[str] = None
+    prescriptionFileType: Optional[str] = None
+    prescriptionUploadedAt: Optional[str] = None
+    prescriptionUploadedBy: Optional[str] = None
+    prescriptionUploadedByName: Optional[str] = None
+    prescriptionNotes: Optional[str] = None
 
 
 class AppointmentStatusUpdate(BaseModel):
