@@ -18,6 +18,9 @@ import {
   AlertCircleIcon,
   FlaskConicalIcon,
   Loader2Icon,
+  ThermometerIcon,
+  DropletIcon,
+  WindIcon,
 } from "lucide-react";
 import { LabReportViewerDialog } from "@/polymet/components/lab-report-viewer-dialog";
 import { get } from "@/lib/api-client";
@@ -48,6 +51,15 @@ interface Patient {
   lastVisit?: string;
   carePlanSummary?: string;
   followUpPlan?: string;
+  vitals?: {
+    bloodPressure?: string;
+    heartRate?: string;
+    temperature?: string;
+    oxygenSaturation?: string;
+    weight?: string;
+    height?: string;
+    bmi?: string;
+  };
   insights?: {
     riskAssessment?: string;
     riskLevel?: string;
@@ -241,9 +253,6 @@ export function PatientOverview() {
     }
   };
 
-  // Get latest vitals for display
-  const latestVitals = vitals.length > 0 ? vitals[0] : null;
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -309,6 +318,71 @@ export function PatientOverview() {
     }
     return [];
   })();
+
+  // Get latest vitals for display - check both patient.vitals and vitals array
+  const latestVitals = vitals.length > 0 ? vitals[0] : null;
+  const patientVitals = displayPatient.vitals || {};
+  
+  // Merge vitals from patient object and vitals array (vitals array takes precedence)
+  const mergedVitals = {
+    bloodPressure: latestVitals?.bloodPressure || patientVitals.bloodPressure,
+    heartRate: latestVitals?.heartRate || patientVitals.heartRate,
+    temperature: latestVitals?.temperature || patientVitals.temperature,
+    oxygenSaturation: latestVitals?.oxygenSaturation || patientVitals.oxygenSaturation,
+    weight: latestVitals?.weight || patientVitals.weight,
+    height: latestVitals?.height || patientVitals.height,
+    bmi: patientVitals.bmi,
+  };
+
+  // Helper function to get vital status
+  const getVitalStatus = (type: string, value: string | number | undefined): { status: string; color: string } => {
+    if (!value) return { status: "Not recorded", color: "gray" };
+    
+    const numValue = typeof value === "string" ? parseFloat(value.split("/")[0] || value) : value;
+    
+    switch (type) {
+      case "bloodPressure":
+        const [systolic, diastolic] = String(value).split("/").map(Number);
+        if (systolic < 120 && diastolic < 80) return { status: "normal", color: "green" };
+        if (systolic < 130 && diastolic < 80) return { status: "elevated", color: "yellow" };
+        if (systolic < 140 || diastolic < 90) return { status: "high", color: "orange" };
+        return { status: "critical", color: "red" };
+      case "heartRate":
+        if (numValue >= 60 && numValue <= 100) return { status: "normal", color: "green" };
+        if (numValue < 60 || numValue > 100) return { status: "warning", color: "orange" };
+        return { status: "normal", color: "green" };
+      case "temperature":
+        if (numValue >= 97 && numValue <= 99) return { status: "normal", color: "green" };
+        if (numValue > 99 && numValue <= 100.4) return { status: "elevated", color: "yellow" };
+        if (numValue > 100.4) return { status: "fever", color: "red" };
+        return { status: "normal", color: "green" };
+      case "oxygenSaturation":
+        if (numValue >= 95) return { status: "normal", color: "green" };
+        if (numValue >= 90) return { status: "low", color: "orange" };
+        return { status: "critical", color: "red" };
+      default:
+        return { status: "normal", color: "green" };
+    }
+  };
+
+  // Helper to calculate progress percentage for visual bars
+  const getProgressPercentage = (type: string, value: string | number | undefined): number => {
+    if (!value) return 0;
+    const numValue = typeof value === "string" ? parseFloat(value.split("/")[0] || value) : value;
+    
+    switch (type) {
+      case "bloodPressure":
+        return Math.min((numValue / 180) * 100, 100);
+      case "heartRate":
+        return Math.min(((numValue - 40) / 120) * 100, 100);
+      case "temperature":
+        return Math.min(((numValue - 95) / 7) * 100, 100);
+      case "oxygenSaturation":
+        return numValue;
+      default:
+        return 50;
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -440,102 +514,278 @@ export function PatientOverview() {
 
         <TabsContent value="overview" className="space-y-6 mt-6">
           <div className="grid lg:grid-cols-2 gap-6">
-            {/* Vital Signs */}
+            {/* Vital Signs Dashboard */}
             <Card className="border-border shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <HeartPulseIcon className="w-5 h-5 text-[#00C4B3]" />
-                  Vital Signs
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <ActivityIcon className="w-4 h-4 text-[#00C4B3]" />
+                  Current Vitals
                 </CardTitle>
+                <span className="text-[10px] text-muted-foreground">
+                  {latestVitals?.recordedAt 
+                    ? `Last updated: ${new Date(latestVitals.recordedAt).toLocaleDateString()} ${new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                    : "No recent updates"}
+                </span>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {latestVitals ? (
-                  <>
-                    {latestVitals.bloodPressure && (
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <span className="text-sm font-medium text-foreground">Blood Pressure</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {latestVitals.bloodPressure}
-                          </span>
-                          <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                            Normal
+              <CardContent className="space-y-3">
+                {/* Current Vitals - Primary */}
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-2">Primary Vitals</h3>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Blood Pressure */}
+                    <div className="p-2.5 rounded-lg border border-border bg-card hover:shadow-sm transition-all">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/20">
+                            <ActivityIcon className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-medium text-foreground">Blood Pressure</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {latestVitals?.recordedAt 
+                                ? new Date(latestVitals.recordedAt).toLocaleDateString() + " " + new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : "Not recorded"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-1">
+                          <p className="text-base font-semibold text-foreground mb-0.5">
+                            {mergedVitals.bloodPressure ? `${mergedVitals.bloodPressure} mmHg` : "—"}
+                          </p>
+                          {(() => {
+                            const status = getVitalStatus("bloodPressure", mergedVitals.bloodPressure);
+                            const colorMap: Record<string, string> = {
+                              green: "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20",
+                              yellow: "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400",
+                              orange: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400",
+                              red: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400",
+                              gray: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400",
+                            };
+                            return (
+                              <Badge className={`text-[10px] px-1.5 py-0 ${colorMap[status.color] || colorMap.gray}`}>
+                                {status.status}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
+                        {mergedVitals.bloodPressure && (
+                          <div className="mt-1.5">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-green-500 transition-all"
+                                style={{ width: `${getProgressPercentage("bloodPressure", mergedVitals.bloodPressure)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Heart Rate */}
+                    <div className="p-2.5 rounded-lg border border-border bg-card hover:shadow-sm transition-all">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-pink-100 dark:bg-pink-900/20">
+                            <HeartPulseIcon className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-medium text-foreground">Heart Rate</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {latestVitals?.recordedAt 
+                                ? new Date(latestVitals.recordedAt).toLocaleDateString() + " " + new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : "Not recorded"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-1">
+                          <p className="text-base font-semibold text-foreground mb-0.5">
+                            {mergedVitals.heartRate ? `${mergedVitals.heartRate} bpm` : "—"}
+                          </p>
+                          {(() => {
+                            const status = getVitalStatus("heartRate", mergedVitals.heartRate);
+                            const colorMap: Record<string, string> = {
+                              green: "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20",
+                              yellow: "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400",
+                              orange: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400",
+                              red: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400",
+                              gray: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400",
+                            };
+                            return (
+                              <Badge className={`text-[10px] px-1.5 py-0 ${colorMap[status.color] || colorMap.gray}`}>
+                                {status.status}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
+                        {mergedVitals.heartRate && (
+                          <div className="mt-1.5">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-pink-500 transition-all"
+                                style={{ width: `${getProgressPercentage("heartRate", mergedVitals.heartRate)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Temperature */}
+                    <div className="p-2.5 rounded-lg border border-border bg-card hover:shadow-sm transition-all">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/20">
+                            <ThermometerIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-medium text-foreground">Temperature</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {latestVitals?.recordedAt 
+                                ? new Date(latestVitals.recordedAt).toLocaleDateString() + " " + new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : "Not recorded"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-1">
+                          <p className="text-base font-semibold text-foreground mb-0.5">
+                            {mergedVitals.temperature ? `${mergedVitals.temperature}°F` : "—"}
+                          </p>
+                          {(() => {
+                            const status = getVitalStatus("temperature", mergedVitals.temperature);
+                            const colorMap: Record<string, string> = {
+                              green: "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20",
+                              yellow: "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400",
+                              orange: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400",
+                              red: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400",
+                              gray: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400",
+                            };
+                            return (
+                              <Badge className={`text-[10px] px-1.5 py-0 ${colorMap[status.color] || colorMap.gray}`}>
+                                {status.status}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
+                        {mergedVitals.temperature && (
+                          <div className="mt-1.5">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-blue-500 transition-all"
+                                style={{ width: `${getProgressPercentage("temperature", mergedVitals.temperature)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Weight */}
+                    <div className="p-2.5 rounded-lg border border-border bg-card hover:shadow-sm transition-all">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/20">
+                            <ActivityIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs font-medium text-foreground">Weight</p>
+                            <p className="text-[10px] text-muted-foreground">
+                              {latestVitals?.recordedAt 
+                                ? new Date(latestVitals.recordedAt).toLocaleDateString() + " " + new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : "Not recorded"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-1">
+                          <p className="text-base font-semibold text-foreground mb-0.5">
+                            {mergedVitals.weight ? `${mergedVitals.weight} lbs` : "—"}
+                          </p>
+                          <Badge className={`text-[10px] px-1.5 py-0 ${mergedVitals.weight ? "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20" : "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400"}`}>
+                            {mergedVitals.weight ? "normal" : "Not recorded"}
                           </Badge>
                         </div>
+                        {mergedVitals.weight && (
+                          <div className="mt-1.5">
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-purple-500 transition-all"
+                                style={{ width: "60%" }}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {latestVitals.heartRate && (
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <span className="text-sm font-medium text-foreground">Heart Rate</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {latestVitals.heartRate} bpm
-                          </span>
-                          <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                            Normal
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                    {latestVitals.temperature && (
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <span className="text-sm font-medium text-foreground">Temperature</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {latestVitals.temperature}°F
-                          </span>
-                          <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                            Normal
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                    {latestVitals.weight && (
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <span className="text-sm font-medium text-foreground">Weight</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {latestVitals.weight} lbs
-                          </span>
-                          <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                            Normal
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                    {latestVitals.height && (
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <span className="text-sm font-medium text-foreground">Height</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {latestVitals.height}"
-                          </span>
-                          <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                            Normal
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                    {latestVitals.oxygenSaturation && (
-                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                        <span className="text-sm font-medium text-foreground">Oxygen Saturation</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">
-                            {latestVitals.oxygenSaturation}%
-                          </span>
-                          <Badge className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20">
-                            Normal
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <HeartPulseIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p>No vital signs recorded yet</p>
+                    </div>
                   </div>
-                )}
+                </div>
+
+                {/* Additional Vitals */}
+                <div className="space-y-2 pt-3 border-t">
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-2">Additional Vitals</h3>
+                  
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Blood Glucose */}
+                    <div className="p-2 rounded-lg border border-border bg-card">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div className="p-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/20">
+                          <DropletIcon className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground mb-0.5">Blood Glucose</p>
+                          <p className="text-xs font-semibold text-foreground">—</p>
+                          <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
+                            Not recorded
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Oxygen Saturation */}
+                    <div className="p-2 rounded-lg border border-border bg-card">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/20">
+                          <ActivityIcon className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground mb-0.5">Oxygen Saturation</p>
+                          <p className="text-xs font-semibold text-foreground">
+                            {mergedVitals.oxygenSaturation ? `${mergedVitals.oxygenSaturation}%` : "—"}
+                          </p>
+                          {(() => {
+                            const status = getVitalStatus("oxygenSaturation", mergedVitals.oxygenSaturation);
+                            const colorMap: Record<string, string> = {
+                              green: "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20",
+                              orange: "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-400",
+                              red: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400",
+                              gray: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400",
+                            };
+                            return (
+                              <Badge className={`mt-0.5 text-[10px] px-1.5 py-0 ${colorMap[status.color] || colorMap.gray}`}>
+                                {status.status}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Respiratory Rate */}
+                    <div className="p-2 rounded-lg border border-border bg-card">
+                      <div className="flex flex-col items-center gap-1.5">
+                        <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/20">
+                          <WindIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] text-muted-foreground mb-0.5">Respiratory Rate</p>
+                          <p className="text-xs font-semibold text-foreground">—</p>
+                          <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
+                            Not recorded
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -950,3 +1200,4 @@ export function PatientOverview() {
     </div>
   );
 }
+

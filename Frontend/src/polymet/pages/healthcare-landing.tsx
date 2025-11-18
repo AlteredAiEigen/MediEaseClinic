@@ -1065,7 +1065,7 @@ export function HealthcareLanding() {
       </section>
 
       {/* Pricing Section */}
-      <PricingSection />
+      {/* <PricingSection /> */}
 
       {/* Features & Roadmap Section - Keeping original for continuity */}
       <section className="bg-teal-50/30 py-12" style={{ display: "none" }}>
