@@ -214,7 +214,11 @@ async def update_patient(
     """
     try:
         patient_service = PatientService(db)
-        patient = await patient_service.update_patient(patient_id, update_data)
+        patient = await patient_service.update_patient(
+            patient_id,
+            update_data,
+            updated_by=current_user
+        )
         
         return success_response(
             message="Patient updated successfully",
@@ -257,5 +261,35 @@ async def delete_patient(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Patient deletion failed: {str(e)}"
+        )
+
+
+@router.get("/{patient_id}/history")
+async def get_patient_history(
+    patient_id: str,
+    field: Optional[str] = Query(None, description="Filter by field name, e.g., currentMedications"),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """
+    Retrieve patient change history entries (for audit visibility).
+    """
+    try:
+        patient_service = PatientService(db)
+        entries = await patient_service.get_patient_history(
+            patient_id=patient_id,
+            field_filter=field,
+            limit=limit
+        )
+        
+        return success_response(
+            message="Patient history retrieved successfully",
+            data={"history": entries}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve patient history: {str(e)}"
         )
 

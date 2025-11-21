@@ -29,6 +29,7 @@ class PatientCreateRequest(BaseModel):
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
     lifestyle: Optional[Lifestyle] = None
+    currentMedications: Optional[list] = None
     
     # Clinical information
     chiefComplaint: Optional[str] = None
@@ -56,6 +57,11 @@ class PatientUpdateRequest(BaseModel):
     """Patient update request schema."""
     firstName: Optional[str] = Field(None, min_length=1, max_length=50)
     lastName: Optional[str] = Field(None, min_length=1, max_length=50)
+    email: Optional[EmailStr] = None
+    gender: Optional[str] = Field(None, pattern="^(Male|Female|Other)$")
+    bloodGroup: Optional[str] = Field(None, pattern="^(A\\+|A-|B\\+|B-|AB\\+|AB-|O\\+|O-)$")
+    dateOfBirth: Optional[str] = None
+    age: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     vitals: Optional[Vitals] = None
@@ -66,6 +72,7 @@ class PatientUpdateRequest(BaseModel):
     currentMedication: Optional[str] = None
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
+    currentMedications: Optional[list] = None
     lastMedicationReview: Optional[str] = None
     lifestyle: Optional[Lifestyle] = None
     chiefComplaint: Optional[str] = None
@@ -80,6 +87,7 @@ class PatientUpdateRequest(BaseModel):
     lastVisit: Optional[str] = None
     carePlanSummary: Optional[str] = None
     followUpPlan: Optional[str] = None
+    chiefComplaint: Optional[str] = None
     insights: Optional[dict] = None
     # Note: Patients are universal. Clinic info is for reference only
 

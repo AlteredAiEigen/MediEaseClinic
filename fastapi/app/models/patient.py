@@ -87,12 +87,13 @@ class PatientBase(BaseModel):
     medicationFrequency: Optional[str] = None
     lastMedicationReview: Optional[str] = None
     lifestyle: Optional[Lifestyle] = Lifestyle()
+    currentMedications: Optional[List[Dict[str, str]]] = Field(default_factory=list)
     
     # Clinical information
     chiefComplaint: Optional[str] = None
     currentSymptoms: Optional[str] = None
     painLevel: Optional[str] = None
-    condition: Optional[str] = "Under Observation"
+    condition: Optional[str] = None
     lastVisit: Optional[str] = None
     carePlanSummary: Optional[str] = ""
     followUpPlan: Optional[str] = ""
@@ -178,6 +179,11 @@ class PatientUpdate(BaseModel):
     """Schema for updating patient."""
     firstName: Optional[str] = Field(None, min_length=1, max_length=50)
     lastName: Optional[str] = Field(None, min_length=1, max_length=50)
+    email: Optional[EmailStr] = None
+    gender: Optional[str] = Field(None, pattern="^(Male|Female|Other)$")
+    age: Optional[str] = None
+    bloodGroup: Optional[str] = Field(None, pattern="^(A\\+|A-|B\\+|B-|AB\\+|AB-|O\\+|O-)$")
+    dateOfBirth: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     vitals: Optional[Vitals] = None
@@ -189,6 +195,7 @@ class PatientUpdate(BaseModel):
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
     lastMedicationReview: Optional[str] = None
+    currentMedications: Optional[List[Dict[str, str]]] = None
     lifestyle: Optional[Lifestyle] = None
     chiefComplaint: Optional[str] = None
     currentSymptoms: Optional[str] = None
@@ -202,6 +209,7 @@ class PatientUpdate(BaseModel):
     lastVisit: Optional[str] = None
     carePlanSummary: Optional[str] = None
     followUpPlan: Optional[str] = None
+    chiefComplaint: Optional[str] = None
     insights: Optional[PatientInsights] = None
 
 
@@ -294,7 +302,7 @@ async def patient_helper(patient: dict) -> dict:
         "chiefComplaint": patient.get("chiefComplaint"),
         "currentSymptoms": patient.get("currentSymptoms"),
         "painLevel": patient.get("painLevel"),
-        "condition": patient.get("condition", "Under Observation"),
+        "condition": patient.get("condition"),
         "lastVisit": patient.get("lastVisit"),
         "carePlanSummary": patient.get("carePlanSummary", ""),
         "followUpPlan": patient.get("followUpPlan", ""),
@@ -304,6 +312,7 @@ async def patient_helper(patient: dict) -> dict:
         "emergencyContactPhone": patient.get("emergencyContactPhone"),
         "insuranceProvider": patient.get("insuranceProvider"),
         "insuranceNumber": patient.get("insuranceNumber"),
+        "currentMedications": patient.get("currentMedications", []),
         "createdAt": patient.get("createdAt"),
         "updatedAt": patient.get("updatedAt"),
     }

@@ -249,7 +249,7 @@ class PatientService:
         
         return formatted_patients, total
     
-    async def update_patient(self, patient_id: str, update_data: PatientUpdate) -> Optional[dict]:
+    async def update_patient(self, patient_id: str, update_data: PatientUpdate, updated_by: Optional[dict] = None) -> Optional[dict]:
         """
         Update patient information.
         
@@ -276,6 +276,12 @@ class PatientService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Patient not found"
             )
+
+        decrypted_existing = field_encryption.decrypt_dict_fields(
+            deepcopy(existing_patient),
+            self.ENCRYPTED_FIELDS
+        )
+        previous_snapshot = await patient_helper(decrypted_existing)
         
         # Prepare update data
         update_dict = update_data.model_dump(exclude_unset=True)
@@ -287,6 +293,9 @@ class PatientService:
             )
         
         # Encrypt sensitive fields
+        if update_dict.get("email"):
+            update_dict["email"] = update_dict["email"].lower()
+
         update_dict = field_encryption.encrypt_dict_fields(
             update_dict,
             self.ENCRYPTED_FIELDS
@@ -310,7 +319,129 @@ class PatientService:
             self.ENCRYPTED_FIELDS
         )
         
-        return await patient_helper(updated_patient)
+        formatted_patient = await patient_helper(updated_patient)
+        await self._log_patient_history(previous_snapshot, formatted_patient, updated_by)
+        
+        return formatted_patient
+    
+    async def _log_patient_history(
+        self,
+        previous_snapshot: Optional[dict],
+        updated_snapshot: Optional[dict],
+        updated_by: Optional[dict]
+    ):
+        """Record detailed patient change history."""
+        if not updated_by or not previous_snapshot or not updated_snapshot:
+            return
+        
+        tracked_fields = [
+            ("firstName", "First Name"),
+            ("lastName", "Last Name"),
+            ("email", "Email"),
+            ("phone", "Phone"),
+            ("gender", "Gender"),
+            ("dateOfBirth", "Date of Birth"),
+            ("bloodGroup", "Blood Group"),
+            ("address", "Address"),
+            ("medicalHistory", "Medical History"),
+            ("allergies", "Allergies"),
+            ("emergencyContact", "Emergency Contact"),
+            ("emergencyContactPhone", "Emergency Contact Phone"),
+            ("carePlanSummary", "Care Plan Summary"),
+            ("followUpPlan", "Follow-up Plan"),
+            ("condition", "Current Condition"),
+            ("chiefComplaint", "Chief Complaint"),
+            ("presentInClinic", "Clinic Presence"),
+            ("currentMedications", "Current Medications"),
+        ]
+        
+        def normalize_value(field_name: str, value):
+            if value is None:
+                return ""
+            if field_name in {"medicalHistory", "allergies"}:
+                if isinstance(value, list):
+                    return ", ".join([str(item).strip() for item in value if str(item).strip()])
+                return str(value).strip()
+            if field_name == "currentMedications":
+                if isinstance(value, list):
+                    return "; ".join(
+                        [
+                            ", ".join(
+                                f"{key}: {val}"
+                                for key, val in entry.items()
+                                if val
+                            )
+                            for entry in value
+                        ]
+                    )
+                return str(value).strip()
+            if field_name == "presentInClinic":
+                return "Yes" if value else "No"
+            return str(value).strip()
+        
+        changes = []
+        for field, label in tracked_fields:
+            old_value = normalize_value(field, previous_snapshot.get(field))
+            new_value = normalize_value(field, updated_snapshot.get(field))
+            if old_value == new_value:
+                continue
+            changes.append(
+                {
+                    "field": field,
+                    "label": label,
+                    "oldValue": old_value,
+                    "newValue": new_value,
+                }
+            )
+        
+        if not changes:
+            return
+        
+        user_name = " ".join(
+            part
+            for part in [
+                updated_by.get("firstName", ""),
+                updated_by.get("lastName", ""),
+            ]
+            if part
+        ).strip() or updated_by.get("email")
+        
+        entry = {
+            "patientObjectId": updated_snapshot.get("_id"),
+            "patientId": updated_snapshot.get("patientId"),
+            "changes": changes,
+            "changedAt": datetime.utcnow(),
+            "updatedBy": {
+                "userId": str(updated_by.get("_id")) if updated_by.get("_id") else None,
+                "name": user_name,
+                "role": updated_by.get("role"),
+                "email": updated_by.get("email"),
+            },
+        }
+        
+        await self.db.patient_history.insert_one(entry)
+    
+    async def get_patient_history(
+        self,
+        patient_id: str,
+        field_filter: Optional[str] = None,
+        limit: int = 50
+    ) -> List[dict]:
+        """Fetch patient history entries for auditing purposes."""
+        query = {"patientId": patient_id}
+        if field_filter:
+            query["changes.field"] = field_filter
+        
+        cursor = (
+            self.db.patient_history
+            .find(query)
+            .sort("changedAt", -1)
+            .limit(limit)
+        )
+        entries = await cursor.to_list(length=limit)
+        for entry in entries:
+            entry["_id"] = str(entry["_id"])
+        return entries
     
     async def delete_patient(self, patient_id: str) -> bool:
         """
