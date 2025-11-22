@@ -26,6 +26,8 @@ DOCTOR_EMAIL = os.getenv("SEED_PATIENT_DOCTOR_EMAIL", "channusingh1424@gmail.com
 
 PATIENT_OBJECT_ID = ObjectId("691c79945b394c2a77282894")
 PATIENT_ID = "PRA123"
+EMPTY_PATIENT_OBJECT_ID = ObjectId("691c79945b394c2a77282895")
+EMPTY_PATIENT_ID = "PRA000"
 
 
 def format_timestamp(date_str: str, hour: int = 9, minute: int = 0) -> datetime:
@@ -114,6 +116,10 @@ async def seed_patient_overview():
                 "temperature": "98.4",
                 "oxygenSaturation": "97",
                 "weight": "78",
+                "bloodGlucose": "105",
+                "respiratoryRate": "16",
+                "height": "172",
+                "bmi": "26.4",
             },
             "insights": {
                 "riskAssessment": "Cardio-metabolic risk in next 12 months: 18%",
@@ -172,6 +178,9 @@ async def seed_patient_overview():
                 "temperature": "98.7",
                 "oxygenSaturation": "96",
                 "weight": "79",
+                "bloodGlucose": "118",
+                "respiratoryRate": "18",
+                "height": "172",
                 "notes": "Mildly elevated BP. Reinforced diet plan.",
                 "recordedAt": format_timestamp("2023-11-20"),
                 "createdAt": now,
@@ -185,6 +194,9 @@ async def seed_patient_overview():
                 "temperature": "98.4",
                 "oxygenSaturation": "97",
                 "weight": "78",
+                "bloodGlucose": "104",
+                "respiratoryRate": "16",
+                "height": "172",
                 "notes": "BP improving. Continue current meds.",
                 "recordedAt": format_timestamp("2024-01-15"),
                 "createdAt": now,
@@ -298,6 +310,7 @@ async def seed_patient_overview():
         await db.clinical_notes.delete_many({"patient": str(PATIENT_OBJECT_ID)})
         clinical_notes = [
             {
+                "noteId": "CN-20240115-01",
                 "patient": str(PATIENT_OBJECT_ID),
                 "doctor": doctor_id,
                 "type": "diagnosis",
@@ -315,6 +328,7 @@ async def seed_patient_overview():
                 "updated_at": format_timestamp("2024-01-15", 10, 0),
             },
             {
+                "noteId": "CN-20231120-01",
                 "patient": str(PATIENT_OBJECT_ID),
                 "doctor": doctor_id,
                 "type": "followup",
@@ -377,6 +391,56 @@ async def seed_patient_overview():
         if appointments:
             await db.appointments.insert_many(appointments)
             print(f"✅ Inserted {len(appointments)} appointments.")
+
+        # --------------------------
+        # Blank demo patient
+        # --------------------------
+        empty_patient_profile = {
+            "patientId": EMPTY_PATIENT_ID,
+            "firstName": "Asha",
+            "lastName": "Noor",
+            "gender": "",
+            "age": "",
+            "bloodGroup": "",
+            "dateOfBirth": "",
+            "email": "",
+            "phone": "",
+            "address": "",
+            "presentInClinic": False,
+            "clinicId": clinic_id,
+            "createdByClinicName": clinic_name,
+            "medicalHistory": [],
+            "allergies": [],
+            "condition": "",
+            "chiefComplaint": "",
+            "carePlanSummary": "",
+            "followUpPlan": "",
+            "currentMedications": [],
+            "vitals": {},
+            "insights": {},
+            "insuranceProvider": "",
+            "insurancePlanName": "",
+            "insuranceNumber": "",
+            "insuranceCoverageLimit": "",
+            "insuranceCoverageUsed": "",
+            "insuranceNotes": "",
+            "insuranceClaims": [],
+            "updatedAt": now,
+        }
+
+        await db.patients.update_one(
+            {"_id": EMPTY_PATIENT_OBJECT_ID},
+            {
+                "$set": empty_patient_profile,
+                "$setOnInsert": {"_id": EMPTY_PATIENT_OBJECT_ID, "createdAt": now},
+            },
+            upsert=True,
+        )
+        await db.patient_vitals.delete_many({"patientId": str(EMPTY_PATIENT_OBJECT_ID)})
+        await db.lab_reports.delete_many({"patientId": str(EMPTY_PATIENT_OBJECT_ID)})
+        await db.clinical_notes.delete_many({"patient": str(EMPTY_PATIENT_OBJECT_ID)})
+        await db.appointments.delete_many({"patientId": str(EMPTY_PATIENT_OBJECT_ID)})
+        print("✅ Blank patient profile upserted (no associated records).")
 
         print("\n🎉 Patient overview data seeded successfully!")
 

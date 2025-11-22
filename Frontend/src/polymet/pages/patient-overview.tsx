@@ -28,7 +28,6 @@ import {
   CreditCardIcon,
   Wallet2Icon,
   IndianRupeeIcon,
-  Building2Icon,
   HospitalIcon,
   ClockIcon,
 } from "lucide-react";
@@ -89,6 +88,8 @@ interface Patient {
     weight?: string;
     height?: string;
     bmi?: string;
+    bloodGlucose?: string;
+    respiratoryRate?: string;
   };
   insights?: {
     riskAssessment?: string;
@@ -123,6 +124,8 @@ interface PatientVitals {
   weight?: number;
   height?: number;
   oxygenSaturation?: number;
+  bloodGlucose?: number;
+  respiratoryRate?: number;
   recordedAt: string;
   recordedBy?: string;
 }
@@ -214,6 +217,9 @@ interface EditPatientFormState {
     temperature: string;
     oxygenSaturation: string;
     weight: string;
+    bloodGlucose: string;
+    respiratoryRate: string;
+    height: string;
   };
   currentMedications: EditableMedicationEntry[];
 }
@@ -267,6 +273,9 @@ export function PatientOverview() {
       temperature: "",
       oxygenSaturation: "",
       weight: "",
+      bloodGlucose: "",
+      respiratoryRate: "",
+      height: "",
     },
     currentMedications: [],
   });
@@ -275,11 +284,21 @@ export function PatientOverview() {
     history: false,
     medications: false,
   });
+  const [isGlobalEditMode, setIsGlobalEditMode] = useState(false);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const markSectionDirty = (section: EditableSection) => {
     setDirtySections((prev) =>
       prev[section] ? prev : { ...prev, [section]: true }
     );
   };
+  const resetDirtySections = () =>
+    setDirtySections({
+      overview: false,
+      history: false,
+      medications: false,
+    });
+  const hasUnsavedChanges =
+    dirtySections.overview || dirtySections.history || dirtySections.medications;
 
   // Lab report viewer state
   const [labReportViewerOpen, setLabReportViewerOpen] = useState(false);
@@ -537,15 +556,46 @@ export function PatientOverview() {
           temperature: "",
           oxygenSaturation: "",
           weight: "",
+        bloodGlucose: "",
+        respiratoryRate: "",
+        height: "",
         },
         currentMedications: [],
       };
     }
 
-    const normalizeTextArray = (value?: string[] | string): string => {
+    const normalizeTextArray = (
+      value?: Array<string | Record<string, unknown>> | string
+    ): string => {
       if (!value) return "";
       if (Array.isArray(value)) {
-        return value.join(", ");
+        return value
+          .map((entry) => {
+            if (typeof entry === "string") {
+              return entry;
+            }
+            if (entry && typeof entry === "object") {
+              const record = entry as Record<string, unknown>;
+              const possibleFields = [
+                "title",
+                "diagnosis",
+                "notes",
+                "name",
+                "description",
+              ];
+              const fieldWithValue = possibleFields.find(
+                (field) =>
+                  typeof record[field] === "string" && record[field] !== ""
+              );
+              if (fieldWithValue) {
+                return String(record[fieldWithValue]);
+              }
+              return JSON.stringify(record);
+            }
+            return String(entry ?? "");
+          })
+          .filter((entry) => entry.length > 0)
+          .join(", ");
       }
       return value;
     };
@@ -595,6 +645,13 @@ export function PatientOverview() {
           ? String(vitalsData.oxygenSaturation)
           : "",
         weight: vitalsData?.weight ? String(vitalsData.weight) : "",
+        bloodGlucose: vitalsData?.bloodGlucose
+          ? String(vitalsData.bloodGlucose)
+          : "",
+        respiratoryRate: vitalsData?.respiratoryRate
+          ? String(vitalsData.respiratoryRate)
+          : "",
+        height: vitalsData?.height ? String(vitalsData.height) : "",
       },
       currentMedications: (patientData.currentMedications || []).map((med) =>
         createEditableMedication(med, false)
@@ -602,17 +659,19 @@ export function PatientOverview() {
     };
   };
 
-  const isOverviewEditing = activeEditSection === "overview";
-  const isHistoryEditing = activeEditSection === "history";
-  const isMedicationsEditing = activeEditSection === "medications";
+  const isOverviewEditing = isGlobalEditMode || activeEditSection === "overview";
+  const isHistoryEditing = isGlobalEditMode || activeEditSection === "history";
+  const isMedicationsEditing = isGlobalEditMode || activeEditSection === "medications";
 
   const beginSectionEditing = (section: EditableSection) => {
+    if (isGlobalEditMode) return;
     setActiveEditSection(section);
     setDirtySections((prev) => ({ ...prev, [section]: false }));
     setProfileError(null);
   };
 
   const cancelSectionEditing = (section: EditableSection) => {
+    if (isGlobalEditMode) return;
     setEditForm(mapPatientToFormState(patient));
     setActiveEditSection((current) => (current === section ? null : current));
     setDirtySections((prev) => ({ ...prev, [section]: false }));
@@ -694,13 +753,18 @@ export function PatientOverview() {
     }
 
     const vitalsPayload: Record<string, string> = {};
-    ([
-      "bloodPressure",
-      "heartRate",
-      "temperature",
-      "oxygenSaturation",
-      "weight",
-    ] as const).forEach((key) => {
+    (
+      [
+        "bloodPressure",
+        "heartRate",
+        "temperature",
+        "oxygenSaturation",
+        "weight",
+        "bloodGlucose",
+        "respiratoryRate",
+        "height",
+      ] as const
+    ).forEach((key) => {
       const value = editForm.vitals[key];
       if (value && value.trim().length > 0) {
         vitalsPayload[key] = value.trim();
@@ -735,8 +799,23 @@ export function PatientOverview() {
     return { currentMedications: cleanedMedications };
   };
 
+  const applyPatientUpdate = (updatedPatient: Patient) => {
+    setPatient((prev) => {
+      const mergedPatient: Patient = {
+        ...(prev ?? displayPatient),
+        ...updatedPatient,
+        fullName:
+          updatedPatient.fullName ??
+          `${updatedPatient.firstName ?? ""} ${updatedPatient.lastName ?? ""}`.trim(),
+      };
+      return mergedPatient;
+    });
+    setEditForm(mapPatientToFormState(updatedPatient));
+  };
+
   const handleSaveSection = async (section: EditableSection) => {
     if (!canEditPatientProfile) return;
+    if (isGlobalEditMode) return;
     if (isSavingSection) return;
 
     const targetPatientId = patient?._id || patientId;
@@ -764,18 +843,7 @@ export function PatientOverview() {
     try {
       const updated = await updatePatient(targetPatientId, payload);
 
-      setPatient((prev) => {
-        const mergedPatient: Patient = {
-          ...(prev ?? displayPatient),
-          ...(updated as unknown as Patient),
-          fullName:
-            (updated as any)?.fullName ??
-            `${(updated as any)?.firstName ?? ""} ${(updated as any)?.lastName ?? ""}`.trim(),
-        };
-        return mergedPatient;
-      });
-
-      setEditForm(mapPatientToFormState(updated as unknown as Patient));
+      applyPatientUpdate(updated as unknown as Patient);
       setActiveEditSection(null);
       setDirtySections((prev) => ({ ...prev, [section]: false }));
 
@@ -817,6 +885,118 @@ export function PatientOverview() {
     }
   };
 
+  const handleStartGlobalEdit = () => {
+    if (!canEditPatientProfile) return;
+    setActiveEditSection(null);
+    setProfileError(null);
+    setEditForm(mapPatientToFormState(patient));
+    resetDirtySections();
+    setIsGlobalEditMode(true);
+  };
+
+  const handleCancelGlobalEdit = () => {
+    resetDirtySections();
+    setProfileError(null);
+    setEditForm(mapPatientToFormState(patient));
+    setIsGlobalEditMode(false);
+    setActiveEditSection(null);
+  };
+
+  const handleSaveAll = async () => {
+    if (!canEditPatientProfile || isSavingAll) return;
+
+    const targetPatientId = patient?._id || patientId;
+    if (!targetPatientId) {
+      setProfileError("Unable to determine which patient to update.");
+      return;
+    }
+
+    const combinedPayload: Record<string, unknown> = {};
+    const updatedSections: EditableSection[] = [];
+
+    if (dirtySections.overview) {
+      const overviewPayload = buildOverviewPayload();
+      if (!overviewPayload) {
+        return;
+      }
+      if (Object.keys(overviewPayload).length > 0) {
+        Object.assign(combinedPayload, overviewPayload);
+        updatedSections.push("overview");
+      }
+    }
+
+    if (dirtySections.history) {
+      const historyPayload = buildHistoryPayload();
+      if (historyPayload) {
+        Object.assign(combinedPayload, historyPayload);
+        updatedSections.push("history");
+      }
+    }
+
+    if (dirtySections.medications) {
+      const medicationsPayload = buildMedicationsPayload();
+      Object.assign(combinedPayload, medicationsPayload);
+      updatedSections.push("medications");
+    }
+
+    if (Object.keys(combinedPayload).length === 0) {
+      toast({
+        title: "No changes detected",
+        description: "Make updates before saving, or cancel edit mode.",
+      });
+      return;
+    }
+
+    setIsSavingAll(true);
+    setProfileError(null);
+
+    try {
+      const updated = await updatePatient(targetPatientId, combinedPayload);
+
+      applyPatientUpdate(updated as unknown as Patient);
+      resetDirtySections();
+      setIsGlobalEditMode(false);
+      setActiveEditSection(null);
+
+      if (patientId && updatedSections.includes("medications")) {
+        try {
+          const historyEntries = await fetchPatientHistory(
+            patientId,
+            "currentMedications",
+            50
+          );
+          setMedicationHistory(historyEntries);
+        } catch (historyError) {
+          console.error("Failed to refresh medication history", historyError);
+        }
+      }
+
+      const sectionLabels: Record<EditableSection, string> = {
+        overview: "Overview",
+        history: "Medical history",
+        medications: "Medications",
+      };
+
+      toast({
+        title: "Patient profile updated",
+        description: `Saved changes to ${updatedSections
+          .map((section) => sectionLabels[section])
+          .join(", ")}.`,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to update patient profile.";
+      setProfileError(message);
+      toast({
+        title: "Unable to save changes",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingAll(false);
+    }
+  };
+
   const handleMedicationFieldChange = (
     medId: string,
     field: keyof MedicationEntry,
@@ -840,13 +1020,13 @@ export function PatientOverview() {
   };
 
   const handleRemoveMedication = (medId: string) => {
+    markSectionDirty("medications");
     setEditForm((prev) => ({
       ...prev,
       currentMedications: prev.currentMedications.filter(
-        (med) => med._localId !== medId || !med.isNew
+        (med) => med._localId !== medId
       ),
     }));
-    markSectionDirty("medications");
   };
 
   const handleViewLabReport = (report: LabReport) => {
@@ -927,7 +1107,9 @@ export function PatientOverview() {
 
   // Get latest vitals for display - check both patient.vitals and vitals array
   const latestVitals = vitals.length > 0 ? vitals[0] : null;
-  const patientVitals = displayPatient.vitals || {};
+  const patientVitals = (displayPatient.vitals ?? {}) as Partial<
+    Record<string, string | number>
+  >;
   
   // Merge vitals from patient object and vitals array (vitals array takes precedence)
   const mergedVitals = {
@@ -937,6 +1119,8 @@ export function PatientOverview() {
     oxygenSaturation: latestVitals?.oxygenSaturation || patientVitals.oxygenSaturation,
     weight: latestVitals?.weight || patientVitals.weight,
     height: latestVitals?.height || patientVitals.height,
+    bloodGlucose: latestVitals?.bloodGlucose || patientVitals.bloodGlucose,
+    respiratoryRate: latestVitals?.respiratoryRate || patientVitals.respiratoryRate,
     bmi: patientVitals.bmi,
   };
 
@@ -946,55 +1130,52 @@ export function PatientOverview() {
     temperature: isOverviewEditing ? editForm.vitals.temperature : mergedVitals.temperature,
     oxygenSaturation: isOverviewEditing ? editForm.vitals.oxygenSaturation : mergedVitals.oxygenSaturation,
     weight: isOverviewEditing ? editForm.vitals.weight : mergedVitals.weight,
+    bloodGlucose: isOverviewEditing ? editForm.vitals.bloodGlucose : mergedVitals.bloodGlucose,
+    respiratoryRate: isOverviewEditing ? editForm.vitals.respiratoryRate : mergedVitals.respiratoryRate,
+    height: isOverviewEditing ? editForm.vitals.height : mergedVitals.height,
   };
 
   const savedMedications = editForm.currentMedications.filter((med) => !med.isNew);
-  const draftMedications = editForm.currentMedications.filter((med) => med.isNew);
-  const currentMedicationsDisplay: EditableMedicationEntry[] = savedMedications;
-  const activeMedicationsList = currentMedicationsDisplay.filter(
-    (med) => !med.endDate
-  );
-  const pastMedicationsList = currentMedicationsDisplay.filter(
-    (med) => Boolean(med.endDate)
-  );
-const groupedPastMedications = useMemo(() => {
-  if (!pastMedicationsList.length) return [];
+  const activeMedicationsList = savedMedications.filter((med) => !med.endDate);
+  const pastMedicationsList = savedMedications.filter((med) => Boolean(med.endDate));
+  const groupedPastMedications = useMemo(() => {
+    if (!pastMedicationsList.length) return [];
 
-  const groups = new Map<
-    string,
-    {
-      medications: EditableMedicationEntry[];
-      sortKey: number;
-    }
-  >();
+    const groups = new Map<
+      string,
+      {
+        medications: EditableMedicationEntry[];
+        sortKey: number;
+      }
+    >();
 
-  pastMedicationsList.forEach((med) => {
-    const endDate = med.endDate ? new Date(med.endDate) : null;
-    const label = endDate
-      ? endDate.toLocaleString("en-US", { month: "long", year: "numeric" })
-      : "Previous Medications";
-    const sortValue = endDate ? endDate.getTime() : 0;
+    pastMedicationsList.forEach((med) => {
+      const endDate = med.endDate ? new Date(med.endDate) : null;
+      const label = endDate
+        ? endDate.toLocaleString("en-US", { month: "long", year: "numeric" })
+        : "Previous Medications";
+      const sortValue = endDate ? endDate.getTime() : 0;
 
-    const existing = groups.get(label);
-    if (existing) {
-      existing.medications.push(med);
-      existing.sortKey = Math.max(existing.sortKey, sortValue);
-    } else {
-      groups.set(label, {
-        medications: [med],
-        sortKey: sortValue,
-      });
-    }
-  });
+      const existing = groups.get(label);
+      if (existing) {
+        existing.medications.push(med);
+        existing.sortKey = Math.max(existing.sortKey, sortValue);
+      } else {
+        groups.set(label, {
+          medications: [med],
+          sortKey: sortValue,
+        });
+      }
+    });
 
-  return Array.from(groups.entries())
-    .map(([label, value]) => ({
-      label,
-      medications: value.medications,
-      sortKey: value.sortKey,
-    }))
-    .sort((a, b) => b.sortKey - a.sortKey);
-}, [pastMedicationsList]);
+    return Array.from(groups.entries())
+      .map(([label, value]) => ({
+        label,
+        medications: value.medications,
+        sortKey: value.sortKey,
+      }))
+      .sort((a, b) => b.sortKey - a.sortKey);
+  }, [pastMedicationsList]);
 
   const groupedLabReports = useMemo(() => {
     if (!labReports.length) return [];
@@ -1206,14 +1387,28 @@ const groupedPastMedications = useMemo(() => {
   };
 
   const normalizeLabTests = (tests: LabTest[] = []): LabReportData["tests"] =>
-    tests.map((test) => ({
-      name: test.name || "Test Result",
-      result: test.result || "—",
-      unit: test.unit || "—",
-      normalRange: test.normalRange || "—",
-      status: (test.status as LabTestStatus) || "pending",
-      flag: test.flag,
-    }));
+    tests.map((test) => {
+      const status = (() => {
+        switch (test.status) {
+          case "normal":
+          case "high":
+          case "low":
+          case "critical":
+            return test.status;
+          default:
+            return "normal" as const;
+        }
+      })();
+
+      return {
+        name: test.name || "Test Result",
+        result: test.result || "—",
+        unit: test.unit || "—",
+        normalRange: test.normalRange || "—",
+        status,
+        flag: test.flag,
+      };
+    });
 
   const getLabStatusBadgeClasses = (status?: LabTestStatus) => {
     switch (status) {
@@ -1501,7 +1696,7 @@ const groupedPastMedications = useMemo(() => {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 items-start">
+            <div className="flex flex-col gap-2 items-start md:ml-auto md:items-end">
               <Button
                 size="sm"
                 className="px-4 bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
@@ -1510,41 +1705,42 @@ const groupedPastMedications = useMemo(() => {
                 Schedule Appointment
               </Button>
               {canEditPatientProfile && (
-                isOverviewEditing ? (
-                  <div className="flex flex-col gap-2">
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        variant="outline"
-                        className="border-red-200 text-red-600 hover:bg-red-50"
-                        onClick={() => cancelSectionEditing("overview")}
-                        disabled={isSavingSection === "overview"}
-                      >
-                        Cancel Overview Edit
-                      </Button>
-                      <Button
-                        className="bg-[#24B173] hover:bg-[#1A8F58] text-white"
-                        onClick={() => handleSaveSection("overview")}
-                        disabled={!dirtySections.overview || isSavingSection === "overview"}
-                      >
-                        {isSavingSection === "overview" ? (
-                          <>
-                            <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          "Save Overview"
-                        )}
-                      </Button>
-                    </div>
+                isGlobalEditMode ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={handleCancelGlobalEdit}
+                      disabled={isSavingAll}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#24B173] hover:bg-[#1A8F58] text-white"
+                      onClick={handleSaveAll}
+                      disabled={!hasUnsavedChanges || isSavingAll}
+                    >
+                      {isSavingAll ? (
+                        <>
+                          <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </Button>
                   </div>
                 ) : (
                   <Button
                     variant="outline"
+                    size="sm"
                     className="border-[#24B173]/30 text-[#24B173] hover:bg-[#24B173]/10"
-                    onClick={() => beginSectionEditing("overview")}
+                    onClick={handleStartGlobalEdit}
                   >
                     <FileTextIcon className="w-4 h-4 mr-2" />
-                    Edit Overview
+                    Edit Patient
                   </Button>
                 )
               )}
@@ -1891,11 +2087,35 @@ const groupedPastMedications = useMemo(() => {
                         <div className="p-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/20">
                           <DropletIcon className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
                         </div>
-                        <div className="text-center">
-                          <p className="text-[10px] text-muted-foreground mb-0.5">Blood Glucose</p>
-                          <p className="text-xs font-semibold text-foreground">—</p>
+                        <div className="text-center w-full">
+                          <p className="text-[10px] text-muted-foreground mb-0.5">
+                            Blood Glucose
+                          </p>
+                          {isOverviewEditing ? (
+                            <Input
+                              className="text-center"
+                              placeholder="95"
+                              value={editForm.vitals.bloodGlucose}
+                              onChange={(event) => {
+                                markSectionDirty("overview");
+                                setEditForm((prev) => ({
+                                  ...prev,
+                                  vitals: {
+                                    ...prev.vitals,
+                                    bloodGlucose: event.target.value,
+                                  },
+                                }));
+                              }}
+                            />
+                          ) : (
+                            <p className="text-xs font-semibold text-foreground">
+                              {activeVitals.bloodGlucose
+                                ? `${activeVitals.bloodGlucose} mg/dL`
+                                : "—"}
+                            </p>
+                          )}
                           <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
-                            Not recorded
+                            {activeVitals.bloodGlucose ? "Recorded" : "Not recorded"}
                           </Badge>
                         </div>
                       </div>
@@ -1958,11 +2178,35 @@ const groupedPastMedications = useMemo(() => {
                         <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/20">
                           <WindIcon className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
                         </div>
-                        <div className="text-center">
-                          <p className="text-[10px] text-muted-foreground mb-0.5">Respiratory Rate</p>
-                          <p className="text-xs font-semibold text-foreground">—</p>
+                        <div className="text-center w-full">
+                          <p className="text-[10px] text-muted-foreground mb-0.5">
+                            Respiratory Rate
+                          </p>
+                          {isOverviewEditing ? (
+                            <Input
+                              className="text-center"
+                              placeholder="16"
+                              value={editForm.vitals.respiratoryRate}
+                              onChange={(event) => {
+                                markSectionDirty("overview");
+                                setEditForm((prev) => ({
+                                  ...prev,
+                                  vitals: {
+                                    ...prev.vitals,
+                                    respiratoryRate: event.target.value,
+                                  },
+                                }));
+                              }}
+                            />
+                          ) : (
+                            <p className="text-xs font-semibold text-foreground">
+                              {activeVitals.respiratoryRate
+                                ? `${activeVitals.respiratoryRate} bpm`
+                                : "—"}
+                            </p>
+                          )}
                           <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
-                            Not recorded
+                            {activeVitals.respiratoryRate ? "Recorded" : "Not recorded"}
                           </Badge>
                         </div>
                       </div>
@@ -2135,7 +2379,7 @@ const groupedPastMedications = useMemo(() => {
                   Chronic & acute conditions on record
                 </h3>
               </div>
-              {canEditPatientProfile && (
+              {canEditPatientProfile && !isGlobalEditMode && (
                 isHistoryEditing ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -2274,7 +2518,7 @@ const groupedPastMedications = useMemo(() => {
                     : "Current medications on record for this patient."}
                 </p>
               </div>
-              {canEditPatientProfile && (
+              {canEditPatientProfile && !isGlobalEditMode && (
                 isMedicationsEditing ? (
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -2315,270 +2559,295 @@ const groupedPastMedications = useMemo(() => {
               )}
             </CardHeader>
             <CardContent className="space-y-6">
-              {activeMedicationsList.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/20 py-12 text-center text-muted-foreground">
-                  <PillIcon className="h-12 w-12 opacity-40" />
-                  <p className="mt-3 text-sm font-medium">
-                    No active medications recorded for this patient.
-                  </p>
-                  <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                    When a doctor adds a prescription, it will appear here automatically.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {activeMedicationsList.map((med) => {
-                      const startDate = med.startDate
-                        ? new Date(med.startDate).toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          })
-                        : null;
-                      const durationLabel = med.duration?.trim();
-                      const frequencyLabel = med.frequency?.trim();
+              {isMedicationsEditing ? (
+                <>
+                  {editForm.currentMedications.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/20 py-12 text-center text-muted-foreground">
+                      <PillIcon className="h-12 w-12 opacity-40" />
+                      <p className="mt-3 text-sm font-medium">
+                        No medications captured yet.
+                      </p>
+                      <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                        Use the button below to add the first prescription for this patient.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {editForm.currentMedications.map((med) => {
+                        const isPast = Boolean(med.endDate?.trim());
+                        return (
+                          <div
+                            key={`editable-med-${med._localId}`}
+                            className="rounded-xl border border-border bg-muted/10 p-4 shadow-sm"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-2 text-xs">
+                                <Badge
+                                  variant="outline"
+                                  className={isPast ? "border-amber-300 text-amber-600" : "border-emerald-300 text-emerald-600"}
+                                >
+                                  {isPast ? "Past" : "Active"}
+                                </Badge>
+                                {med.isNew && (
+                                  <Badge className="bg-[#00C4B3]/15 text-[#00C4B3]" variant="secondary">
+                                    New
+                                  </Badge>
+                                )}
+                              </div>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="text-muted-foreground hover:text-red-600"
+                                onClick={() => handleRemoveMedication(med._localId)}
+                                aria-label="Remove medication"
+                              >
+                                <Trash2Icon className="h-4 w-4" />
+                              </Button>
+                            </div>
 
-                      return (
-                        <div
-                          key={`active-med-${med._localId}`}
-                          className="rounded-2xl border border-[#00C4B3]/40 bg-[#00C4B3]/5 p-4 shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00C4B3]/15 text-[#00C4B3]">
-                                <PillIcon className="h-5 w-5" />
-                              </span>
-                              <div>
-                                <p className="text-base font-semibold text-foreground">
-                                  {med.name || "Medication"}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {med.dosage || "Dosage not specified"}
-                                </p>
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">
+                                  Medication Name
+                                </Label>
+                                <Input
+                                  placeholder="e.g., Metformin"
+                                  value={med.name ?? ""}
+                                  onChange={(event) =>
+                                    handleMedicationFieldChange(
+                                      med._localId,
+                                      "name",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Dosage</Label>
+                                <Input
+                                  placeholder="500 mg"
+                                  value={med.dosage ?? ""}
+                                  onChange={(event) =>
+                                    handleMedicationFieldChange(
+                                      med._localId,
+                                      "dosage",
+                                      event.target.value
+                                    )
+                                  }
+                                />
                               </div>
                             </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Frequency</Label>
+                                <Input
+                                  placeholder="Twice daily"
+                                  value={med.frequency ?? ""}
+                                  onChange={(event) =>
+                                    handleMedicationFieldChange(
+                                      med._localId,
+                                      "frequency",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Duration</Label>
+                                <Input
+                                  placeholder="30 days"
+                                  value={med.duration ?? ""}
+                                  onChange={(event) =>
+                                    handleMedicationFieldChange(
+                                      med._localId,
+                                      "duration",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">Start Date</Label>
+                                <Input
+                                  type="date"
+                                  value={med.startDate ?? ""}
+                                  onChange={(event) =>
+                                    handleMedicationFieldChange(
+                                      med._localId,
+                                      "startDate",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-xs text-muted-foreground">End Date</Label>
+                                <Input
+                                  type="date"
+                                  value={med.endDate ?? ""}
+                                  onChange={(event) =>
+                                    handleMedicationFieldChange(
+                                      med._localId,
+                                      "endDate",
+                                      event.target.value
+                                    )
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-3 space-y-1">
+                              <Label className="text-xs text-muted-foreground">Instructions</Label>
+                              <Textarea
+                                rows={2}
+                                placeholder="Take with meals"
+                                value={med.instructions ?? ""}
+                                onChange={(event) =>
+                                  handleMedicationFieldChange(
+                                    med._localId,
+                                    "instructions",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
-                          <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
-                            {frequencyLabel && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                <ClockIcon className="h-3.5 w-3.5" />
-                                {frequencyLabel}
-                              </span>
-                            )}
-                            {startDate && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                <CalendarIcon className="h-3.5 w-3.5" />
-                                {`Since ${startDate}`}
-                              </span>
-                            )}
-                            {durationLabel && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                <ClipboardListIcon className="h-3.5 w-3.5" />
-                                {durationLabel}
-                              </span>
-                            )}
-                          </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-dashed"
+                    onClick={handleAddMedication}
+                  >
+                    <PlusIcon className="mr-2 h-4 w-4" />
+                    Add medication
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {activeMedicationsList.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/20 py-12 text-center text-muted-foreground">
+                      <PillIcon className="h-12 w-12 opacity-40" />
+                      <p className="mt-3 text-sm font-medium">
+                        No active medications recorded for this patient.
+                      </p>
+                      <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+                        When a doctor adds a prescription, it will appear here automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        {activeMedicationsList.map((med) => {
+                          const startDate = med.startDate
+                            ? new Date(med.startDate).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })
+                            : null;
+                          const durationLabel = med.duration?.trim();
+                          const frequencyLabel = med.frequency?.trim();
 
-                          {med.instructions && (
-                            <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                              {med.instructions}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                          return (
+                            <div
+                              key={`active-med-${med._localId}`}
+                              className="rounded-2xl border border-[#00C4B3]/40 bg-[#00C4B3]/5 p-4 shadow-sm"
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00C4B3]/15 text-[#00C4B3]">
+                                    <PillIcon className="h-5 w-5" />
+                                  </span>
+                                  <div>
+                                    <p className="text-base font-semibold text-foreground">
+                                      {med.name || "Medication"}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {med.dosage || "Dosage not specified"}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
 
-              {groupedPastMedications.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                      Past Medications
-                    </h3>
-                    <span className="inline-flex items-center justify-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                      {pastMedicationsList.length}
-                    </span>
-                  </div>
-                  <div className="space-y-3">
-                    {groupedPastMedications.map((group) => (
-                      <div
-                        key={`past-med-group-${group.label}`}
-                        className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm"
-                      >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                          <CalendarIcon className="h-5 w-5 text-[#00C4B3]" />
-                        </span>
-                        <div>
-                          <p className="font-semibold text-foreground">{group.label}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {group.medications.length}{" "}
-                            {group.medications.length === 1 ? "medication" : "medications"}
-                          </p>
-                        </div>
+                              <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
+                                {frequencyLabel && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
+                                    <ClockIcon className="h-3.5 w-3.5" />
+                                    {frequencyLabel}
+                                  </span>
+                                )}
+                                {startDate && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
+                                    <CalendarIcon className="h-3.5 w-3.5" />
+                                    {`Since ${startDate}`}
+                                  </span>
+                                )}
+                                {durationLabel && (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
+                                    <ClipboardListIcon className="h-3.5 w-3.5" />
+                                    {durationLabel}
+                                  </span>
+                                )}
+                              </div>
+
+                              {med.instructions && (
+                                <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
+                                  {med.instructions}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
+                  )}
+
+                  {groupedPastMedications.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          Past Medications
+                        </h3>
+                        <span className="inline-flex items-center justify-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                          {pastMedicationsList.length}
+                        </span>
+                      </div>
+                      <div className="space-y-3">
+                        {groupedPastMedications.map((group) => (
+                          <div
+                            key={`past-med-group-${group.label}`}
+                            className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm"
+                          >
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                              <CalendarIcon className="h-5 w-5 text-[#00C4B3]" />
+                            </span>
+                            <div>
+                              <p className="font-semibold text-foreground">{group.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {group.medications.length}{" "}
+                                {group.medications.length === 1 ? "medication" : "medications"}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
 
-          {isMedicationsEditing && (
-            <Card className="border-border border-dashed">
-              <CardHeader className="flex flex-col gap-1">
-                <CardTitle className="text-sm font-semibold">Add New Medications</CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Use this section to capture newly prescribed medications. You can remove drafts
-                  before saving.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {draftMedications.length === 0 ? (
-                  <div className="rounded-md border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
-                    No draft medications. Click &quot;Add medication&quot; to add the first entry.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {draftMedications.map((med) => (
-                      <div
-                        key={med._localId}
-                        className="rounded-lg border border-border bg-muted/30 p-4 space-y-3"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 space-y-1">
-                            <Label className="text-xs text-muted-foreground">Medication Name</Label>
-                            <Input
-                              placeholder="e.g., Metformin"
-                              value={med.name}
-                              onChange={(event) =>
-                                handleMedicationFieldChange(
-                                  med._localId,
-                                  "name",
-                                  event.target.value
-                                )
-                              }
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="text-muted-foreground hover:text-red-600"
-                            onClick={() => handleRemoveMedication(med._localId)}
-                            aria-label="Remove medication draft"
-                          >
-                            <Trash2Icon className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Dosage</Label>
-                            <Input
-                              placeholder="500 mg"
-                              value={med.dosage}
-                              onChange={(event) =>
-                                handleMedicationFieldChange(
-                                  med._localId,
-                                  "dosage",
-                                  event.target.value
-                                )
-                              }
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Frequency</Label>
-                            <Input
-                              placeholder="Twice daily"
-                              value={med.frequency}
-                              onChange={(event) =>
-                                handleMedicationFieldChange(
-                                  med._localId,
-                                  "frequency",
-                                  event.target.value
-                                )
-                              }
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Duration</Label>
-                            <Input
-                              placeholder="30 days"
-                              value={med.duration}
-                              onChange={(event) =>
-                                handleMedicationFieldChange(
-                                  med._localId,
-                                  "duration",
-                                  event.target.value
-                                )
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">Start Date</Label>
-                            <Input
-                              type="date"
-                              value={med.startDate}
-                              onChange={(event) =>
-                                handleMedicationFieldChange(
-                                  med._localId,
-                                  "startDate",
-                                  event.target.value
-                                )
-                              }
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-muted-foreground">End Date</Label>
-                            <Input
-                              type="date"
-                              value={med.endDate}
-                              onChange={(event) =>
-                                handleMedicationFieldChange(
-                                  med._localId,
-                                  "endDate",
-                                  event.target.value
-                                )
-                              }
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs text-muted-foreground">Instructions</Label>
-                          <Textarea
-                            rows={2}
-                            placeholder="Take with meals"
-                            value={med.instructions}
-                            onChange={(event) =>
-                              handleMedicationFieldChange(
-                                med._localId,
-                                "instructions",
-                                event.target.value
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full border-dashed"
-                  onClick={handleAddMedication}
-                >
-                  <PlusIcon className="mr-2 h-4 w-4" />
-                  Add medication
-                </Button>
-              </CardContent>
-            </Card>
-          )}
 
           {medicationHistory.length > 0 && (
             <Card className="border-border shadow-sm">
