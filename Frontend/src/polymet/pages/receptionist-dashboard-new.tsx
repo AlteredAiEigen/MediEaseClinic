@@ -496,11 +496,41 @@ export function ReceptionistDashboardNew() {
     handleQueueUpdate();
   }, [lastMessage, fetchTodayAppointments, fetchQueueData, fetchQueueStats]);
 
-  const avgWaitTime = queueStats?.average_wait_time || 
-    (queueList.length > 0 ? Math.floor(15 + Math.random() * 20) : 0);
-  const peakHours = [9, 10, 11, 14, 15, 16];
-  const currentHour = currentTime.getHours();
-  const isPeakTime = peakHours.includes(currentHour);
+  const averageWaitMinutes = Math.max(
+    0,
+    Math.round(queueStats?.average_wait_time ?? 0)
+  );
+
+  const waitStatus = (() => {
+    if (averageWaitMinutes === 0) {
+      return {
+        label: "No Active Queue",
+        description: "Waiting room is clear",
+        tone: "text-emerald-600",
+      };
+    }
+    if (averageWaitMinutes < 15) {
+      return {
+        label: "Smooth Flow",
+        description: "Patients are being seen on time",
+        tone: "text-teal-600",
+      };
+    }
+    if (averageWaitMinutes < 30) {
+      return {
+        label: "Moderate Delay",
+        description: "Consider prioritizing high-acuity cases",
+        tone: "text-amber-600",
+      };
+    }
+    return {
+      label: "High Delay",
+      description: "Bring additional doctors online",
+      tone: "text-red-600",
+    };
+  })();
+
+  const showPeakBadge = averageWaitMinutes >= 15;
 
 const formatAppointmentTime = (date?: string, time?: string) => {
   if (!time) return "—";
@@ -730,10 +760,10 @@ const confirmCheckoutWithoutPrescription = () => {
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {isPeakTime && (
+          {showPeakBadge && (
             <Badge className="bg-amber-500 text-white border-0 shadow-md">
               <BellIcon className="h-3 w-3 mr-1" />
-              Peak Hours
+              Heavy Load
             </Badge>
           )}
           <Badge className="bg-white/20 text-white border-0 backdrop-blur-sm">
@@ -871,10 +901,10 @@ const confirmCheckoutWithoutPrescription = () => {
                 <ClockIcon className="h-4 w-4 text-muted-foreground" />
               </div>
               <p className="text-2xl font-bold text-foreground">
-                {avgWaitTime} min
+                {averageWaitMinutes} min
               </p>
               <Progress
-                value={Math.min((avgWaitTime / 60) * 100, 100)}
+                value={Math.min((averageWaitMinutes / 60) * 100, 100)}
                 className="h-1.5 mt-2"
               />
             </div>
@@ -899,11 +929,11 @@ const confirmCheckoutWithoutPrescription = () => {
                 </span>
                 <AlertCircleIcon className="h-4 w-4 text-muted-foreground" />
               </div>
-              <p className="text-lg font-bold text-foreground">
-                {isPeakTime ? "Peak Hours" : "Normal"}
+              <p className={`text-lg font-bold ${waitStatus.tone}`}>
+                {waitStatus.label}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                {isPeakTime ? "High patient volume" : "Steady flow"}
+                {waitStatus.description}
               </p>
             </div>
           </div>

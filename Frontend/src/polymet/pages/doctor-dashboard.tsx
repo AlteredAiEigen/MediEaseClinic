@@ -96,6 +96,14 @@ interface Appointment {
   doctorName?: string;
 }
 
+interface PerformanceStats {
+  patientSatisfaction: number | null;
+  averageConsultationTime: number | null;
+  followUpRate: number | null;
+  noShowRate: number | null;
+  totalCompleted: number;
+}
+
 const extractList = <T,>(rawData: any): T[] => {
   if (Array.isArray(rawData)) {
     return rawData as T[];
@@ -125,6 +133,13 @@ export function DoctorDashboard() {
   const [completedToday, setCompletedToday] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [performanceStats, setPerformanceStats] = useState<PerformanceStats>({
+    patientSatisfaction: null,
+    averageConsultationTime: null,
+    followUpRate: null,
+    noShowRate: null,
+    totalCompleted: 0,
+  });
 
 
   // WebSocket for real-time queue updates
@@ -190,7 +205,12 @@ export function DoctorDashboard() {
 
         const today = new Date().toISOString().split("T")[0];
 
-        const [queueResponse, appointmentsResponse, statsResponse] = await Promise.all([
+        const [
+          queueResponse,
+          appointmentsResponse,
+          statsResponse,
+          performanceResponse,
+        ] = await Promise.all([
           get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`),
           get(`/api/appointments?date=${today}&limit=100`),
           get<{
@@ -200,7 +220,14 @@ export function DoctorDashboard() {
             completedToday: number;
             inQueue: number;
             thisWeek: number;
-          }>("/api/doctors/me/stats")
+          }>("/api/doctors/me/stats"),
+          get<{
+            patientSatisfaction: number | null;
+            averageConsultationTime: number | null;
+            followUpRate: number | null;
+            noShowRate: number | null;
+            totalCompleted: number;
+          }>("/api/doctors/me/performance"),
         ]);
 
         let nextQueuePatients: QueuePatient[] | null = null;
@@ -290,6 +317,16 @@ export function DoctorDashboard() {
           setCompletedToday(nextCompletedToday ?? 0);
           setTodayAppointments(statsTodayAppointments ?? computedTodayAppointments);
           computedTodayAppointments = statsTodayAppointments ?? computedTodayAppointments;
+        }
+
+        if (performanceResponse.success && performanceResponse.data) {
+          setPerformanceStats({
+            patientSatisfaction: performanceResponse.data.patientSatisfaction ?? null,
+            averageConsultationTime: performanceResponse.data.averageConsultationTime ?? null,
+            followUpRate: performanceResponse.data.followUpRate ?? null,
+            noShowRate: performanceResponse.data.noShowRate ?? null,
+            totalCompleted: performanceResponse.data.totalCompleted ?? 0,
+          });
         }
 
         if (dashboardCacheKey) {
@@ -1134,32 +1171,58 @@ export function DoctorDashboard() {
                 <p className="text-[10px] text-emerald-50 mb-0.5">
                   Patient Satisfaction
                 </p>
-                <p className="text-xl font-bold text-white mb-0.5">4.8/5.0</p>
-                <span className="text-[10px] text-emerald-50">↑ 5%</span>
+                <p className="text-xl font-bold text-white mb-0.5">
+                  {performanceStats.patientSatisfaction !== null
+                    ? `${performanceStats.patientSatisfaction.toFixed(1)}/5`
+                    : "—"}
+                </p>
+                <span className="text-[10px] text-emerald-50">
+                  {performanceStats.patientSatisfaction !== null
+                    ? "Recent feedback"
+                    : "Awaiting feedback"}
+                </span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md">
                 <p className="text-[10px] text-blue-50 mb-0.5">
                   Avg. Consultation
                 </p>
-                <p className="text-xl font-bold text-white mb-0.5">18 min</p>
-                <span className="text-[10px] text-blue-50">↓ 12%</span>
+                <p className="text-xl font-bold text-white mb-0.5">
+                  {performanceStats.averageConsultationTime !== null
+                    ? `${performanceStats.averageConsultationTime.toFixed(1)} min`
+                    : "—"}
+                </p>
+                <span className="text-[10px] text-blue-50">
+                  Based on completed visits
+                </span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 text-white shadow-md">
                 <p className="text-[10px] text-purple-50 mb-0.5">
                   Follow-up Rate
                 </p>
-                <p className="text-xl font-bold text-white mb-0.5">92%</p>
-                <span className="text-[10px] text-purple-50">↑ 8%</span>
+                <p className="text-xl font-bold text-white mb-0.5">
+                  {performanceStats.followUpRate !== null
+                    ? `${performanceStats.followUpRate.toFixed(1)}%`
+                    : "—"}
+                </p>
+                <span className="text-[10px] text-purple-50">
+                  Follow-ups scheduled
+                </span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 text-white shadow-md">
                 <p className="text-[10px] text-orange-50 mb-0.5">
                   No-Show Rate
                 </p>
-                <p className="text-xl font-bold text-white mb-0.5">3.2%</p>
-                <span className="text-[10px] text-orange-50">↓ 15%</span>
+                <p className="text-xl font-bold text-white mb-0.5">
+                  {performanceStats.noShowRate !== null
+                    ? `${performanceStats.noShowRate.toFixed(1)}%`
+                    : "—"}
+                </p>
+                <span className="text-[10px] text-orange-50">
+                  Missed scheduled visits
+                </span>
               </div>
             </div>
           </CardContent>

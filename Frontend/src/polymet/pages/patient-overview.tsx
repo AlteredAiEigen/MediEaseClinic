@@ -24,6 +24,12 @@ import {
   PlusIcon,
   Trash2Icon,
   HistoryIcon,
+  ShieldCheckIcon,
+  CreditCardIcon,
+  Wallet2Icon,
+  IndianRupeeIcon,
+  Building2Icon,
+  HospitalIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +43,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/context/auth-context";
-import { LabReportViewerDialog } from "@/polymet/components/lab-report-viewer-dialog";
+import { LabReportViewerDialog, LabReportData } from "@/polymet/components/lab-report-viewer-dialog";
 import { get } from "@/lib/api-client";
 import {
   updatePatient,
@@ -92,6 +98,19 @@ interface Patient {
     lastUpdatedAt?: string;
   };
   currentMedications?: MedicationEntry[];
+  insuranceProvider?: string;
+  insuranceNumber?: string;
+  insurancePlanName?: string;
+  insuranceCoverageLimit?: string;
+  insuranceCoverageUsed?: string;
+  insuranceNotes?: string;
+  insuranceClaims?: Array<{
+    claimId?: string;
+    amount?: string;
+    status?: string;
+    description?: string;
+    date?: string;
+  }>;
 }
 
 interface PatientVitals {
@@ -107,18 +126,37 @@ interface PatientVitals {
   recordedBy?: string;
 }
 
-interface LabReport {
-  _id: string;
-  patientId: string;
-  reportType: string;
-  testName: string;
+type LabTestStatus = "normal" | "high" | "low" | "critical" | "pending";
+
+interface LabTest {
+  name: string;
   result: string;
   unit?: string;
-  referenceRange?: string;
-  status: string;
-  orderedAt: string;
-  completedAt?: string;
-  doctorName?: string;
+  normalRange?: string;
+  status?: LabTestStatus;
+  flag?: string;
+}
+
+interface LabReport {
+  _id: string;
+  reportId?: string;
+  patientId: string;
+  doctorId: string;
+  reportType: string;
+  category?: string;
+  orderedBy?: string;
+  labName?: string;
+  collectedDate?: string;
+  reportedDate?: string;
+  notes?: string;
+  interpretation?: string;
+  attachments?: string[];
+  tests: LabTest[];
+  isCritical?: boolean;
+  isReviewed?: boolean;
+  reviewedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface ClinicalNote {
@@ -179,6 +217,16 @@ interface EditPatientFormState {
   currentMedications: EditableMedicationEntry[];
 }
 
+type EditableSection = "overview" | "history" | "medications";
+
+interface MedicalHistoryEntryDisplay {
+  title: string;
+  diagnosis?: string;
+  treatedBy?: string;
+  recordedOn?: string;
+  notes?: string;
+}
+
 export function PatientOverview() {
   const { patientId } = useParams();
   const { user } = useAuth();
@@ -191,8 +239,8 @@ export function PatientOverview() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasAnyData, setHasAnyData] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [activeEditSection, setActiveEditSection] = useState<EditableSection | null>(null);
+  const [isSavingSection, setIsSavingSection] = useState<EditableSection | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditPatientFormState>({
     firstName: "",
@@ -221,10 +269,20 @@ export function PatientOverview() {
     },
     currentMedications: [],
   });
+  const [dirtySections, setDirtySections] = useState<Record<EditableSection, boolean>>({
+    overview: false,
+    history: false,
+    medications: false,
+  });
+  const markSectionDirty = (section: EditableSection) => {
+    setDirtySections((prev) =>
+      prev[section] ? prev : { ...prev, [section]: true }
+    );
+  };
 
   // Lab report viewer state
   const [labReportViewerOpen, setLabReportViewerOpen] = useState(false);
-  const [selectedLabReport, setSelectedLabReport] = useState<any>(null);
+  const [selectedLabReport, setSelectedLabReport] = useState<LabReportData | null>(null);
   const [medicationHistory, setMedicationHistory] = useState<PatientHistoryEntry[]>([]);
   const generateMedId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
@@ -341,12 +399,18 @@ export function PatientOverview() {
     };
 
     const fetchPatientData = async () => {
-      if (!patientId) return;
+      if (!patientId) {
+        setError("Missing patient identifier");
+        setPatient(null);
+        setHasAnyData(false);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
 
       try {
-        setIsLoading(true);
-        setError(null);
-
         // Fetch patient details (supports Mongo _id or friendly ID)
         const patientData = await fetchPatientDetails(patientId);
         if (patientData) {
@@ -357,37 +421,58 @@ export function PatientOverview() {
         }
 
         // Fetch patient vitals
-        const vitalsResponse = await get<{ vitals: PatientVitals[] }>(`/api/patient-vitals/patient/${patientId}`);
-        if (vitalsResponse.success && vitalsResponse.data?.vitals) {
-          setVitals(vitalsResponse.data.vitals);
-          if (vitalsResponse.data.vitals.length > 0) {
+        const vitalsResponse = await get<PatientVitals[]>(`/api/patient-vitals/${patientId}?limit=50`);
+        if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
+          setVitals(vitalsResponse.data);
+          if (vitalsResponse.data.length > 0) {
             setHasAnyData(true);
           }
         }
 
         // Fetch lab reports
-        const labReportsResponse = await get<{ reports: LabReport[] }>(`/api/lab-reports?patient_id=${patientId}`);
-        if (labReportsResponse.success && labReportsResponse.data?.reports) {
-          setLabReports(labReportsResponse.data.reports);
-          if (labReportsResponse.data.reports.length > 0) {
+        const labReportsResponse = await get<LabReport[] | { data: LabReport[] }>(`/api/lab-reports?patientId=${patientId}&limit=50`);
+        if (labReportsResponse.success) {
+          const reports = Array.isArray(labReportsResponse.data)
+            ? labReportsResponse.data
+            : Array.isArray((labReportsResponse.data as { data?: LabReport[] })?.data)
+            ? (labReportsResponse.data as { data: LabReport[] }).data
+            : [];
+          setLabReports(reports);
+          if (reports.length > 0) {
             setHasAnyData(true);
           }
         }
 
         // Fetch clinical notes
-        const notesResponse = await get<{ notes: ClinicalNote[] }>(`/api/clinical-notes?patient_id=${patientId}`);
-        if (notesResponse.success && notesResponse.data?.notes) {
-          setClinicalNotes(notesResponse.data.notes);
-          if (notesResponse.data.notes.length > 0) {
+        const notesResponse = await get<any>(`/api/clinical-notes?patient=${patientId}&limit=25`);
+        if (notesResponse.success) {
+          const rawNotes = Array.isArray(notesResponse.data)
+            ? notesResponse.data
+            : Array.isArray((notesResponse.data as any)?.data)
+            ? (notesResponse.data as any).data
+            : [];
+          const transformedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
+            _id: note._id ?? note.id ?? generateTempId(),
+            patientId: note.patient ?? note.patientId ?? patientId,
+            doctorId: note.doctor ?? note.doctorId ?? "",
+            note: note.content ?? note.note ?? "",
+            diagnosis: note.title ?? note.diagnosis,
+            treatment: note.prescription?.instructions ?? note.treatment,
+            followUp: note.follow_up?.notes ?? note.followUp,
+            createdAt: note.created_at ?? note.createdAt ?? note.timestamp ?? new Date().toISOString(),
+            doctorName: note.doctor_name ?? note.doctorName ?? note.orderedBy ?? "Doctor",
+          }));
+          setClinicalNotes(transformedNotes);
+          if (transformedNotes.length > 0) {
             setHasAnyData(true);
           }
         }
 
         // Fetch appointment history
-        const appointmentsResponse = await get<{ data: Appointment[] }>(`/api/appointments?patientId=${patientId}`);
-        if (appointmentsResponse.success && appointmentsResponse.data?.data) {
-          setAppointments(appointmentsResponse.data.data);
-          if (appointmentsResponse.data.data.length > 0) {
+        const appointmentsResponse = await get<Appointment[]>(`/api/appointments?patient_id=${patientId}&limit=50`);
+        if (appointmentsResponse.success && Array.isArray(appointmentsResponse.data)) {
+          setAppointments(appointmentsResponse.data);
+          if (appointmentsResponse.data.length > 0) {
             setHasAnyData(true);
           }
         }
@@ -423,7 +508,9 @@ export function PatientOverview() {
     loadHistory();
   }, [patientId]);
 
-  const mapPatientToFormState = (patientData: Patient | null): EditPatientFormState => {
+  const mapPatientToFormState = (
+    patientData: Patient | null
+  ): EditPatientFormState => {
     if (!patientData) {
       return {
         firstName: "",
@@ -508,10 +595,27 @@ export function PatientOverview() {
           : "",
         weight: vitalsData?.weight ? String(vitalsData.weight) : "",
       },
-      currentMedications: (patientData.currentMedications ?? []).map((entry) =>
-        createEditableMedication(entry, false)
+      currentMedications: (patientData.currentMedications || []).map((med) =>
+        createEditableMedication(med, false)
       ),
     };
+  };
+
+  const isOverviewEditing = activeEditSection === "overview";
+  const isHistoryEditing = activeEditSection === "history";
+  const isMedicationsEditing = activeEditSection === "medications";
+
+  const beginSectionEditing = (section: EditableSection) => {
+    setActiveEditSection(section);
+    setDirtySections((prev) => ({ ...prev, [section]: false }));
+    setProfileError(null);
+  };
+
+  const cancelSectionEditing = (section: EditableSection) => {
+    setEditForm(mapPatientToFormState(patient));
+    setActiveEditSection((current) => (current === section ? null : current));
+    setDirtySections((prev) => ({ ...prev, [section]: false }));
+    setProfileError(null);
   };
 
   useEffect(() => {
@@ -549,29 +653,11 @@ export function PatientOverview() {
     | "condition"
     | "chiefComplaint";
 
-  const handleCancelEditing = () => {
-    if (isSavingProfile) return;
-    setEditForm(mapPatientToFormState(patient));
-    setProfileError(null);
-    setIsEditMode(false);
-  };
-
-  const handleSaveProfile = async () => {
-    if (!canEditPatientProfile) return;
-
+  const buildOverviewPayload = (): (PatientUpdateInput & Record<string, unknown>) | null => {
     if (!editForm.firstName.trim() || !editForm.lastName.trim()) {
       setProfileError("First and last name are required.");
-      return;
+      return null;
     }
-
-    const targetPatientId = patient?._id || patientId;
-    if (!targetPatientId) {
-      setProfileError("Unable to determine which patient to update.");
-      return;
-    }
-
-    setIsSavingProfile(true);
-    setProfileError(null);
 
     const payload: PatientUpdateInput & Record<string, unknown> = {
       firstName: editForm.firstName.trim(),
@@ -623,6 +709,14 @@ export function PatientOverview() {
       payload.vitals = vitalsPayload;
     }
 
+    return payload;
+  };
+
+  const buildHistoryPayload = () => ({
+    medicalHistory: editForm.medicalHistory?.trim() ?? "",
+  });
+
+  const buildMedicationsPayload = () => {
     const cleanedMedications = editForm.currentMedications
       .map((entry) => ({
         name: entry.name?.trim() || undefined,
@@ -636,7 +730,35 @@ export function PatientOverview() {
       .filter((entry) =>
         Object.values(entry).some((value) => value !== undefined && value !== "")
       );
-    payload.currentMedications = cleanedMedications;
+
+    return { currentMedications: cleanedMedications };
+  };
+
+  const handleSaveSection = async (section: EditableSection) => {
+    if (!canEditPatientProfile) return;
+    if (isSavingSection) return;
+
+    const targetPatientId = patient?._id || patientId;
+    if (!targetPatientId) {
+      setProfileError("Unable to determine which patient to update.");
+      return;
+    }
+
+    let payload: (PatientUpdateInput & Record<string, unknown>) | null = null;
+    if (section === "overview") {
+      payload = buildOverviewPayload();
+    } else if (section === "history") {
+      payload = buildHistoryPayload();
+    } else if (section === "medications") {
+      payload = buildMedicationsPayload();
+    }
+
+    if (!payload) {
+      return;
+    }
+
+    setIsSavingSection(section);
+    setProfileError(null);
 
     try {
       const updated = await updatePatient(targetPatientId, payload);
@@ -653,8 +775,10 @@ export function PatientOverview() {
       });
 
       setEditForm(mapPatientToFormState(updated as unknown as Patient));
-      setIsEditMode(false);
-      if (patientId) {
+      setActiveEditSection(null);
+      setDirtySections((prev) => ({ ...prev, [section]: false }));
+
+      if (patientId && section === "medications") {
         try {
           const historyEntries = await fetchPatientHistory(
             patientId,
@@ -666,8 +790,16 @@ export function PatientOverview() {
           console.error("Failed to refresh medication history", historyError);
         }
       }
+
+      const sectionLabel =
+        section === "overview"
+          ? "Overview"
+          : section === "history"
+          ? "Medical history"
+          : "Medications";
+
       toast({
-        title: "Patient profile updated",
+        title: `${sectionLabel} updated`,
         description: "Changes have been saved successfully.",
       });
     } catch (err) {
@@ -680,7 +812,7 @@ export function PatientOverview() {
         variant: "destructive",
       });
     } finally {
-      setIsSavingProfile(false);
+      setIsSavingSection(null);
     }
   };
 
@@ -689,6 +821,7 @@ export function PatientOverview() {
     field: keyof MedicationEntry,
     value: string
   ) => {
+    markSectionDirty("medications");
     setEditForm((prev) => ({
       ...prev,
       currentMedications: prev.currentMedications.map((med) =>
@@ -702,6 +835,7 @@ export function PatientOverview() {
       ...prev,
       currentMedications: [...prev.currentMedications, createEditableMedication({}, true)],
     }));
+    markSectionDirty("medications");
   };
 
   const handleRemoveMedication = (medId: string) => {
@@ -711,26 +845,14 @@ export function PatientOverview() {
         (med) => med._localId !== medId || !med.isNew
       ),
     }));
+    markSectionDirty("medications");
   };
 
-  const handleViewLabReport = (reportIndex: number) => {
-    if (labReports[reportIndex]) {
-      setSelectedLabReport(labReports[reportIndex]);
-      setLabReportViewerOpen(true);
-    }
+  const handleViewLabReport = (report: LabReport) => {
+    const viewerData = mapReportToViewerData(report);
+    setSelectedLabReport(viewerData);
+    setLabReportViewerOpen(true);
   };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
-          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Patient Data</h2>
-          <p className="text-muted-foreground">Please wait...</p>
-        </div>
-      </div>
-    );
-  }
 
   const displayPatient: Patient = patient ?? {
     _id: patientId ?? "",
@@ -775,14 +897,29 @@ export function PatientOverview() {
     return [];
   })();
 
-  const medicalHistoryEntries: string[] = (() => {
+  const medicalHistoryEntries: MedicalHistoryEntryDisplay[] = (() => {
     const value = (displayPatient as unknown as Record<string, unknown>).medicalHistory;
     if (!value) return [];
     if (Array.isArray(value)) {
-      return value.map((entry) => String(entry));
+      return value.map((entry) => {
+        if (typeof entry === "string") {
+          return { title: entry };
+        }
+        if (entry && typeof entry === "object") {
+          const typed = entry as Record<string, string>;
+          return {
+            title: typed.title || typed.diagnosis || "Medical history",
+            diagnosis: typed.diagnosis,
+            treatedBy: typed.treatedBy || typed.doctor,
+            recordedOn: typed.recordedOn || typed.date,
+            notes: typed.notes || typed.description,
+          };
+        }
+        return { title: String(entry) };
+      });
     }
     if (typeof value === "string") {
-      return value.trim() ? [value] : [];
+      return value.trim() ? [{ title: value }] : [];
     }
     return [];
   })();
@@ -803,16 +940,163 @@ export function PatientOverview() {
   };
 
   const activeVitals = {
-    bloodPressure: isEditMode ? editForm.vitals.bloodPressure : mergedVitals.bloodPressure,
-    heartRate: isEditMode ? editForm.vitals.heartRate : mergedVitals.heartRate,
-    temperature: isEditMode ? editForm.vitals.temperature : mergedVitals.temperature,
-    oxygenSaturation: isEditMode ? editForm.vitals.oxygenSaturation : mergedVitals.oxygenSaturation,
-    weight: isEditMode ? editForm.vitals.weight : mergedVitals.weight,
+    bloodPressure: isOverviewEditing ? editForm.vitals.bloodPressure : mergedVitals.bloodPressure,
+    heartRate: isOverviewEditing ? editForm.vitals.heartRate : mergedVitals.heartRate,
+    temperature: isOverviewEditing ? editForm.vitals.temperature : mergedVitals.temperature,
+    oxygenSaturation: isOverviewEditing ? editForm.vitals.oxygenSaturation : mergedVitals.oxygenSaturation,
+    weight: isOverviewEditing ? editForm.vitals.weight : mergedVitals.weight,
   };
 
   const savedMedications = editForm.currentMedications.filter((med) => !med.isNew);
   const draftMedications = editForm.currentMedications.filter((med) => med.isNew);
   const currentMedicationsDisplay: EditableMedicationEntry[] = savedMedications;
+  const activeMedicationsList = currentMedicationsDisplay.filter(
+    (med) => !med.endDate
+  );
+  const pastMedicationsList = currentMedicationsDisplay.filter(
+    (med) => Boolean(med.endDate)
+  );
+
+  const groupedLabReports = useMemo(() => {
+    if (!labReports.length) return [];
+    const groups = new Map<
+      string,
+      {
+        label: string;
+        reports: LabReport[];
+        sortKey: number;
+        totalTests: number;
+        abnormalTests: number;
+      }
+    >();
+
+    labReports.forEach((report) => {
+      const referenceDate = report.reportedDate || report.collectedDate || report.updatedAt || report.createdAt;
+      const parsedDate = referenceDate ? new Date(referenceDate) : null;
+      const label = parsedDate
+        ? parsedDate.toLocaleString("en-US", { month: "long", year: "numeric" })
+        : "Uncategorized";
+      const testCount = report.tests?.length || 0;
+      const abnormalCount = report.tests?.filter((test) =>
+        ["high", "low", "critical"].includes((test.status || "").toLowerCase())
+      ).length || 0;
+
+      const existing = groups.get(label);
+      if (existing) {
+        existing.reports.push(report);
+        existing.totalTests += testCount;
+        existing.abnormalTests += abnormalCount;
+        if (parsedDate && parsedDate.getTime() > existing.sortKey) {
+          existing.sortKey = parsedDate.getTime();
+        }
+      } else {
+        groups.set(label, {
+          label,
+          reports: [report],
+          sortKey: parsedDate ? parsedDate.getTime() : 0,
+          totalTests: testCount,
+          abnormalTests: abnormalCount,
+        });
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => b.sortKey - a.sortKey);
+  }, [labReports]);
+
+  const appointmentBuckets = useMemo(() => {
+    if (!appointments.length) {
+      return { upcoming: [] as Appointment[], past: [] as Appointment[] };
+    }
+
+    const reference = new Date();
+    const upcoming: Appointment[] = [];
+    const past: Appointment[] = [];
+
+    appointments.forEach((appointment) => {
+      const appointmentDate = new Date(appointment.date);
+      const isUpcoming =
+        ["scheduled", "checked-in", "in-progress"].includes(
+          appointment.status
+        ) || appointmentDate.getTime() >= reference.getTime();
+
+      if (isUpcoming) {
+        upcoming.push(appointment);
+      } else {
+        past.push(appointment);
+      }
+    });
+
+    upcoming.sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    past.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+
+    return { upcoming, past };
+  }, [appointments]);
+
+  const upcomingAppointments = appointmentBuckets.upcoming;
+  const pastAppointments = appointmentBuckets.past;
+
+  const insuranceClaims = Array.isArray(displayPatient.insuranceClaims)
+    ? displayPatient.insuranceClaims
+    : [];
+
+  const insurancePlanName =
+    displayPatient.insurancePlanName || displayPatient.insuranceProvider || "Insurance Plan";
+
+  const coverageStats = [
+    {
+      label: "Provider",
+      value: displayPatient.insuranceProvider || "Not provided",
+    },
+    {
+      label: "Policy Number",
+      value: displayPatient.insuranceNumber || "Not provided",
+    },
+    {
+      label: "Total Coverage",
+      value: displayPatient.insuranceCoverageLimit || "₹—",
+    },
+    {
+      label: "Used",
+      value: displayPatient.insuranceCoverageUsed || "₹—",
+    },
+  ];
+
+  const insuranceBenefits = [
+    {
+      title: "Hospitalization",
+      description: "Covers pre and post hospitalization expenses",
+      icon: HospitalIcon,
+    },
+    {
+      title: "Surgical Procedures",
+      description: "Broad coverage for major surgical procedures",
+      icon: ShieldCheckIcon,
+    },
+    {
+      title: "Medical Examination",
+      description: "Diagnostics, pathology, and radiology services",
+      icon: ClipboardListIcon,
+    },
+    {
+      title: "Medications",
+      description: "Covers medicines and consumables during visit",
+      icon: PillIcon,
+    },
+    {
+      title: "Pre-existing Conditions",
+      description: "Coverage begins from day one if plan allows",
+      icon: HeartPulseIcon,
+    },
+    {
+      title: "Outpatient Services",
+      description: "Consultations not covered under standard plan",
+      icon: ActivityIcon,
+    },
+  ];
 
   // Helper function to get vital status
   const getVitalStatus = (type: string, value: string | number | undefined): { status: string; color: string } => {
@@ -864,6 +1148,81 @@ export function PatientOverview() {
     }
   };
 
+  const generateTempId = () =>
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  const formatDisplayDate = (value?: string, fallback = "Not recorded") => {
+    if (!value) return fallback;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  const normalizeLabTests = (tests: LabTest[] = []): LabReportData["tests"] =>
+    tests.map((test) => ({
+      name: test.name || "Test Result",
+      result: test.result || "—",
+      unit: test.unit || "—",
+      normalRange: test.normalRange || "—",
+      status: (test.status as LabTestStatus) || "pending",
+      flag: test.flag,
+    }));
+
+  const getLabStatusBadgeClasses = (status?: LabTestStatus) => {
+    switch (status) {
+      case "normal":
+        return "bg-emerald-50 text-emerald-700 border-emerald-100";
+      case "high":
+        return "bg-orange-50 text-orange-700 border-orange-100";
+      case "low":
+        return "bg-blue-50 text-blue-700 border-blue-100";
+      case "critical":
+        return "bg-red-50 text-red-700 border-red-100";
+      default:
+        return "bg-gray-50 text-gray-600 border-gray-200";
+    }
+  };
+
+  const mapReportToViewerData = (report: LabReport): LabReportData => {
+    const parsedAge = parseInt(displayPatient.age ?? "", 10);
+    return {
+      reportId: report.reportId || report._id,
+      patientName: displayPatient.fullName,
+      patientId: displayPatient.patientId,
+      age: Number.isNaN(parsedAge) ? 0 : parsedAge,
+      gender: displayPatient.gender || "—",
+      reportType: report.reportType,
+      category: report.category || "Comprehensive Panel",
+      orderedBy: report.orderedBy || report.reviewedBy || report.doctorId || "Attending Physician",
+      collectedDate: formatDisplayDate(report.collectedDate),
+      reportedDate: formatDisplayDate(report.reportedDate),
+      labName: report.labName || "In-house Lab",
+      tests: normalizeLabTests(report.tests),
+      clinicalNotes: report.notes,
+      interpretation: report.interpretation,
+    };
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Loading Patient Data</h2>
+          <p className="text-muted-foreground">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Lab Report Viewer Dialog */}
@@ -880,6 +1239,11 @@ export function PatientOverview() {
             Basic patient information is displayed. Additional clinical records
             will appear once they are recorded.
           </p>
+        </div>
+      )}
+      {profileError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {profileError}
         </div>
       )}
 
@@ -907,27 +1271,29 @@ export function PatientOverview() {
 
             <div className="flex-1 space-y-3">
               <div className="flex flex-col md:flex-row md:items-center gap-3">
-                {isEditMode ? (
+                {isOverviewEditing ? (
                   <div className="flex flex-col md:flex-row w-full gap-3">
                     <Input
                       placeholder="First name"
                       value={editForm.firstName}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markSectionDirty("overview");
                         setEditForm((prev) => ({
                           ...prev,
                           firstName: event.target.value,
-                        }))
-                      }
+                        }));
+                      }}
                     />
                     <Input
                       placeholder="Last name"
                       value={editForm.lastName}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markSectionDirty("overview");
                         setEditForm((prev) => ({
                           ...prev,
                           lastName: event.target.value,
-                        }))
-                      }
+                        }));
+                      }}
                     />
                   </div>
                 ) : (
@@ -936,15 +1302,16 @@ export function PatientOverview() {
                 </h1>
                 )}
                 <div className="flex items-center gap-2">
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <Select
                       value={editForm.presentInClinic ? "in" : "remote"}
-                      onValueChange={(value) =>
+                      onValueChange={(value) => {
+                        markSectionDirty("overview");
                         setEditForm((prev) => ({
                           ...prev,
                           presentInClinic: value === "in",
-                        }))
-                      }
+                        }));
+                      }}
                     >
                       <SelectTrigger className="w-40">
                         <SelectValue placeholder="Clinic status" />
@@ -971,7 +1338,7 @@ export function PatientOverview() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 text-sm leading-relaxed">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <UserIcon className="w-4 h-4" />
 
@@ -980,23 +1347,25 @@ export function PatientOverview() {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <CalendarIcon className="w-4 h-4" />
 
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <div className="flex flex-col w-full">
                       <Input
                         type="date"
                         value={editForm.dateOfBirth}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          markSectionDirty("overview");
                           setEditForm((prev) => ({
                             ...prev,
                             dateOfBirth: event.target.value,
-                          }))
-                        }
+                          }));
+                        }}
                       />
                       <Select
                         value={editForm.gender || ""}
-                        onValueChange={(value) =>
-                          setEditForm((prev) => ({ ...prev, gender: value }))
-                        }
+                        onValueChange={(value) => {
+                          markSectionDirty("overview");
+                          setEditForm((prev) => ({ ...prev, gender: value }));
+                        }}
                       >
                         <SelectTrigger className="mt-2">
                           <SelectValue placeholder="Gender" />
@@ -1019,12 +1388,13 @@ export function PatientOverview() {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <ActivityIcon className="w-4 h-4" />
 
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <Select
                       value={editForm.bloodGroup}
-                      onValueChange={(value) =>
-                        setEditForm((prev) => ({ ...prev, bloodGroup: value }))
-                      }
+                      onValueChange={(value) => {
+                        markSectionDirty("overview");
+                        setEditForm((prev) => ({ ...prev, bloodGroup: value }));
+                      }}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Blood group" />
@@ -1048,15 +1418,16 @@ export function PatientOverview() {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <PhoneIcon className="w-4 h-4" />
 
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <Input
                       value={editForm.phone}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markSectionDirty("overview");
                         setEditForm((prev) => ({
                           ...prev,
                           phone: event.target.value,
-                        }))
-                      }
+                        }));
+                      }}
                     />
                   ) : (
                   <span>{displayPatient.phone || "Not provided"}</span>
@@ -1065,16 +1436,17 @@ export function PatientOverview() {
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MailIcon className="w-4 h-4" />
 
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <Input
                       type="email"
                       value={editForm.email}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        markSectionDirty("overview");
                         setEditForm((prev) => ({
                           ...prev,
                           email: event.target.value,
-                        }))
-                      }
+                        }));
+                      }}
                     />
                   ) : (
                   <span>{displayPatient.email || "Not provided"}</span>
@@ -1090,40 +1462,52 @@ export function PatientOverview() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Button className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white">
+            <div className="flex flex-col gap-2 items-start">
+              <Button
+                size="sm"
+                className="px-4 bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
+              >
                 <CalendarIcon className="w-4 h-4 mr-2" />
                 Schedule Appointment
               </Button>
-              <Button
-                variant="outline"
-                className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-              >
-                <FileTextIcon className="w-4 h-4 mr-2" />
-                View Records
-              </Button>
               {canEditPatientProfile && (
-                <Button
-                  variant="outline"
-                  className={
-                    isEditMode
-                      ? "border-red-200 text-red-600 hover:bg-red-50"
-                      : "border-[#24B173]/30 text-[#24B173] hover:bg-[#24B173]/10"
-                  }
-                  onClick={() => {
-                    setProfileError(null);
-                    if (isEditMode) {
-                      setEditForm(mapPatientToFormState(patient));
-                      setIsEditMode(false);
-                    } else {
-                      setIsEditMode(true);
-                    }
-                  }}
-                  disabled={isSavingProfile}
-                >
-                  <FileTextIcon className="w-4 h-4 mr-2" />
-                  {isEditMode ? "Exit Edit Mode" : "Edit Profile"}
-                </Button>
+                isOverviewEditing ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        variant="outline"
+                        className="border-red-200 text-red-600 hover:bg-red-50"
+                        onClick={() => cancelSectionEditing("overview")}
+                        disabled={isSavingSection === "overview"}
+                      >
+                        Cancel Overview Edit
+                      </Button>
+                      <Button
+                        className="bg-[#24B173] hover:bg-[#1A8F58] text-white"
+                        onClick={() => handleSaveSection("overview")}
+                        disabled={!dirtySections.overview || isSavingSection === "overview"}
+                      >
+                        {isSavingSection === "overview" ? (
+                          <>
+                            <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          "Save Overview"
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    className="border-[#24B173]/30 text-[#24B173] hover:bg-[#24B173]/10"
+                    onClick={() => beginSectionEditing("overview")}
+                  >
+                    <FileTextIcon className="w-4 h-4 mr-2" />
+                    Edit Overview
+                  </Button>
+                )
               )}
             </div>
           </div>
@@ -1132,13 +1516,28 @@ export function PatientOverview() {
 
       {/* Main Content */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="history">Medical History</TabsTrigger>
-          <TabsTrigger value="medications">Medications</TabsTrigger>
-          <TabsTrigger value="lab-results">Lab Results</TabsTrigger>
-          <TabsTrigger value="notes">Clinical Notes</TabsTrigger>
-          <TabsTrigger value="appointments">Appointments</TabsTrigger>
+        <TabsList className="w-full overflow-x-auto rounded-xl bg-muted/40 p-1 flex flex-wrap gap-1">
+          <TabsTrigger value="overview" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Medical History
+          </TabsTrigger>
+          <TabsTrigger value="medications" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Medications
+          </TabsTrigger>
+          <TabsTrigger value="lab-results" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Lab Results
+          </TabsTrigger>
+          <TabsTrigger value="notes" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Clinical Notes
+          </TabsTrigger>
+          <TabsTrigger value="appointments" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Appointments
+          </TabsTrigger>
+          <TabsTrigger value="insurance" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
+            Insurance
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6 mt-6">
@@ -1179,19 +1578,20 @@ export function PatientOverview() {
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          {isEditMode ? (
+                          {isOverviewEditing ? (
                             <Input
                               placeholder="120/80"
                               value={editForm.vitals.bloodPressure}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                markSectionDirty("overview");
                                 setEditForm((prev) => ({
                                   ...prev,
                                   vitals: {
                                     ...prev.vitals,
                                     bloodPressure: event.target.value,
                                   },
-                                }))
-                              }
+                                }));
+                              }}
                             />
                           ) : (
                           <p className="text-base font-semibold text-foreground mb-0.5">
@@ -1219,7 +1619,7 @@ export function PatientOverview() {
                             );
                           })()}
                         </div>
-                        {!isEditMode && activeVitals.bloodPressure && (
+                        {!isOverviewEditing && activeVitals.bloodPressure && (
                           <div className="mt-1.5">
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div 
@@ -1254,19 +1654,20 @@ export function PatientOverview() {
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          {isEditMode ? (
+                          {isOverviewEditing ? (
                             <Input
                               placeholder="72"
                               value={editForm.vitals.heartRate}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                markSectionDirty("overview");
                                 setEditForm((prev) => ({
                                   ...prev,
                                   vitals: {
                                     ...prev.vitals,
                                     heartRate: event.target.value,
                                   },
-                                }))
-                              }
+                                }));
+                              }}
                             />
                           ) : (
                           <p className="text-base font-semibold text-foreground mb-0.5">
@@ -1294,7 +1695,7 @@ export function PatientOverview() {
                             );
                           })()}
                         </div>
-                        {!isEditMode && activeVitals.heartRate && (
+                        {!isOverviewEditing && activeVitals.heartRate && (
                           <div className="mt-1.5">
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div 
@@ -1329,19 +1730,20 @@ export function PatientOverview() {
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          {isEditMode ? (
+                          {isOverviewEditing ? (
                             <Input
                               placeholder="98.6"
                               value={editForm.vitals.temperature}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                markSectionDirty("overview");
                                 setEditForm((prev) => ({
                                   ...prev,
                                   vitals: {
                                     ...prev.vitals,
                                     temperature: event.target.value,
                                   },
-                                }))
-                              }
+                                }));
+                              }}
                             />
                           ) : (
                           <p className="text-base font-semibold text-foreground mb-0.5">
@@ -1369,7 +1771,7 @@ export function PatientOverview() {
                             );
                           })()}
                         </div>
-                        {!isEditMode && activeVitals.temperature && (
+                        {!isOverviewEditing && activeVitals.temperature && (
                           <div className="mt-1.5">
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div 
@@ -1404,19 +1806,20 @@ export function PatientOverview() {
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          {isEditMode ? (
+                          {isOverviewEditing ? (
                             <Input
                               placeholder="165"
                               value={editForm.vitals.weight}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                markSectionDirty("overview");
                                 setEditForm((prev) => ({
                                   ...prev,
                                   vitals: {
                                     ...prev.vitals,
                                     weight: event.target.value,
                                   },
-                                }))
-                              }
+                                }));
+                              }}
                             />
                           ) : (
                           <p className="text-base font-semibold text-foreground mb-0.5">
@@ -1467,19 +1870,20 @@ export function PatientOverview() {
                         </div>
                         <div className="text-center">
                           <p className="text-[10px] text-muted-foreground mb-0.5">Oxygen Saturation</p>
-                          {isEditMode ? (
+                          {isOverviewEditing ? (
                             <Input
                               className="text-center"
                               value={editForm.vitals.oxygenSaturation}
-                              onChange={(event) =>
+                              onChange={(event) => {
+                                markSectionDirty("overview");
                                 setEditForm((prev) => ({
                                   ...prev,
                                   vitals: {
                                     ...prev.vitals,
                                     oxygenSaturation: event.target.value,
                                   },
-                                }))
-                              }
+                                }));
+                              }}
                             />
                           ) : (
                           <p className="text-xs font-semibold text-foreground">
@@ -1539,18 +1943,19 @@ export function PatientOverview() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <div className="space-y-2">
                       <Textarea
                         rows={4}
                         placeholder="Peanuts, Penicillin"
                         value={editForm.allergies}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          markSectionDirty("overview");
                           setEditForm((prev) => ({
                             ...prev,
                             allergies: event.target.value,
-                          }))
-                        }
+                          }));
+                        }}
                       />
                       <p className="text-xs text-muted-foreground">
                         Separate multiple allergies with commas.
@@ -1585,18 +1990,19 @@ export function PatientOverview() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {isEditMode ? (
+                  {isOverviewEditing ? (
                     <div className="space-y-3">
                       <div>
                         <Label className="text-xs text-muted-foreground">Condition</Label>
                         <Input
                           value={editForm.condition}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            markSectionDirty("overview");
                             setEditForm((prev) => ({
                               ...prev,
                               condition: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </div>
                       <div>
@@ -1604,12 +2010,13 @@ export function PatientOverview() {
                         <Textarea
                           rows={3}
                           value={editForm.carePlanSummary}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            markSectionDirty("overview");
                             setEditForm((prev) => ({
                               ...prev,
                               carePlanSummary: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </div>
                       <div>
@@ -1617,12 +2024,13 @@ export function PatientOverview() {
                         <Textarea
                           rows={3}
                           value={editForm.followUpPlan}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            markSectionDirty("overview");
                             setEditForm((prev) => ({
                               ...prev,
                               followUpPlan: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </div>
                       <div>
@@ -1630,12 +2038,13 @@ export function PatientOverview() {
                         <Textarea
                           rows={2}
                           value={editForm.chiefComplaint}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            markSectionDirty("overview");
                             setEditForm((prev) => ({
                               ...prev,
                               chiefComplaint: event.target.value,
-                            }))
-                          }
+                            }));
+                          }}
                         />
                       </div>
                     </div>
@@ -1675,64 +2084,193 @@ export function PatientOverview() {
           </div>
         </TabsContent>
 
-        <TabsContent value="history" className="space-y-4 mt-6">
-          <Card className="border-border shadow-sm">
-            <CardHeader>
-              <CardTitle>Medical History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isEditMode ? (
-                <div className="space-y-2">
+        <TabsContent value="history" className="mt-6">
+          <div className="rounded-2xl border border-border/70 bg-white shadow-sm dark:bg-muted/30">
+            <div className="flex flex-col gap-4 border-b border-border/60 px-6 py-5 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Medical History
+                </p>
+                <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold text-foreground">
+                  <ClipboardListIcon className="h-5 w-5 text-[#00C4B3]" />
+                  Chronic & acute conditions on record
+                </h3>
+              </div>
+              {canEditPatientProfile && (
+                isHistoryEditing ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-red-200 text-red-600 hover:bg-red-50"
+                      onClick={() => cancelSectionEditing("history")}
+                      disabled={isSavingSection === "history"}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#00C4B3] text-white hover:bg-[#009C8F]"
+                      onClick={() => handleSaveSection("history")}
+                      disabled={!dirtySections.history || isSavingSection === "history"}
+                    >
+                      {isSavingSection === "history" ? (
+                        <>
+                          <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-[#00C4B3]/40 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                    onClick={() => beginSectionEditing("history")}
+                  >
+                    <FileTextIcon className="mr-2 h-4 w-4" />
+                    Edit History
+                  </Button>
+                )
+              )}
+            </div>
+
+            <div className="px-6 py-5">
+              {isHistoryEditing ? (
+                <div className="space-y-3">
                   <Textarea
                     rows={6}
                     value={editForm.medicalHistory}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      markSectionDirty("history");
                       setEditForm((prev) => ({
                         ...prev,
                         medicalHistory: event.target.value,
-                      }))
-                    }
-                    placeholder="Diabetes, Hypertension"
+                      }));
+                    }}
+                    placeholder="Hypertension (diagnosed 2021), Type 2 Diabetes (managed with Metformin)..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Separate history entries with commas. Detailed updates are logged automatically.
+                    List each diagnosis or condition on a new line or separate with commas. Additional clinical notes can be captured from the doctor workstation.
                   </p>
                 </div>
               ) : medicalHistoryEntries.length > 0 ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {medicalHistoryEntries.map((entry, index) => (
                     <div
-                      key={index}
-                      className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
+                      key={`${entry.title}-${index}`}
+                      className="rounded-xl border border-border/60 bg-gradient-to-br from-white via-white to-[#F4FFFD] p-5 shadow-sm transition-all hover:border-[#00C4B3]/40 hover:shadow-md dark:from-muted dark:via-muted dark:to-muted/70"
                     >
-                      <p className="font-semibold text-foreground">
-                        {entry}
-                      </p>
+                      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="flex flex-1 items-start gap-4">
+                          <div className="mt-1 flex h-12 w-12 items-center justify-center rounded-full bg-[#00C4B3]/15 text-[#00C4B3]">
+                            <ClipboardListIcon className="h-5 w-5" />
+                          </div>
+                          <div className="space-y-1">
+                            <h4 className="text-lg font-semibold text-foreground">
+                              {entry.title}
+                            </h4>
+                            {entry.diagnosis && (
+                              <p className="text-sm text-muted-foreground">
+                                {entry.diagnosis}
+                              </p>
+                            )}
+                            {entry.notes && (
+                              <p className="text-sm leading-relaxed text-muted-foreground">
+                                {entry.notes}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-start gap-2 text-sm text-muted-foreground md:items-end">
+                          {entry.recordedOn && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                              <CalendarIcon className="h-3.5 w-3.5" />
+                              {formatDisplayDate(entry.recordedOn, "—")}
+                            </span>
+                          )}
+                          {entry.treatedBy && (
+                            <span className="flex items-center gap-1">
+                              <UserIcon className="h-4 w-4" />
+                              Treated by {entry.treatedBy}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <ClipboardListIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>No medical history recorded</p>
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 py-12 text-center text-muted-foreground">
+                  <ClipboardListIcon className="h-12 w-12 opacity-40" />
+                  <p className="mt-3 text-sm font-medium">
+                    No medical history recorded for this patient yet.
+                  </p>
+                  <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                    Record diagnoses and chronic conditions during consultation to have them appear here automatically.
+                  </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="medications" className="space-y-4 mt-6">
           <Card className="border-border shadow-sm">
-            <CardHeader className="flex flex-col gap-2">
-              <CardTitle className="flex items-center gap-2">
-                <PillIcon className="w-5 h-5 text-[#00C4B3]" />
-                Active Medications
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {isEditMode
-                  ? "Existing prescriptions are locked to avoid accidental edits. Add corrections below."
-                  : "Current medications on record for this patient."}
-              </p>
+            <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <PillIcon className="w-5 h-5 text-[#00C4B3]" />
+                  Active Medications
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {isMedicationsEditing
+                    ? "Existing prescriptions are shown below. Use the editor to add corrections."
+                    : "Current medications on record for this patient."}
+                </p>
+              </div>
+              {canEditPatientProfile && (
+                isMedicationsEditing ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => cancelSectionEditing("medications")}
+                      disabled={isSavingSection === "medications"}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#00C4B3] text-white hover:bg-[#009C8F]"
+                      onClick={() => handleSaveSection("medications")}
+                      disabled={!dirtySections.medications || isSavingSection === "medications"}
+                    >
+                      {isSavingSection === "medications" ? (
+                        <>
+                          <Loader2Icon className="mr-1 h-3.5 w-3.5 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        "Save"
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-[#00C4B3]/30 text-[#00C4B3]"
+                    onClick={() => beginSectionEditing("medications")}
+                  >
+                    <FileTextIcon className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                )
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               {currentMedicationsDisplay.length === 0 ? (
@@ -1802,7 +2340,7 @@ export function PatientOverview() {
             </CardContent>
           </Card>
 
-          {isEditMode && (
+          {isMedicationsEditing && (
             <Card className="border-border border-dashed">
               <CardHeader className="flex flex-col gap-1">
                 <CardTitle className="text-sm font-semibold">Add New Medications</CardTitle>
@@ -2027,11 +2565,6 @@ export function PatientOverview() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {isEditMode && (
-                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Lab reports are managed by the diagnostics workflow. Please use the lab module to add or modify results.
-                </div>
-              )}
               {labReports.length === 0 ? (
                 <div className="text-center py-8">
                   <FlaskConicalIcon className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -2042,76 +2575,127 @@ export function PatientOverview() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {labReports.map((report, index) => (
+                  {groupedLabReports.map((group) => (
                     <div
-                      key={report._id}
-                      className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
+                      key={group.label}
+                      className="rounded-2xl border border-border bg-card/40 p-4 shadow-sm"
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <h4 className="font-semibold text-foreground">
-                            {report.testName}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {report.reportType}
+                          <p className="text-base font-semibold text-foreground">
+                            {group.label}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Ordered: {new Date(report.orderedAt).toLocaleDateString()}
-                            {report.completedAt && (
-                              <> • Completed: {new Date(report.completedAt).toLocaleDateString()}</>
-                            )}
+                          <p className="text-xs text-muted-foreground">
+                            Laboratory results captured this month
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={
-                              report.status === "completed"
-                                ? "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
-                                : report.status === "pending"
-                                ? "bg-[#F7B731]/10 text-[#F7B731] border-[#F7B731]/20"
-                                : "bg-gray-100 text-gray-700 border-gray-200"
-                            }
-                          >
-                            {report.status}
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline" className="bg-muted text-foreground">
+                            {group.totalTests} {group.totalTests === 1 ? "test" : "tests"}
                           </Badge>
-                          {report.status === "completed" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-                              onClick={() => handleViewLabReport(index)}
-                            >
-                              <FileTextIcon className="w-4 h-4 mr-2" />
-                              View
-                            </Button>
+                          {group.abnormalTests > 0 && (
+                            <Badge className="bg-red-100 text-red-700 border-red-200">
+                              {group.abnormalTests} abnormal
+                            </Badge>
                           )}
                         </div>
                       </div>
-                      {report.status === "completed" && (
-                        <div className="mt-3 p-3 bg-muted/30 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                Result: {report.result} {report.unit}
-                              </p>
-                              {report.referenceRange && (
-                                <p className="text-xs text-muted-foreground">
-                                  Reference: {report.referenceRange}
+                      <div className="mt-4 space-y-3">
+                        {group.reports.map((report) => (
+                          <div
+                            key={report._id}
+                            className="rounded-lg border border-border/60 bg-background/80 p-4 hover:shadow-md transition-all"
+                          >
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                              <div>
+                                <p className="font-semibold text-foreground">
+                                  {report.reportType}
                                 </p>
-                              )}
+                                {report.category && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {report.category}
+                                  </p>
+                                )}
+                                <p className="text-[11px] text-muted-foreground mt-1">
+                                  Collected: {formatDisplayDate(report.collectedDate)}
+                                  {" • "}
+                                  Reported: {formatDisplayDate(report.reportedDate)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    report.isReviewed
+                                      ? "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
+                                      : "bg-[#F7B731]/10 text-[#F7B731] border-[#F7B731]/20"
+                                  }
+                                >
+                                  {report.isReviewed ? "Completed" : "Pending"}
+                                </Badge>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                                  onClick={() => handleViewLabReport(report)}
+                                >
+                                  <FileTextIcon className="w-4 h-4 mr-2" />
+                                  View
+                                </Button>
+                              </div>
                             </div>
-                            <Badge
-                              variant="outline"
-                              className="bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
-                            >
-                              Normal
-                            </Badge>
+                            <div className="mt-3 space-y-2">
+                              {(report.tests || []).map((test, idx) => (
+                                <div
+                                  key={`${report._id}-test-${idx}`}
+                                  className="rounded-md border border-dashed border-border/60 p-3 space-y-2"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div>
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {test.name}
+                                      </p>
+                                      {test.flag && (
+                                        <p className="text-[11px] text-muted-foreground">
+                                          {test.flag}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <Badge
+                                      variant="outline"
+                                      className={getLabStatusBadgeClasses(test.status as LabTestStatus)}
+                                    >
+                                      {(test.status || "pending").toUpperCase()}
+                                    </Badge>
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                    <div className="bg-muted/30 p-3 rounded">
+                                      <p className="text-muted-foreground mb-1">Result</p>
+                                      <p className="font-semibold text-foreground">
+                                        {test.result || "—"}{" "}
+                                        <span className="text-xs text-muted-foreground font-normal">
+                                          {test.unit}
+                                        </span>
+                                      </p>
+                                    </div>
+                                    <div className="bg-muted/30 p-3 rounded">
+                                      <p className="text-muted-foreground mb-1">Normal Range</p>
+                                      <p className="font-medium">{test.normalRange || "—"}</p>
+                                    </div>
+                                    <div className="bg-muted/30 p-3 rounded">
+                                      <p className="text-muted-foreground mb-1">Unit</p>
+                                      <p className="font-medium">{test.unit || "—"}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-3">
+                              <span>Ordered by: {report.orderedBy || "Physician"}</span>
+                              {report.labName && <span>Lab: {report.labName}</span>}
+                            </div>
                           </div>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground mt-3">
-                        <span>Ordered by: {report.doctorName || "Doctor"}</span>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -2130,11 +2714,6 @@ export function PatientOverview() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {isEditMode && (
-                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Clinical notes are captured from consultation sessions. Use the consultation or notes module to edit individual entries.
-                </div>
-              )}
               {clinicalNotes.length > 0 ? (
                 <div className="space-y-4">
                   {clinicalNotes.map((note) => (
@@ -2190,36 +2769,42 @@ export function PatientOverview() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="appointments" className="space-y-4 mt-6">
+        <TabsContent value="appointments" className="space-y-6 mt-6">
           <Card className="border-border shadow-sm">
-            <CardHeader>
-              <CardTitle>Appointment History</CardTitle>
+            <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <CalendarIcon className="w-5 h-5 text-[#00C4B3]" />
+                Upcoming Appointments
+              </CardTitle>
+              <Badge variant="outline" className="text-xs">
+                {upcomingAppointments.length} scheduled
+              </Badge>
             </CardHeader>
             <CardContent>
-              {isEditMode && (
-                <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Appointment timelines are edited from the appointments workspace. Use the scheduling tools to change or cancel visits.
-                </div>
-              )}
-              {appointments.length > 0 ? (
-                <div className="space-y-4">
-                  {appointments.map((appointment) => (
+              {upcomingAppointments.length > 0 ? (
+                <div className="space-y-3">
+                  {upcomingAppointments.map((appointment) => (
                     <div
-                      key={appointment._id}
-                      className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
+                      key={`upcoming-${appointment._id}`}
+                      className="rounded-xl border border-border/60 bg-card px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
                     >
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h4 className="font-semibold text-foreground">
-                            {appointment.type || "Consultation"}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {appointment.doctorName || "Doctor"}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(appointment.date).toLocaleDateString()} at {appointment.time}
-                          </p>
-                        </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {appointment.type || "Consultation"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {appointment.doctorName || "Doctor"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(appointment.date).toLocaleDateString()} • {appointment.time}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {appointment.reason && (
+                          <Badge variant="outline" className="text-xs">
+                            {appointment.reason}
+                          </Badge>
+                        )}
                         <Badge
                           variant="outline"
                           className={
@@ -2227,21 +2812,11 @@ export function PatientOverview() {
                               ? "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
                               : appointment.status === "scheduled"
                               ? "bg-[#00C4B3]/10 text-[#00C4B3] border-[#00C4B3]/20"
-                              : appointment.status === "in-progress"
-                              ? "bg-[#F7B731]/10 text-[#F7B731] border-[#F7B731]/20"
-                              : "bg-gray-100 text-gray-700 border-gray-200"
+                              : "bg-[#F7B731]/10 text-[#F7B731] border-[#F7B731]/20"
                           }
                         >
                           {appointment.status}
                         </Badge>
-                      </div>
-                      {appointment.reason && (
-                        <p className="text-sm text-muted-foreground">
-                          {appointment.reason}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground mt-3">
-                        <span>Appointment ID: {appointment.appointmentId}</span>
                       </div>
                     </div>
                   ))}
@@ -2249,46 +2824,219 @@ export function PatientOverview() {
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
                   <CalendarIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>No appointments found</p>
+                  <p>No upcoming appointments</p>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-border shadow-sm">
+            <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <HistoryIcon className="w-5 h-5 text-muted-foreground" />
+                Past Appointments
+              </CardTitle>
+              <Badge variant="outline" className="text-xs">
+                {pastAppointments.length} recorded
+              </Badge>
+            </CardHeader>
+            <CardContent>
+              {pastAppointments.length > 0 ? (
+                <div className="space-y-3">
+                  {pastAppointments.map((appointment) => (
+                    <div
+                      key={`past-${appointment._id}`}
+                      className="rounded-xl border border-dashed border-border/60 bg-muted/30 px-4 py-3"
+                    >
+                      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">
+                            {appointment.type || "Consultation"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {appointment.doctorName || "Doctor"}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {new Date(appointment.date).toLocaleDateString()} • {appointment.time}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline" className="bg-muted text-xs text-muted-foreground capitalize">
+                            {appointment.status}
+                          </Badge>
+                          {appointment.reason && (
+                            <Badge variant="outline" className="text-xs">
+                              {appointment.reason}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <HistoryIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p>No past appointments</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+        </TabsContent>
+
+        <TabsContent value="insurance" className="space-y-6 mt-6">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="flex flex-col gap-2">
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheckIcon className="w-5 h-5 text-[#00C4B3]" />
+                Insurance Overview
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Connected insurance profile for this patient. Details are pulled from the patient record.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="rounded-2xl bg-gradient-to-r from-[#00C4B3] to-[#0EA47A] text-white p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm uppercase tracking-wide opacity-80">
+                    {displayPatient.insuranceProvider || "Insurance Provider"}
+                  </p>
+                  <p className="text-2xl font-semibold">{insurancePlanName}</p>
+                  <p className="text-sm opacity-90 mt-1">
+                    Member ID: {displayPatient.insuranceNumber || "Not provided"}
+                  </p>
+                </div>
+                <div className="text-right space-y-2">
+                  <Badge className="bg-white/20 text-white border-white/40">
+                    {displayPatient.insuranceProvider ? "Active" : "Not Available"}
+                  </Badge>
+                  <p className="text-xs opacity-80">
+                    Last updated {new Date().toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-4">
+                {coverageStats.map((item) => (
+                  <div key={item.label} className="rounded-lg border border-border/60 bg-muted/30 p-4">
+                    <p className="text-xs text-muted-foreground">{item.label}</p>
+                    <p className="text-sm font-semibold text-foreground mt-1">
+                      {item.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card className="border-border shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet2Icon className="w-5 h-5 text-[#00C4B3]" />
+                  Coverage Benefits
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {insuranceBenefits.map((benefit) => (
+                    <div key={benefit.title} className="rounded-lg border border-border/60 p-3">
+                      <div className="flex items-center gap-2">
+                        <benefit.icon className="w-4 h-4 text-[#00C4B3]" />
+                        <p className="font-semibold text-sm">{benefit.title}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {benefit.description}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCardIcon className="w-5 h-5 text-[#00C4B3]" />
+                  Claims History
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {insuranceClaims.length > 0 ? (
+                  <div className="space-y-3">
+                    {insuranceClaims.map((claim, index) => (
+                      <div key={claim.claimId || index} className="rounded-lg border border-border/60 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold">
+                              Claim {claim.claimId || `#${index + 1}`}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {claim.date
+                                ? new Date(claim.date).toLocaleDateString()
+                                : "Date not available"}
+                            </p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={
+                              claim.status === "Approved"
+                                ? "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
+                                : claim.status === "Pending"
+                                ? "bg-[#F7B731]/10 text-[#F7B731] border-[#F7B731]/20"
+                                : "bg-gray-100 text-gray-700 border-gray-200"
+                            }
+                          >
+                            {claim.status || "Unknown"}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {claim.description || "No description provided"}
+                        </p>
+                        {claim.amount && (
+                          <p className="mt-1 text-sm font-semibold text-foreground">
+                            Amount: {claim.amount}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-muted-foreground text-sm">
+                    No claims recorded for this patient.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="border-border shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <IndianRupeeIcon className="w-5 h-5 text-[#00C4B3]" />
+                Important Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                {displayPatient.insuranceNotes ||
+                  "Insurance verification is handled by the receptionist team. Please ensure policy details are up to date before processing claims."}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                For assistance, contact the insurance desk or email{" "}
+                <a
+                  href="mailto:support@alertedai.care"
+                  className="text-[#00C4B3] underline"
+                >
+                  support@alertedai.care
+                </a>
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-      {canEditPatientProfile && isEditMode && (
-        <div className="sticky bottom-4 z-30">
-          <div className="rounded-xl border border-border bg-background/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            {profileError && (
-              <p className="mb-2 text-sm text-red-600">{profileError}</p>
-            )}
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              <Button
-                variant="outline"
-                onClick={handleCancelEditing}
-                disabled={isSavingProfile}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveProfile}
-                disabled={isSavingProfile}
-                className="bg-[#00C4B3] text-white hover:bg-[#009C8F]"
-              >
-                {isSavingProfile ? (
-                  <>
-                    <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Changes"
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -203,11 +203,11 @@ async def get_current_doctor_stats(
             "clinicId": clinic_id
         })
         
-        # Get completed appointments today
+        # Get completed appointments today (fully checked out)
         completed_today = await get_appointments_collection(db).count_documents({
             "doctorId": doctor_id,
             "date": today,
-            "status": "completed",
+            "status": {"$in": ["completed", "checkout_completed"]},
             "clinicId": clinic_id
         })
         
@@ -249,6 +249,95 @@ async def get_current_doctor_stats(
         return error_response(
             message=f"Failed to fetch doctor statistics: {str(e)}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@router.get("/me/performance", response_model=dict)
+async def get_doctor_performance_insights(
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Return performance metrics for the currently authenticated doctor."""
+    try:
+        if current_user.get("role") != "doctor":
+            return error_response(
+                message="Access denied. Doctor role required.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        doctor_id = str(current_user["_id"])
+        clinic_id = current_user.get("clinicId")
+        base_query: Dict[str, Any] = {"doctorId": doctor_id}
+        if clinic_id:
+            base_query["clinicId"] = clinic_id
+
+        appointments_collection = get_appointments_collection(db)
+
+        total_appointments = await appointments_collection.count_documents(base_query)
+        completed_query = base_query.copy()
+        completed_query["status"] = {"$in": ["completed", "checkout_completed"]}
+        total_completed = await appointments_collection.count_documents(completed_query)
+
+        follow_up_count = await appointments_collection.count_documents(
+            {**base_query, "followUpRequired": True}
+        )
+        no_show_count = await appointments_collection.count_documents(
+            {**base_query, "status": "no-show"}
+        )
+
+        avg_duration_minutes = None
+        duration_pipeline = [
+            {
+                "$match": {
+                    **base_query,
+                    "startedAt": {"$ne": None},
+                    "completedAt": {"$ne": None},
+                }
+            },
+            {
+                "$project": {
+                    "durationMinutes": {
+                        "$divide": [
+                            {"$subtract": ["$completedAt", "$startedAt"]},
+                            1000 * 60,
+                        ]
+                    }
+                }
+            },
+            {"$group": {"_id": None, "avgDuration": {"$avg": "$durationMinutes"}}},
+        ]
+
+        duration_cursor = appointments_collection.aggregate(duration_pipeline)
+        duration_result = await duration_cursor.to_list(length=1)
+        if duration_result:
+            avg_duration_minutes = duration_result[0].get("avgDuration")
+
+        follow_up_rate = None
+        no_show_rate = None
+
+        if total_appointments > 0:
+            follow_up_rate = round((follow_up_count / total_appointments) * 100, 1)
+            no_show_rate = round((no_show_count / total_appointments) * 100, 1)
+
+        return success_response(
+            data={
+                "patientSatisfaction": None,
+                "averageConsultationTime": round(avg_duration_minutes, 1)
+                if avg_duration_minutes is not None
+                else None,
+                "followUpRate": follow_up_rate,
+                "noShowRate": no_show_rate,
+                "totalCompleted": total_completed,
+                "totalAppointments": total_appointments,
+                "lastUpdated": datetime.utcnow().isoformat(),
+            },
+            message="Performance insights retrieved successfully.",
+        )
+
+    except Exception as e:
+        return error_response(
+            message=f"Failed to fetch performance insights: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 

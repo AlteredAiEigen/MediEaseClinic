@@ -1,5 +1,4 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   CalendarIcon,
   UsersIcon,
@@ -112,17 +111,9 @@ export function DashboardStatsSection({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total Patients</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-xl font-bold text-foreground">
-                    {totalPatients}
-                  </p>
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                  >
-                    +12%
-                  </Badge>
-                </div>
+                <p className="text-xl font-bold text-foreground">
+                  {totalPatients}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -180,17 +171,9 @@ export function DashboardStatsSection({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Completed Today</p>
-                <div className="flex items-center gap-2">
-                  <p className="text-xl font-bold text-foreground">
-                    {completedToday}
-                  </p>
-                  <Badge
-                    variant="secondary"
-                    className="text-[10px] px-1.5 py-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                  >
-                    +3%
-                  </Badge>
-                </div>
+                <p className="text-xl font-bold text-foreground">
+                  {completedToday}
+                </p>
               </div>
             </div>
           </CardContent>

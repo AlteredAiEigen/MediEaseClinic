@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +108,7 @@ const extractList = <T,>(rawData: any): T[] => {
 };
 
 export function ReceptionistWorkstation() {
+  const navigate = useNavigate();
 const [, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
@@ -452,6 +454,7 @@ const [, setPatients] = useState<Patient[]>([]);
         setAppointmentDoctorId("");
         setAppointmentReason("");
         await fetchData();
+        navigate("/receptionist-patients");
       } else {
         toast({
           title: "Error",

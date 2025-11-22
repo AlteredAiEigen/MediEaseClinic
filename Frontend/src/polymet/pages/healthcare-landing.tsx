@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,17 +21,47 @@ import {
   ShieldCheckIcon,
   ClipboardListIcon,
   BarChart3Icon,
+  Loader2Icon,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { MediEaseLogo } from "@/polymet/components/mediease-logo";
 import { useAuth } from "@/context/auth-context";
 import { FeaturesSection } from "@/polymet/components/features-section";
 import { SolutionsSection } from "@/polymet/components/solutions-section";
 import { SecuritySection } from "@/polymet/components/security-section";
 import { RoadmapSection } from "@/polymet/components/roadmap-section";
-import { PricingSection } from "@/polymet/components/pricing-section";
+import { useToast } from "@/components/ui/use-toast";
+import { post } from "@/lib/api-client";
+
+type LeadFormState = {
+  name: string;
+  email: string;
+  phone: string;
+  query: string;
+};
+
+const emptyLeadForm: LeadFormState = {
+  name: "",
+  email: "",
+  phone: "",
+  query: "",
+};
 
 export function HealthcareLanding() {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [leadForm, setLeadForm] = useState<LeadFormState>(emptyLeadForm);
+  const [isSubmittingLead, setIsSubmittingLead] = useState(false);
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
@@ -54,6 +85,47 @@ export function HealthcareLanding() {
         return "/receptionist-dashboard";
       default:
         return "#";
+    }
+  };
+
+  const handleLeadFieldChange = (field: keyof LeadFormState, value: string) => {
+    setLeadForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleLeadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!leadForm.name.trim() || !leadForm.email.trim() || !leadForm.phone.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please provide your name, email, and phone number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmittingLead(true);
+      await post("/api/leads", {
+        name: leadForm.name.trim(),
+        email: leadForm.email.trim(),
+        phone: leadForm.phone.trim(),
+        query: leadForm.query.trim(),
+      });
+      toast({
+        title: "Thanks for reaching out!",
+        description: "Our team will get back to you shortly.",
+      });
+      setLeadModalOpen(false);
+      setLeadForm(emptyLeadForm);
+    } catch (err) {
+      toast({
+        title: "Unable to send message",
+        description:
+          err instanceof Error ? err.message : "Please try again in a few minutes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingLead(false);
     }
   };
 
@@ -91,12 +163,13 @@ export function HealthcareLanding() {
             >
               Roadmap
             </button>
-            <a
-              href="#pricing"
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors cursor-pointer"
+            <button
+              type="button"
+              onClick={() => setLeadModalOpen(true)}
+              className="text-sm font-medium text-teal-600 hover:text-teal-700 transition-colors"
             >
-              Pricing
-            </a>
+              Get Started
+            </button>
             <Link to="/role-selection">
               <Button
                 variant="ghost"
@@ -1065,8 +1138,6 @@ export function HealthcareLanding() {
       </section>
 
       {/* Pricing Section */}
-      {/* <PricingSection /> */}
-
       {/* Features & Roadmap Section - Keeping original for continuity */}
       <section className="bg-teal-50/30 py-12" style={{ display: "none" }}>
         <div className="container mx-auto px-6">
@@ -1297,6 +1368,7 @@ export function HealthcareLanding() {
               size="lg"
               variant="outline"
               className="border-white text-white hover:bg-white hover:text-teal-600 px-8 py-4 text-lg font-semibold"
+              onClick={() => setLeadModalOpen(true)}
             >
               Get Started
             </Button>
@@ -1344,9 +1416,13 @@ export function HealthcareLanding() {
                   </a>
                 </li>
                 <li>
-                  <a href="#pricing" className="hover:text-teal-400">
-                    Pricing
-                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLeadModalOpen(true)}
+                    className="hover:text-teal-400 text-left w-full"
+                  >
+                    Get Started
+                  </button>
                 </li>
               </ul>
             </div>
@@ -1419,6 +1495,82 @@ export function HealthcareLanding() {
           </div>
         </div>
       </footer>
+
+      <Dialog open={leadModalOpen} onOpenChange={setLeadModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tell us about your clinic</DialogTitle>
+            <DialogDescription>
+              Share your details and our team will reach out to schedule a personalized walkthrough.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLeadSubmit} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="lead-name">Full Name</Label>
+                <Input
+                  id="lead-name"
+                  value={leadForm.name}
+                  onChange={(event) => handleLeadFieldChange("name", event.target.value)}
+                  placeholder="Dr. Aditi Sharma"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="lead-email">Email</Label>
+                <Input
+                  id="lead-email"
+                  type="email"
+                  value={leadForm.email}
+                  onChange={(event) => handleLeadFieldChange("email", event.target.value)}
+                  placeholder="you@clinic.com"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="lead-phone">Phone Number</Label>
+              <Input
+                id="lead-phone"
+                value={leadForm.phone}
+                onChange={(event) => handleLeadFieldChange("phone", event.target.value)}
+                placeholder="+91 98765 43210"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="lead-query">Tell us more</Label>
+              <Textarea
+                id="lead-query"
+                rows={4}
+                value={leadForm.query}
+                onChange={(event) => handleLeadFieldChange("query", event.target.value)}
+                placeholder="Number of providers, current systems, key pain points..."
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLeadModalOpen(false)}
+                disabled={isSubmittingLead}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-teal-500 text-white" disabled={isSubmittingLead}>
+                {isSubmittingLead ? (
+                  <>
+                    <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send"
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

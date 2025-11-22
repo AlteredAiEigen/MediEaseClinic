@@ -38,7 +38,7 @@ interface LabTest {
   flag?: string;
 }
 
-interface LabReportData {
+export interface LabReportData {
   reportId: string;
   patientName: string;
   patientId: string;
