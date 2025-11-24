@@ -16,6 +16,7 @@ from app.models.patient import (
     patient_helper,
     PatientInsights,
     DEFAULT_PATIENT_INSIGHTS,
+    MedicalHistoryEntry,
 )
 from app.utils.security import field_encryption
 
@@ -33,6 +34,40 @@ class PatientService:
         self.db = db
         self.patients_collection = db.patients
     
+    @staticmethod
+    def _normalize_medical_history_payload(value) -> List[Dict[str, str]]:
+        """Normalize incoming medical history payload to the stored structure."""
+        if value is None:
+            return []
+
+        def to_entry(item) -> Optional[Dict[str, str]]:
+            if isinstance(item, MedicalHistoryEntry):
+                data = {k: v for k, v in item.model_dump().items() if v}
+                return data or None
+            if isinstance(item, dict):
+                data: Dict[str, str] = {}
+                for key in ["title", "diagnosis", "treatedBy", "recordedOn", "notes"]:
+                    val = item.get(key)
+                    if isinstance(val, str) and val.strip():
+                        data[key] = val.strip()
+                return data or None
+            if isinstance(item, str):
+                text = item.strip()
+                return {"title": text} if text else None
+            return None
+
+        normalized: List[Dict[str, str]] = []
+        if isinstance(value, list):
+            for entry in value:
+                parsed = to_entry(entry)
+                if parsed:
+                    normalized.append(parsed)
+        else:
+            parsed = to_entry(value)
+            if parsed:
+                normalized.append(parsed)
+        return normalized
+
     async def generate_patient_id(self) -> str:
         """
         Generate unique patient ID (e.g., P001, P002).
@@ -100,6 +135,10 @@ class PatientService:
         patient_dict.setdefault("carePlanSummary", "")
         patient_dict.setdefault("followUpPlan", "")
         patient_dict.setdefault("lastVisit", None)
+        if "medicalHistory" in patient_dict:
+            patient_dict["medicalHistory"] = self._normalize_medical_history_payload(
+                patient_dict.get("medicalHistory")
+            )
         if not patient_dict.get("insights"):
             patient_dict["insights"] = deepcopy(DEFAULT_PATIENT_INSIGHTS)
         else:
@@ -285,6 +324,11 @@ class PatientService:
         
         # Prepare update data
         update_dict = update_data.model_dump(exclude_unset=True)
+
+        if "medicalHistory" in update_dict:
+            update_dict["medicalHistory"] = self._normalize_medical_history_payload(
+                update_dict.get("medicalHistory")
+            )
         
         if not update_dict:
             raise HTTPException(
@@ -358,7 +402,25 @@ class PatientService:
         def normalize_value(field_name: str, value):
             if value is None:
                 return ""
-            if field_name in {"medicalHistory", "allergies"}:
+            if field_name == "medicalHistory":
+                normalized_history = PatientService._normalize_medical_history_payload(value)
+                if not normalized_history:
+                    return ""
+                formatted_entries = []
+                for entry in normalized_history:
+                    parts = [
+                        entry.get("title"),
+                        entry.get("diagnosis"),
+                        entry.get("treatedBy"),
+                        entry.get("recordedOn"),
+                    ]
+                    summary = ", ".join(part for part in parts if part)
+                    notes = entry.get("notes")
+                    if notes:
+                        summary = f"{summary} - {notes}" if summary else notes
+                    formatted_entries.append(summary.strip())
+                return "; ".join(item for item in formatted_entries if item)
+            if field_name == "allergies":
                 if isinstance(value, list):
                     return ", ".join([str(item).strip() for item in value if str(item).strip()])
                 return str(value).strip()

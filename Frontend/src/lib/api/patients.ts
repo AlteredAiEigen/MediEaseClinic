@@ -20,12 +20,22 @@ export interface PatientSummary {
   chiefComplaint?: string | null;
 }
 
+export interface MedicalHistoryRecord {
+  title?: string;
+  diagnosis?: string;
+  treatedBy?: string;
+  recordedOn?: string;
+  notes?: string;
+}
+
+type MedicalHistoryValue = string | MedicalHistoryRecord[];
+
 export interface PatientDetail extends PatientSummary {
   bloodGroup: string;
   dateOfBirth: string;
   address: string;
   vitals?: Record<string, unknown>;
-  medicalHistory?: string;
+  medicalHistory?: MedicalHistoryValue;
   allergies?: string;
   familyHistory?: string;
   previousSurgeries?: string;
@@ -74,7 +84,7 @@ export interface PatientCreateInput {
   phone: string;
   address: string;
   vitals?: Record<string, unknown>;
-  medicalHistory?: string;
+  medicalHistory?: MedicalHistoryValue;
   allergies?: string;
   familyHistory?: string;
   previousSurgeries?: string;

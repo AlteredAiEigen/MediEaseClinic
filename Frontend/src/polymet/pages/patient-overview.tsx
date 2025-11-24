@@ -49,6 +49,7 @@ import {
   updatePatient,
   PatientUpdateInput,
   MedicationEntry,
+  MedicalHistoryRecord,
   fetchPatientHistory,
   PatientHistoryEntry,
 } from "@/lib/api/patients";
@@ -72,7 +73,7 @@ interface Patient {
     relationship?: string;
   };
   emergencyContactPhone?: string;
-  medicalHistory?: string[] | string;
+  medicalHistory?: Array<string | MedicalHistoryRecord> | string;
   allergies?: string[] | string;
   presentInClinic?: boolean;
   chiefComplaint?: string;
@@ -193,6 +194,11 @@ type EditableMedicationEntry = MedicationEntry & {
   isNew?: boolean;
 };
 
+type EditableMedicalHistoryEntry = MedicalHistoryRecord & {
+  _localId: string;
+  isNew?: boolean;
+};
+
 interface EditPatientFormState {
   firstName: string;
   lastName: string;
@@ -203,7 +209,6 @@ interface EditPatientFormState {
   address: string;
   bloodGroup: string;
   allergies: string;
-  medicalHistory: string;
   emergencyContact: string;
   emergencyContactPhone: string;
   carePlanSummary: string;
@@ -222,6 +227,7 @@ interface EditPatientFormState {
     height: string;
   };
   currentMedications: EditableMedicationEntry[];
+  medicalHistoryEntries: EditableMedicalHistoryEntry[];
 }
 
 type EditableSection = "overview" | "history" | "medications";
@@ -259,7 +265,6 @@ export function PatientOverview() {
     address: "",
     bloodGroup: "",
     allergies: "",
-    medicalHistory: "",
     emergencyContact: "",
     emergencyContactPhone: "",
     carePlanSummary: "",
@@ -278,6 +283,7 @@ export function PatientOverview() {
       height: "",
     },
     currentMedications: [],
+  medicalHistoryEntries: [],
   });
   const [dirtySections, setDirtySections] = useState<Record<EditableSection, boolean>>({
     overview: false,
@@ -318,6 +324,22 @@ export function PatientOverview() {
     instructions: seed.instructions ?? "",
     startDate: seed.startDate ?? "",
     endDate: seed.endDate ?? "",
+    isNew,
+  });
+
+  const generateHistoryEntryId = () =>
+    `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  const createEditableHistoryEntry = (
+    seed: Partial<MedicalHistoryRecord> = {},
+    isNew = false
+  ): EditableMedicalHistoryEntry => ({
+    _localId: generateHistoryEntryId(),
+    title: seed.title ?? "",
+    diagnosis: seed.diagnosis ?? "",
+    treatedBy: seed.treatedBy ?? "",
+    recordedOn: seed.recordedOn ?? "",
+    notes: seed.notes ?? "",
     isNew,
   });
 
@@ -623,7 +645,6 @@ export function PatientOverview() {
       address: patientData.address ?? "",
       bloodGroup: patientData.bloodGroup ?? "",
       allergies: normalizeTextArray(patientData.allergies),
-      medicalHistory: normalizeTextArray(patientData.medicalHistory),
       emergencyContact: emergencyContactName,
       emergencyContactPhone: emergencyContactPhoneValue,
       carePlanSummary: patientData.carePlanSummary ?? "",
@@ -656,6 +677,47 @@ export function PatientOverview() {
       currentMedications: (patientData.currentMedications || []).map((med) =>
         createEditableMedication(med, false)
       ),
+      medicalHistoryEntries: (() => {
+        const history = patientData.medicalHistory;
+        if (!history) return [];
+        if (Array.isArray(history)) {
+          return history
+            .map((entry) => {
+              if (typeof entry === "string") {
+                const title = entry.trim();
+                if (!title) return null;
+                return createEditableHistoryEntry({ title }, false);
+              }
+              if (entry && typeof entry === "object") {
+                const typed = entry as MedicalHistoryRecord;
+                return createEditableHistoryEntry(
+                  {
+                    title: typed.title ?? "",
+                    diagnosis: typed.diagnosis ?? "",
+                    treatedBy: typed.treatedBy ?? "",
+                    recordedOn: typed.recordedOn ?? "",
+                    notes: typed.notes ?? "",
+                  },
+                  false
+                );
+              }
+              return null;
+            })
+            .filter(
+              (item): item is EditableMedicalHistoryEntry => Boolean(item)
+            );
+        }
+        if (typeof history === "string") {
+          return history
+            .split(/\r?\n|,/)
+            .map((segment) => segment.trim())
+            .filter((segment) => segment.length > 0)
+            .map((segment) =>
+              createEditableHistoryEntry({ title: segment }, false)
+            );
+        }
+        return [];
+      })(),
     };
   };
 
@@ -733,7 +795,6 @@ export function PatientOverview() {
       ["bloodGroup", sanitizeText(editForm.bloodGroup)],
       ["address", sanitizeText(editForm.address)],
       ["allergies", sanitizeText(editForm.allergies)],
-      ["medicalHistory", sanitizeText(editForm.medicalHistory)],
       ["emergencyContact", sanitizeText(editForm.emergencyContact)],
       ["emergencyContactPhone", sanitizeText(editForm.emergencyContactPhone)],
       ["carePlanSummary", sanitizeText(editForm.carePlanSummary)],
@@ -777,9 +838,28 @@ export function PatientOverview() {
     return payload;
   };
 
-  const buildHistoryPayload = () => ({
-    medicalHistory: editForm.medicalHistory?.trim() ?? "",
-  });
+  const buildHistoryPayload = () => {
+    const cleanedHistory = editForm.medicalHistoryEntries
+      .map((entry) => {
+        const sanitized: MedicalHistoryRecord = {
+          title: entry.title?.trim() || undefined,
+          diagnosis: entry.diagnosis?.trim() || undefined,
+          treatedBy: entry.treatedBy?.trim() || undefined,
+          recordedOn: entry.recordedOn?.trim() || undefined,
+          notes: entry.notes?.trim() || undefined,
+        };
+        const hasValue = Object.values(sanitized).some(
+          (value) => typeof value === "string" && value.length > 0
+        );
+        if (!hasValue) {
+          return null;
+        }
+        return sanitized;
+      })
+      .filter((item): item is MedicalHistoryRecord => Boolean(item));
+
+    return { medicalHistory: cleanedHistory };
+  };
 
   const buildMedicationsPayload = () => {
     const cleanedMedications = editForm.currentMedications
@@ -995,6 +1075,46 @@ export function PatientOverview() {
     } finally {
       setIsSavingAll(false);
     }
+  };
+
+  type EditableHistoryField = keyof Pick<
+    EditableMedicalHistoryEntry,
+    "title" | "diagnosis" | "treatedBy" | "recordedOn" | "notes"
+  >;
+
+  const handleHistoryEntryChange = (
+    entryId: string,
+    field: EditableHistoryField,
+    value: string
+  ) => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      medicalHistoryEntries: prev.medicalHistoryEntries.map((entry) =>
+        entry._localId === entryId ? { ...entry, [field]: value } : entry
+      ),
+    }));
+  };
+
+  const handleAddHistoryEntry = () => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      medicalHistoryEntries: [
+        ...prev.medicalHistoryEntries,
+        createEditableHistoryEntry({}, true),
+      ],
+    }));
+  };
+
+  const handleRemoveHistoryEntry = (entryId: string) => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      medicalHistoryEntries: prev.medicalHistoryEntries.filter(
+        (entry) => entry._localId !== entryId
+      ),
+    }));
   };
 
   const handleMedicationFieldChange = (
@@ -2421,23 +2541,148 @@ export function PatientOverview() {
               )}
             </div>
 
-            <div className="px-6 py-5">
+            <div className="px-6 py-5 space-y-4">
               {isHistoryEditing ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
+                  {editForm.medicalHistoryEntries.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/20 py-12 text-center text-muted-foreground">
+                      <ClipboardListIcon className="h-12 w-12 opacity-40" />
+                      <p className="mt-3 text-sm font-medium">
+                        No medical history recorded yet.
+                      </p>
+                      <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                        Capture each condition as a structured record so it aligns with the database and audit history.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-4"
+                        onClick={handleAddHistoryEntry}
+                      >
+                        <PlusIcon className="mr-2 h-4 w-4" />
+                        Add history entry
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {editForm.medicalHistoryEntries.map((entry, index) => (
+                        <div
+                          key={`history-entry-${entry._localId}`}
+                          className="rounded-xl border border-border/60 bg-card p-4 shadow-sm space-y-4"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-semibold text-foreground">
+                              History Entry {index + 1}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground hover:text-red-600"
+                              onClick={() => handleRemoveHistoryEntry(entry._localId)}
+                              aria-label="Remove history entry"
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Title / Condition
+                              </Label>
+                              <Input
+                                placeholder="e.g., Hypertension"
+                                value={entry.title ?? ""}
+                                onChange={(event) =>
+                                  handleHistoryEntryChange(
+                                    entry._localId,
+                                    "title",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Diagnosis
+                              </Label>
+                              <Input
+                                placeholder="Diagnosis details"
+                                value={entry.diagnosis ?? ""}
+                                onChange={(event) =>
+                                  handleHistoryEntryChange(
+                                    entry._localId,
+                                    "diagnosis",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Treated By
+                              </Label>
+                              <Input
+                                placeholder="Doctor or clinician"
+                                value={entry.treatedBy ?? ""}
+                                onChange={(event) =>
+                                  handleHistoryEntryChange(
+                                    entry._localId,
+                                    "treatedBy",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Recorded On
+                              </Label>
+                              <Input
+                                type="date"
+                                value={entry.recordedOn ?? ""}
+                                onChange={(event) =>
+                                  handleHistoryEntryChange(
+                                    entry._localId,
+                                    "recordedOn",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">
+                              Notes
+                            </Label>
                   <Textarea
-                    rows={6}
-                    value={editForm.medicalHistory}
-                    onChange={(event) => {
-                      markSectionDirty("history");
-                      setEditForm((prev) => ({
-                        ...prev,
-                        medicalHistory: event.target.value,
-                      }));
-                    }}
-                    placeholder="Hypertension (diagnosed 2021), Type 2 Diabetes (managed with Metformin)..."
-                  />
+                              rows={3}
+                              placeholder="Clinical notes, treatment plans, follow-up instructions..."
+                              value={entry.notes ?? ""}
+                              onChange={(event) =>
+                                handleHistoryEntryChange(
+                                  entry._localId,
+                                  "notes",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-dashed"
+                        onClick={handleAddHistoryEntry}
+                      >
+                        <PlusIcon className="mr-2 h-4 w-4" />
+                        Add another history entry
+                      </Button>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
-                    List each diagnosis or condition on a new line or separate with commas. Additional clinical notes can be captured from the doctor workstation.
+                    Each entry you add here maps directly to the structured medical history stored in the database and will appear in the audit trail.
                   </p>
                 </div>
               ) : medicalHistoryEntries.length > 0 ? (

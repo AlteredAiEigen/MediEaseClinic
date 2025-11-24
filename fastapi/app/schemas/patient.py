@@ -3,8 +3,8 @@ Pydantic schemas for patient endpoints.
 """
 
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional
-from app.models.patient import Vitals, Lifestyle
+from typing import Optional, List, Union, Dict
+from app.models.patient import Vitals, Lifestyle, MedicalHistoryEntry
 
 
 class PatientCreateRequest(BaseModel):
@@ -21,7 +21,9 @@ class PatientCreateRequest(BaseModel):
     
     # Optional medical information
     vitals: Optional[Vitals] = None
-    medicalHistory: Optional[str] = ""
+    medicalHistory: Optional[
+        Union[str, List[MedicalHistoryEntry], List[str], List[Dict[str, str]]]
+    ] = None
     allergies: Optional[str] = ""
     familyHistory: Optional[str] = ""
     previousSurgeries: Optional[str] = ""
@@ -65,7 +67,9 @@ class PatientUpdateRequest(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     vitals: Optional[Vitals] = None
-    medicalHistory: Optional[str] = None
+    medicalHistory: Optional[
+        Union[str, List[MedicalHistoryEntry], List[str], List[Dict[str, str]]]
+    ] = None
     allergies: Optional[str] = None
     familyHistory: Optional[str] = None
     previousSurgeries: Optional[str] = None

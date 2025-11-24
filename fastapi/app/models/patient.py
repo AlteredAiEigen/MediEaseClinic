@@ -4,7 +4,7 @@ HIPAA Compliance: Sensitive fields are encrypted at rest.
 """
 
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from copy import deepcopy
 from pydantic import BaseModel, Field, EmailStr
 from bson import ObjectId
@@ -51,6 +51,15 @@ class Lifestyle(BaseModel):
     stress: Optional[str] = None
 
 
+class MedicalHistoryEntry(BaseModel):
+    """Structured medical history record."""
+    title: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatedBy: Optional[str] = None
+    recordedOn: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class PatientInsights(BaseModel):
     """AI-driven patient insights used by dashboards."""
     riskAssessment: Optional[str] = "Success rate in similar cases: 94%"
@@ -78,7 +87,7 @@ class PatientBase(BaseModel):
     
     # Medical information
     vitals: Optional[Vitals] = Vitals()
-    medicalHistory: Optional[str] = ""
+    medicalHistory: Optional[Union[str, List[Union[str, MedicalHistoryEntry]]]] = None
     allergies: Optional[str] = ""
     familyHistory: Optional[str] = ""
     previousSurgeries: Optional[str] = ""
@@ -146,7 +155,7 @@ class PatientResponse(BaseModel):
     phone: str
     address: str
     vitals: Optional[Vitals] = None
-    medicalHistory: Optional[str] = None
+    medicalHistory: Optional[List[MedicalHistoryEntry]] = None
     allergies: Optional[str] = None
     familyHistory: Optional[str] = None
     previousSurgeries: Optional[str] = None
@@ -187,7 +196,7 @@ class PatientUpdate(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     vitals: Optional[Vitals] = None
-    medicalHistory: Optional[str] = None
+    medicalHistory: Optional[Union[str, List[Union[str, MedicalHistoryEntry]]]] = None
     allergies: Optional[str] = None
     familyHistory: Optional[str] = None
     previousSurgeries: Optional[str] = None
@@ -241,13 +250,34 @@ async def patient_helper(patient: dict) -> dict:
     # encrypted_fields = ["insuranceNumber"]  # Add other fields as needed
     # patient = field_encryption.decrypt_dict_fields(patient, encrypted_fields)
     
-    medical_history = patient.get("medicalHistory")
-    if isinstance(medical_history, str):
-        medical_history_value = [medical_history] if medical_history.strip() else []
-    elif isinstance(medical_history, list):
-        medical_history_value = medical_history
+    medical_history_raw = patient.get("medicalHistory")
+
+    def normalize_history_entry(entry) -> Optional[Dict[str, str]]:
+        if isinstance(entry, MedicalHistoryEntry):
+            data = {k: v for k, v in entry.model_dump().items() if v}
+            return data or None
+        if isinstance(entry, dict):
+            data = {}
+            for key in ["title", "diagnosis", "treatedBy", "recordedOn", "notes"]:
+                value = entry.get(key)
+                if isinstance(value, str) and value.strip():
+                    data[key] = value.strip()
+            return data or None
+        if isinstance(entry, str):
+            title = entry.strip()
+            return {"title": title} if title else None
+        return None
+
+    medical_history_value: List[Dict[str, str]] = []
+    if isinstance(medical_history_raw, list):
+        for item in medical_history_raw:
+            normalized = normalize_history_entry(item)
+            if normalized:
+                medical_history_value.append(normalized)
     else:
-        medical_history_value = []
+        normalized = normalize_history_entry(medical_history_raw)
+        if normalized:
+            medical_history_value.append(normalized)
 
     allergies = patient.get("allergies")
     if isinstance(allergies, str):

@@ -25,6 +25,7 @@ import { PatientVisitHistory } from "@/polymet/components/patient-visit-history"
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
 import { get, post, put } from "@/lib/api-client";
+import { MedicalHistoryRecord } from "@/lib/api/patients";
 import {
   addPendingConsultationUpload,
   removePendingConsultationUpload,
@@ -50,7 +51,7 @@ interface Patient {
     phone?: string;
     relationship?: string;
   };
-  medicalHistory?: string[];
+  medicalHistory?: Array<string | MedicalHistoryRecord>;
   allergies?: string[];
   presentInClinic?: boolean;
   chiefComplaint?: string;

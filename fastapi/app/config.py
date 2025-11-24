@@ -97,7 +97,6 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@medieaseclinic.com"
-    lead_email_recipient: str = "aleredai@alertedai.care"
     
     class Config:
         env_file = ".env"
