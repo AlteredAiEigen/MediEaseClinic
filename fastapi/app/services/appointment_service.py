@@ -233,13 +233,20 @@ class AppointmentService:
         query = {}
         
         if patient_id:
-            query["patientId"] = patient_id
+            # Handle both string and ObjectId formats
+            if ObjectId.is_valid(patient_id):
+                query["patientId"] = patient_id
+            else:
+                query["patientId"] = patient_id
         
         if doctor_id:
-            query["doctorId"] = doctor_id
+            # Handle both string and ObjectId formats - ensure string comparison
+            query["doctorId"] = str(doctor_id)
         
         if date:
-            query["date"] = date
+            # Ensure date is in YYYY-MM-DD format and normalize
+            # Dates are stored as strings in YYYY-MM-DD format
+            query["date"] = date.strip() if isinstance(date, str) else date
         
         if status:
             query["status"] = status

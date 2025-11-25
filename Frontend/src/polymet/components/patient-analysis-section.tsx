@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Loader2Icon } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -15,65 +15,107 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { get } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 
 type TimeFilter = "day" | "week" | "month" | "year";
 
+interface AppointmentOverviewData {
+  total: number;
+  completed: number;
+  cancelled: number;
+  noShows: number;
+  noShowRate: number;
+  averageConsultationTime: number;
+  peakCount: number;
+  averageCount: number;
+  chartData: {
+    dates: string[];
+    counts: number[];
+  };
+  period: string;
+  startDate: string;
+  endDate: string;
+}
+
 export function PatientAnalysisSection() {
+  const { user } = useAuth();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("week");
+  const [overviewData, setOverviewData] = useState<AppointmentOverviewData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Data for different time periods
-  const appointmentData = {
-    day: [
-      { time: "8 AM", appointments: 2 },
-      { time: "9 AM", appointments: 5 },
-      { time: "10 AM", appointments: 8 },
-      { time: "11 AM", appointments: 6 },
-      { time: "12 PM", appointments: 3 },
-      { time: "1 PM", appointments: 4 },
-      { time: "2 PM", appointments: 7 },
-      { time: "3 PM", appointments: 9 },
-      { time: "4 PM", appointments: 5 },
-      { time: "5 PM", appointments: 3 },
-    ],
+  useEffect(() => {
+    const fetchOverview = async () => {
+      if (!user?._id) return;
+      
+      try {
+        setIsLoading(true);
+        const response = await get<{ data: AppointmentOverviewData }>(
+          `/api/doctors/appointment-overview?period=${timeFilter}&doctorId=${user._id}`
+        );
+        
+        if (response.success && response.data) {
+          setOverviewData(response.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch appointment overview:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    week: [
-      { time: "Mon", appointments: 24 },
-      { time: "Tue", appointments: 32 },
-      { time: "Wed", appointments: 28 },
-      { time: "Thu", appointments: 35 },
-      { time: "Fri", appointments: 30 },
-      { time: "Sat", appointments: 18 },
-      { time: "Sun", appointments: 12 },
-    ],
+    fetchOverview();
+  }, [user?._id, timeFilter]);
 
-    month: [
-      { time: "Week 1", appointments: 98 },
-      { time: "Week 2", appointments: 112 },
-      { time: "Week 3", appointments: 105 },
-      { time: "Week 4", appointments: 125 },
-    ],
+  // Format chart data based on period
+  const formatChartData = () => {
+    if (!overviewData?.chartData) return [];
 
-    year: [
-      { time: "Jan", appointments: 420 },
-      { time: "Feb", appointments: 380 },
-      { time: "Mar", appointments: 450 },
-      { time: "Apr", appointments: 410 },
-      { time: "May", appointments: 480 },
-      { time: "Jun", appointments: 440 },
-      { time: "Jul", appointments: 390 },
-      { time: "Aug", appointments: 460 },
-      { time: "Sep", appointments: 470 },
-      { time: "Oct", appointments: 490 },
-      { time: "Nov", appointments: 510 },
-      { time: "Dec", appointments: 430 },
-    ],
+    const { dates, counts } = overviewData.chartData;
+    
+    if (timeFilter === "week") {
+      // Format dates as day abbreviations (Mon, Tue, etc.)
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      return dates.map((dateStr, index) => {
+        // Parse date string (YYYY-MM-DD)
+        const [year, month, day] = dateStr.split("-").map(Number);
+        const date = new Date(year, month - 1, day);
+        const dayName = dayNames[date.getDay()];
+        return { time: dayName, appointments: counts[index] || 0 };
+      });
+    } else if (timeFilter === "day") {
+      // Format as hours
+      return dates.map((dateStr, index) => {
+        const [year, month, day] = dateStr.split("-").map(Number);
+        const date = new Date(year, month - 1, day);
+        const hour = date.getHours();
+        const period = hour >= 12 ? "PM" : "AM";
+        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+        return { time: `${displayHour} ${period}`, appointments: counts[index] || 0 };
+      });
+    } else if (timeFilter === "month") {
+      // Format as week numbers
+      return dates.map((dateStr, index) => {
+        const [year, month, day] = dateStr.split("-").map(Number);
+        const date = new Date(year, month - 1, day);
+        const weekNum = Math.ceil(date.getDate() / 7);
+        return { time: `Week ${weekNum}`, appointments: counts[index] || 0 };
+      });
+    } else {
+      // Format as month abbreviations
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return dates.map((dateStr, index) => {
+        const [year, month] = dateStr.split("-").map(Number);
+        const monthName = monthNames[month - 1];
+        return { time: monthName, appointments: counts[index] || 0 };
+      });
+    }
   };
 
-  const currentData = appointmentData[timeFilter];
-  const totalAppointments = currentData.reduce(
-    (sum, item) => sum + item.appointments,
-    0
-  );
+  const currentData = formatChartData();
+  const totalAppointments = overviewData?.total || 0;
+  const averageCount = overviewData?.averageCount || 0;
+  const peakCount = overviewData?.peakCount || 0;
 
   const filterButtons: { label: string; value: TimeFilter }[] = [
     { label: "Day", value: "day" },
@@ -117,76 +159,86 @@ export function PatientAnalysisSection() {
         </div>
       </CardHeader>
       <CardContent className="pt-2 pb-4">
-        <div className="space-y-3">
-          {/* Line Chart Visualization */}
-          <div className="w-full">
-            <ChartContainer
-              config={{}}
-              className="aspect-[none] w-full h-[140px]"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={currentData}>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="hsl(var(--border))"
-                    vertical={false}
-                  />
-
-                  <XAxis
-                    dataKey="time"
-                    stroke="hsl(var(--muted-foreground))"
-                    fontSize={10}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-
-                  <ChartTooltip content={<ChartTooltipContent />} />
-
-                  <Line
-                    type="monotone"
-                    dataKey="appointments"
-                    stroke="hsl(var(--chart-2))"
-                    strokeWidth={2}
-                    dot={{
-                      fill: "hsl(var(--chart-2))",
-                      strokeWidth: 2,
-                      r: 3,
-                    }}
-                    activeDot={{
-                      r: 5,
-                      fill: "hsl(var(--chart-2))",
-                      strokeWidth: 2,
-                    }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+        {isLoading ? (
+          <div className="flex items-center justify-center h-[140px]">
+            <Loader2Icon className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
+        ) : currentData.length === 0 ? (
+          <div className="flex items-center justify-center h-[140px] text-muted-foreground text-sm">
+            No appointment data available
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Line Chart Visualization */}
+            <div className="w-full">
+              <ChartContainer
+                config={{}}
+                className="aspect-[none] w-full h-[140px]"
+              >
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={currentData}>
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="hsl(var(--border))"
+                      vertical={false}
+                    />
 
-          {/* Stats Summary */}
-          <div className="grid grid-cols-3 gap-2">
-            <div className="p-2 rounded-lg bg-gradient-to-br from-teal-500/10 to-cyan-500/10 border border-teal-500/20">
-              <p className="text-[10px] text-muted-foreground mb-0.5">
-                Average
-              </p>
-              <p className="text-base font-bold text-foreground">
-                {Math.round(totalAppointments / currentData.length)}
-              </p>
+                    <XAxis
+                      dataKey="time"
+                      stroke="hsl(var(--muted-foreground))"
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+
+                    <ChartTooltip content={<ChartTooltipContent />} />
+
+                    <Line
+                      type="monotone"
+                      dataKey="appointments"
+                      stroke="hsl(var(--chart-2))"
+                      strokeWidth={2}
+                      dot={{
+                        fill: "hsl(var(--chart-2))",
+                        strokeWidth: 2,
+                        r: 3,
+                      }}
+                      activeDot={{
+                        r: 5,
+                        fill: "hsl(var(--chart-2))",
+                        strokeWidth: 2,
+                      }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
             </div>
-            <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500/10 to-green-500/10 border border-emerald-500/20">
-              <p className="text-[10px] text-muted-foreground mb-0.5">Peak</p>
-              <p className="text-base font-bold text-foreground">
-                {Math.max(...currentData.map((d) => d.appointments))}
-              </p>
-            </div>
-            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/20">
-              <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
-              <p className="text-base font-bold text-foreground">
-                {totalAppointments}
-              </p>
+
+            {/* Stats Summary */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-teal-500/10 to-cyan-500/10 border border-teal-500/20">
+                <p className="text-[10px] text-muted-foreground mb-0.5">
+                  Average
+                </p>
+                <p className="text-base font-bold text-foreground">
+                  {Math.round(averageCount)}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-gradient-to-br from-emerald-500/10 to-green-500/10 border border-emerald-500/20">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Peak</p>
+                <p className="text-base font-bold text-foreground">
+                  {peakCount}
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/10 to-indigo-500/10 border border-blue-500/20">
+                <p className="text-[10px] text-muted-foreground mb-0.5">Total</p>
+                <p className="text-base font-bold text-foreground">
+                  {totalAppointments}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   );

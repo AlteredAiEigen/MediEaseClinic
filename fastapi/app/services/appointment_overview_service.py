@@ -30,9 +30,13 @@ class AppointmentOverviewService:
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end = now
         elif period == "week":
-            start = now - timedelta(days=now.weekday())
+            # Calculate start of week (Monday)
+            days_since_monday = now.weekday()  # Monday is 0
+            start = now - timedelta(days=days_since_monday)
             start = start.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = now
+            # End of week is Sunday (6 days after Monday) - include full week including future dates
+            end = start + timedelta(days=6)
+            end = end.replace(hour=23, minute=59, second=59, microsecond=999999)
         elif period == "month":
             start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
             end = now
@@ -51,10 +55,16 @@ class AppointmentOverviewService:
             }
         }
         if doctor_id:
-            query["doctorId"] = doctor_id
+            # Ensure doctorId is string for comparison
+            query["doctorId"] = str(doctor_id)
 
         # Get appointments
+        # Debug: Log the query to help troubleshoot
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Appointment overview query: {query}")
         appointments = await self.appointments.find(query).to_list(length=None)
+        logger.debug(f"Found {len(appointments)} appointments for period {period}")
 
         # Calculate statistics
         total_appointments = len(appointments)
@@ -86,6 +96,16 @@ class AppointmentOverviewService:
             date_str = appointment.get("date")
             if date_str:
                 daily_counts[date_str] = daily_counts.get(date_str, 0) + 1
+
+        # For week period, ensure all 7 days are included (even if 0)
+        if period == "week":
+            from datetime import datetime as dt
+            week_start = dt.strptime(start.strftime("%Y-%m-%d"), "%Y-%m-%d")
+            for i in range(7):
+                day_date = week_start + timedelta(days=i)
+                day_str = day_date.strftime("%Y-%m-%d")
+                if day_str not in daily_counts:
+                    daily_counts[day_str] = 0
 
         # Sort dates and get values
         sorted_dates = sorted(daily_counts.keys())

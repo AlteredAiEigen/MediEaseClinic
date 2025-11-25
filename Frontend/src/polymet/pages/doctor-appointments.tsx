@@ -14,6 +14,7 @@ import {
   FilterIcon,
   TrendingUpIcon,
   ArrowRightIcon,
+  PlayIcon,
 } from "lucide-react";
 import {
   Select,
@@ -46,6 +47,16 @@ const extractList = <T,>(rawData: any): T[] => {
   return [];
 };
 
+// Helper function to format date in YYYY-MM-DD using local timezone (not UTC)
+// This prevents timezone shifts that cause dates to appear one day off
+// Using toISOString() converts to UTC which can shift the date by one day
+const formatDateLocal = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export function DoctorAppointments() {
   const { user } = useAuth();
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -65,7 +76,8 @@ export function DoctorAppointments() {
       
       try {
         setIsLoading(true);
-        const selectedDate = date ? date.toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+        // Use local timezone formatting instead of UTC to avoid date shift
+        const selectedDate = date ? formatDateLocal(date) : formatDateLocal(new Date());
         const url = `/api/appointments?doctorId=${user._id}&date=${selectedDate}&limit=100`;
         const response = await get(url);
         if (response.success) {
@@ -98,7 +110,8 @@ export function DoctorAppointments() {
       try {
         if (lastMessage.type === 'appointment_status_updated') {
           // Refresh appointment data silently (no loading state)
-          const selectedDate = date ? date.toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+          // Use local timezone formatting to avoid date shift
+          const selectedDate = date ? formatDateLocal(date) : formatDateLocal(new Date());
           const url = `/api/appointments?doctorId=${user._id}&date=${selectedDate}&limit=100`;
           const response = await get(url);
           if (response.success) {
@@ -123,7 +136,7 @@ export function DoctorAppointments() {
   }, [lastMessage, user, date]);
 
   const selectedDateStr = useMemo(
-    () => (date ? date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+    () => (date ? formatDateLocal(date) : formatDateLocal(new Date())),
     [date]
   );
 
