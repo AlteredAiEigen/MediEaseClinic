@@ -864,6 +864,42 @@ class QueueService:
                 }
             )
         
+        # Update appointment status and calculate consultation time
+        appointment_id = entry.get("appointment")
+        if appointment_id:
+            try:
+                if isinstance(appointment_id, str) and ObjectId.is_valid(appointment_id):
+                    appointment_object_id = ObjectId(appointment_id)
+                elif isinstance(appointment_id, ObjectId):
+                    appointment_object_id = appointment_id
+                else:
+                    appointment_object_id = None
+                
+                if appointment_object_id:
+                    appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+                    if appointment:
+                        now = datetime.utcnow()
+                        update_fields = {
+                            "status": "completed",
+                            "completedAt": now,
+                            "updatedAt": now
+                        }
+                        
+                        # Calculate consultation time if started
+                        if appointment.get("startedAt"):
+                            started_at = appointment["startedAt"]
+                            if isinstance(started_at, str):
+                                started_at = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+                            consultation_time = (now - started_at).total_seconds() / 60.0
+                            update_fields["consultationTimeMinutes"] = round(consultation_time, 1)
+                        
+                        await self.db["appointments"].update_one(
+                            {"_id": appointment_object_id},
+                            {"$set": update_fields}
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to update appointment on checkout: {e}")
+        
         return result
     
     async def get_queue_stats(self) -> Dict:

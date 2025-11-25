@@ -52,6 +52,7 @@ export interface LabReportData {
   labName: string;
   tests: LabTest[];
   clinicalNotes?: string;
+  doctorCommentAuthor?: string;
   interpretation?: string;
   previousResults?: LabTest[];
   previousDate?: string;
@@ -370,19 +371,22 @@ export function LabReportViewerDialog({
                   </div>
                 </div>
 
-                {/* Clinical Notes */}
+                {/* Doctor Comments */}
                 {reportData.clinicalNotes && (
                   <>
                     <Separator />
 
                     <div>
-                      <h3 className="text-lg font-semibold mb-3">
-                        Clinical Notes
+                      <h3 className="text-lg font-semibold mb-2">
+                        Doctor Comments
                       </h3>
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <p className="text-sm text-blue-900 leading-relaxed">
-                          {reportData.clinicalNotes}
-                        </p>
+                        {reportData.doctorCommentAuthor && (
+                          <p className="text-sm font-semibold text-blue-900 mb-1">
+                            {reportData.doctorCommentAuthor}
+                          </p>
+                        )}
+                        <p className="text-sm text-blue-900 leading-relaxed">{reportData.clinicalNotes}</p>
                       </div>
                     </div>
                   </>

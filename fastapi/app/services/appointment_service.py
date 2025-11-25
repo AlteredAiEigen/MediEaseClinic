@@ -300,6 +300,33 @@ class AppointmentService:
                 detail="No fields to update"
             )
         
+        # Handle status changes
+        if "status" in update_dict:
+            new_status = update_dict["status"]
+            now = datetime.utcnow()
+            
+            # Handle no-show tracking
+            if new_status == "cancelled" and update_dict.get("isNoShow"):
+                update_dict["isNoShow"] = True
+                update_dict["cancelledAt"] = now
+            elif new_status == "no-show":
+                update_dict["isNoShow"] = True
+                update_dict["status"] = "cancelled"
+                update_dict["cancelledAt"] = now
+                if not update_dict.get("cancellationReason"):
+                    update_dict["cancellationReason"] = "No-show"
+            elif new_status == "completed":
+                # Calculate consultation time when appointment is completed
+                if existing_appointment.get("startedAt") and not existing_appointment.get("completedAt"):
+                    started_at = existing_appointment["startedAt"]
+                    if isinstance(started_at, str):
+                        started_at = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+                    consultation_time = (now - started_at).total_seconds() / 60.0  # Convert to minutes
+                    update_dict["consultationTimeMinutes"] = round(consultation_time, 1)
+                    update_dict["completedAt"] = now
+            elif new_status == "ongoing" and not existing_appointment.get("startedAt"):
+                update_dict["startedAt"] = now
+        
         # Check for time slot conflicts if date/time/duration changed
         if any(k in update_dict for k in ["date", "time", "duration"]):
             new_date = update_dict.get("date", existing_appointment["date"])

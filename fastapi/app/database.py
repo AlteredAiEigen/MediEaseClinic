@@ -134,6 +134,23 @@ class Database:
             await cls.database.audit_logs.create_index("resourceId")
             await cls.database.audit_logs.create_index("timestamp")
             await cls.database.audit_logs.create_index([("timestamp", -1)])  # For time-based queries
+
+            # Patient insurance collection indexes
+            await cls.database.patient_insurances.create_index("patientId")
+            await cls.database.patient_insurances.create_index("isPrimary")
+            await cls.database.patient_insurances.create_index("status")
+            
+            # Insurance coverage collection indexes
+            await cls.database.insurance_coverage.create_index("patientId")
+            await cls.database.insurance_coverage.create_index("policyNumber")
+            await cls.database.insurance_coverage.create_index([("patientId", 1), ("policyNumber", 1)])
+            await cls.database.insurance_coverage.create_index([("patientId", 1), ("policyNumber", 1), ("isLatest", 1)])
+            
+            # Patient reviews collection indexes
+            await cls.database.patient_reviews.create_index("appointmentId", unique=True)
+            await cls.database.patient_reviews.create_index("patientId")
+            await cls.database.patient_reviews.create_index("doctorId")
+            await cls.database.patient_reviews.create_index([("doctorId", 1), ("createdAt", -1)])
             
             logger.info("Database indexes created successfully")
             

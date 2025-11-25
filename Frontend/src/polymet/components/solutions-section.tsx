@@ -1,5 +1,17 @@
+import { useState, FormEvent } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   BuildingIcon,
   HospitalIcon,
@@ -29,8 +41,6 @@ export function SolutionsSection() {
         "Billing & invoicing",
         "Queue management",
       ],
-
-      price: "Starting at ₹999/month",
       color: "from-teal-500 to-emerald-500",
       popular: false,
     },
@@ -46,8 +56,6 @@ export function SolutionsSection() {
         "Staff & role management",
         "Integrated lab & pharmacy",
       ],
-
-      price: "Starting at ₹8,000/month",
       color: "from-emerald-500 to-cyan-500",
       popular: true,
     },
@@ -63,8 +71,6 @@ export function SolutionsSection() {
         "Patient communication",
         "Mobile app access",
       ],
-
-      price: "Starting at ₹499/month",
       color: "from-cyan-500 to-teal-500",
       popular: false,
     },
@@ -80,12 +86,45 @@ export function SolutionsSection() {
         "Digital report sharing",
         "Follow-up management",
       ],
-
-      price: "Add-on: ₹299/month",
       color: "from-purple-500 to-teal-500",
       popular: false,
     },
   ];
+
+  const [isContactOpen, setIsContactOpen] = useState(false);
+  const [selectedSolution, setSelectedSolution] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    query: "",
+  });
+
+  const resetForm = () =>
+    setContactForm({
+      name: "",
+      email: "",
+      phone: "",
+      query: "",
+    });
+
+  const handleDialogChange = (open: boolean) => {
+    setIsContactOpen(open);
+    if (!open) {
+      resetForm();
+      setSelectedSolution(null);
+    }
+  };
+
+  const handleGetStarted = (solutionTitle: string) => {
+    setSelectedSolution(solutionTitle);
+    setIsContactOpen(true);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    handleDialogChange(false);
+  };
 
   const clinicalFeatures = [
     {
@@ -176,15 +215,13 @@ export function SolutionsSection() {
                 ))}
               </ul>
               <div className="pt-6 border-t border-border">
-                <div className="text-2xl font-bold text-teal-600 mb-4">
-                  {solution.price}
-                </div>
                 <Button
                   className={`w-full ${
                     solution.popular
                       ? "bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
                       : "bg-teal-50 text-teal-600 hover:bg-teal-100 dark:bg-teal-950/30 dark:hover:bg-teal-950/50"
                   }`}
+                  onClick={() => handleGetStarted(solution.title)}
                 >
                   Get Started <ArrowRightIcon className="w-4 h-4 ml-2" />
                 </Button>
@@ -301,6 +338,78 @@ export function SolutionsSection() {
             </Button>
           </div>
         </div>
+
+        <Dialog open={isContactOpen} onOpenChange={handleDialogChange}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Share your details</DialogTitle>
+              <DialogDescription>
+                {selectedSolution
+                  ? `Let us know how we can help you with ${selectedSolution}.`
+                  : "Tell us more about your requirements and we will reach out shortly."}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="contact-name">Name</Label>
+                <Input
+                  id="contact-name"
+                  value={contactForm.name}
+                  onChange={(event) =>
+                    setContactForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  required
+                  placeholder="Dr. Aditi Sharma"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-email">Email ID</Label>
+                <Input
+                  id="contact-email"
+                  type="email"
+                  value={contactForm.email}
+                  onChange={(event) =>
+                    setContactForm((prev) => ({ ...prev, email: event.target.value }))
+                  }
+                  required
+                  placeholder="name@clinic.com"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-phone">Contact Number</Label>
+                <Input
+                  id="contact-phone"
+                  type="tel"
+                  value={contactForm.phone}
+                  onChange={(event) =>
+                    setContactForm((prev) => ({ ...prev, phone: event.target.value }))
+                  }
+                  required
+                  placeholder="+91 98765 43210"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contact-query">Query</Label>
+                <Textarea
+                  id="contact-query"
+                  value={contactForm.query}
+                  onChange={(event) =>
+                    setContactForm((prev) => ({ ...prev, query: event.target.value }))
+                  }
+                  rows={4}
+                  required
+                  placeholder="Share your requirements or questions..."
+                />
+              </div>
+              <DialogFooter className="flex flex-row gap-3">
+                <Button type="button" variant="outline" onClick={() => handleDialogChange(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Submit</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </section>
   );

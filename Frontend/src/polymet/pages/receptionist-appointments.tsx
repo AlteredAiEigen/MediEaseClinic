@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -166,6 +167,10 @@ const formatLabel = (value?: string) => {
 };
 
 export function ReceptionistAppointments() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const patientIdFromUrl = searchParams.get("patientId");
+  const hasProcessedUrlParam = useRef(false);
+  
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [statusFilter, setStatusFilter] = useState("all");
@@ -259,10 +264,14 @@ export function ReceptionistAppointments() {
     [todayAppointments, activeStatuses]
   );
 
+  // Fetch patients and doctors on initial mount
   useEffect(() => {
-    fetchAppointments();
     fetchPatients();
     fetchDoctors();
+  }, []);
+
+  useEffect(() => {
+    fetchAppointments();
   }, [selectedDate]);
 
   useEffect(() => {
@@ -339,6 +348,62 @@ export function ReceptionistAppointments() {
     }
   };
 
+  // Pre-select patient from URL parameter and open appointment dialog
+  useEffect(() => {
+    // Only proceed if we have a patientId in URL, patients have been loaded, and we haven't processed it yet
+    if (!patientIdFromUrl || patients.length === 0 || hasProcessedUrlParam.current) {
+      return;
+    }
+
+    // Try to find patient by _id or patientId (handle both MongoDB ObjectId and patientId string)
+    const foundPatient = patients.find(
+      (p) => {
+        const pId = String(p._id || "");
+        const pPatientId = String(p.patientId || "");
+        const urlId = String(patientIdFromUrl);
+        return pId === urlId || pPatientId === urlId;
+      }
+    );
+    
+    if (foundPatient) {
+      console.log("Found patient for pre-selection:", foundPatient);
+      // Set patient selection first
+      setSelectedPatient(String(foundPatient._id));
+      // Set search query to patient name so it appears in the search field
+      setSearchQuery(foundPatient.fullName || `${foundPatient.patientId}`);
+      // Open dialog after a small delay to ensure state is set
+      setTimeout(() => {
+        setIsNewAppointmentOpen(true);
+      }, 100);
+      hasProcessedUrlParam.current = true;
+      
+      // Clear the URL parameter after using it
+      setSearchParams((prev) => {
+        const newParams = new URLSearchParams(prev);
+        newParams.delete("patientId");
+        return newParams;
+      });
+    } else {
+      console.warn("Patient not found with ID:", patientIdFromUrl);
+      console.log("Available patients:", patients.map(p => ({ 
+        _id: String(p._id), 
+        patientId: String(p.patientId),
+        fullName: p.fullName 
+      })));
+      hasProcessedUrlParam.current = true; // Mark as processed even if not found to avoid infinite retries
+    }
+  }, [patientIdFromUrl, patients, setSearchParams]);
+
+  // Ensure search query shows patient name when patient is selected but search query is empty
+  useEffect(() => {
+    if (selectedPatient && !searchQuery && patients.length > 0) {
+      const selectedPatientObj = patients.find(p => String(p._id) === String(selectedPatient));
+      if (selectedPatientObj) {
+        setSearchQuery(selectedPatientObj.fullName || `${selectedPatientObj.patientId}`);
+      }
+    }
+  }, [selectedPatient, patients, searchQuery]);
+
   const fetchDoctors = async () => {
     try {
       const response = await get("/api/doctors?limit=100");
@@ -363,9 +428,34 @@ export function ReceptionistAppointments() {
       ? todayAppointments
       : todayAppointments.filter((apt) => apt.status === statusFilter);
 
-  const filteredPatients = patients.filter((p) =>
-    p.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
-  );
+  const filteredPatients = useMemo(() => {
+    // If a patient is selected, always include them in the results
+    const selectedPatientObj = selectedPatient 
+      ? patients.find(p => String(p._id) === String(selectedPatient))
+      : null;
+    
+    if (!debouncedSearchQuery.trim()) {
+      // If no search query, show selected patient first, then first 10 patients
+      if (selectedPatientObj) {
+        const others = patients.filter(p => String(p._id) !== String(selectedPatient));
+        return [selectedPatientObj, ...others.slice(0, 9)];
+      }
+      return patients.slice(0, 10);
+    }
+    
+    // Filter by search query
+    const filtered = patients.filter((p) =>
+      p.fullName.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      p.patientId.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
+    );
+    
+    // If selected patient is not in filtered results, add them at the top
+    if (selectedPatientObj && !filtered.find(p => String(p._id) === String(selectedPatient))) {
+      return [selectedPatientObj, ...filtered];
+    }
+    
+    return filtered;
+  }, [patients, debouncedSearchQuery, selectedPatient]);
 
   // Get unique dates that have appointments for calendar modifiers
   const appointmentDates = Array.from(
@@ -664,12 +754,16 @@ export function ReceptionistAppointments() {
                             className="pl-10"
                           />
                         </div>
-                        {searchQuery && (
+                        {(searchQuery || selectedPatient) && (
                           <div className="max-h-48 overflow-y-auto border border-border rounded-md">
-                            {filteredPatients.map((patient) => (
+                            {filteredPatients.length > 0 ? filteredPatients.map((patient) => {
+                              const isSelected = String(patient._id) === String(selectedPatient);
+                              return (
                               <div
                                 key={patient._id}
-                                className="flex items-center gap-3 p-3 hover:bg-accent cursor-pointer border-b border-border last:border-0"
+                                className={`flex items-center gap-3 p-3 hover:bg-accent cursor-pointer border-b border-border last:border-0 ${
+                                  isSelected ? "bg-teal-50 dark:bg-teal-950/20 border-teal-200 dark:border-teal-800" : ""
+                                }`}
                                 onClick={() => {
                                   setSelectedPatient(patient._id);
                                   setSearchQuery(patient.fullName);
@@ -693,23 +787,43 @@ export function ReceptionistAppointments() {
                                     {patient.patientId}
                                   </p>
                                 </div>
+                                {isSelected && (
+                                  <div className="ml-auto">
+                                    <Badge variant="outline" className="bg-teal-100 text-teal-700 border-teal-300">
+                                      Selected
+                                    </Badge>
+                                  </div>
+                                )}
                               </div>
-                            ))}
+                              );
+                            }) : (
+                              <div className="p-3 text-center text-sm text-muted-foreground">
+                                No patients found matching "{searchQuery}"
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
 
                       {/* Selected Patient */}
-                      {selectedPatient && (
-                        <div className="p-3 bg-teal-50 dark:bg-teal-950/20 rounded-md border border-teal-200 dark:border-teal-800">
-                          <p className="text-sm font-medium">
-                            Selected Patient:
-                          </p>
-                          <p className="text-lg font-semibold text-teal-700 dark:text-teal-400">
-                            {searchQuery || "Patient selected"}
-                          </p>
-                        </div>
-                      )}
+                      {selectedPatient && (() => {
+                        const selectedPatientObj = patients.find(p => String(p._id) === String(selectedPatient));
+                        return (
+                          <div className="p-3 bg-teal-50 dark:bg-teal-950/20 rounded-md border border-teal-200 dark:border-teal-800">
+                            <p className="text-sm font-medium">
+                              Selected Patient:
+                            </p>
+                            <p className="text-lg font-semibold text-teal-700 dark:text-teal-400">
+                              {selectedPatientObj?.fullName || searchQuery || "Patient selected"}
+                            </p>
+                            {selectedPatientObj?.patientId && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                ID: {selectedPatientObj.patientId}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Doctor Selection */}
                       <div className="space-y-2">

@@ -174,6 +174,9 @@ from app.routers import (
     messages,
     websocket,
     whatsapp,
+    patient_insurances,
+    insurance_coverage,
+    patient_reviews,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -192,6 +195,21 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(lab_reports.router, prefix="/api/lab-reports", tags=["Lab Reports"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
 app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
+app.include_router(
+    patient_insurances.router,
+    prefix="/api/patient-insurances",
+    tags=["Patient Insurance"],
+)
+app.include_router(
+    insurance_coverage.router,
+    prefix="/api/insurance-coverage",
+    tags=["Insurance Coverage"],
+)
+app.include_router(
+    patient_reviews.router,
+    prefix="/api/patient-reviews",
+    tags=["Patient Reviews"],
+)
 
 
 if __name__ == "__main__":

@@ -166,6 +166,35 @@ async def seed_patient_overview():
         print("✅ Patient profile upserted.")
 
         # --------------------------
+        # Insurance records
+        # --------------------------
+        await db.patient_insurances.delete_many({"patientId": str(PATIENT_OBJECT_ID)})
+        insurance_records = [
+            {
+                "patientId": str(PATIENT_OBJECT_ID),
+                "provider": "Ayushman Bharat",
+                "planName": "Pradhan Mantri Jan Arogya Yojana",
+                "policyNumber": "PMJAY-2023-MH-123456",
+                "cardNumber": "8765 4321 0987 6543",
+                "memberName": "Prakash Sahu",
+                "status": "Active",
+                "coverageLimit": "₹5,00,000",
+                "coverageUsed": "₹45,000",
+                "coverageRemaining": "₹4,55,000",
+                "validFrom": "2023-04-01",
+                "validUntil": "2024-03-31",
+                "familyMembersCovered": 5,
+                "notes": "Coverage includes hospitalization, surgical procedures, and medications.",
+                "isPrimary": True,
+                "createdAt": now,
+                "updatedAt": now,
+            }
+        ]
+        if insurance_records:
+            await db.patient_insurances.insert_many(insurance_records)
+            print("✅ Seeded patient insurance records.")
+
+        # --------------------------
         # Vitals timeline
         # --------------------------
         await db.patient_vitals.delete_many({"patientId": str(PATIENT_OBJECT_ID)})

@@ -74,6 +74,8 @@ class AppointmentInDB(AppointmentBase):
     completedAt: Optional[datetime] = None
     cancelledAt: Optional[datetime] = None
     cancellationReason: Optional[str] = None
+    isNoShow: bool = False
+    consultationTimeMinutes: Optional[float] = None
     consultationSummary: Optional[Dict[str, Any]] = None
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
@@ -110,6 +112,8 @@ class AppointmentResponse(BaseModel):
     completedAt: Optional[datetime] = None
     cancelledAt: Optional[datetime] = None
     cancellationReason: Optional[str] = None
+    isNoShow: bool = False
+    consultationTimeMinutes: Optional[float] = None
     consultationSummary: Optional[Dict[str, Any]] = None
     followUpRequired: bool
     followUpDate: Optional[str] = None
@@ -137,6 +141,7 @@ class AppointmentUpdate(BaseModel):
     time: Optional[str] = Field(None, pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
     duration: Optional[int] = Field(None, ge=15, le=480)
     status: Optional[str] = Field(None, pattern="^(scheduled|cancelled|checked-in|ongoing|checkout|completed|no-show)$")
+    isNoShow: Optional[bool] = None
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reason: Optional[str] = Field(None, max_length=500)
     notes: Optional[str] = Field(None, max_length=1000)
@@ -185,6 +190,8 @@ async def appointment_helper(appointment: dict) -> dict:
         "completedAt": appointment.get("completedAt"),
         "cancelledAt": appointment.get("cancelledAt"),
         "cancellationReason": appointment.get("cancellationReason"),
+        "isNoShow": appointment.get("isNoShow", False),
+        "consultationTimeMinutes": appointment.get("consultationTimeMinutes"),
         "followUpRequired": appointment.get("followUpRequired", False),
         "followUpDate": appointment.get("followUpDate"),
         "followUpNotes": appointment.get("followUpNotes"),

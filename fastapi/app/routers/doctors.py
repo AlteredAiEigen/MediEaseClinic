@@ -15,6 +15,7 @@ from app.utils.response import success_response, error_response, paginated_respo
 from app.models.user import user_helper
 from app.services.appointment_service import AppointmentService
 from app.services.queue_service import QueueService
+from app.services.appointment_overview_service import AppointmentOverviewService
 from datetime import datetime
 
 router = APIRouter()
@@ -342,6 +343,54 @@ async def get_doctor_performance_insights(
 
 
 @router.get("/me/patients", response_model=dict)
+@router.get("/appointment-overview", response_model=dict)
+async def get_appointment_overview(
+    period: str = Query("week", pattern="^(day|week|month|year)$"),
+    doctorId: Optional[str] = Query(None, description="Doctor ID (defaults to current user)"),
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get appointment overview statistics."""
+    from app.services.appointment_overview_service import AppointmentOverviewService
+    service = AppointmentOverviewService(db)
+    
+    # Use current user's doctor ID if not provided
+    effective_doctor_id = doctorId or current_user.get("_id")
+    if not effective_doctor_id:
+        return error_response("Doctor ID is required", status_code=status.HTTP_400_BAD_REQUEST)
+    
+    overview = await service.get_appointment_overview(
+        doctor_id=str(effective_doctor_id),
+        period=period
+    )
+    
+    return success_response(
+        message="Appointment overview retrieved successfully",
+        data=overview
+    )
+
+
+@router.get("/performance-insights", response_model=dict)
+async def get_performance_insights(
+    current_user: dict = Depends(get_current_active_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get performance insights for the current doctor."""
+    from app.services.appointment_overview_service import AppointmentOverviewService
+    service = AppointmentOverviewService(db)
+    
+    doctor_id = current_user.get("_id")
+    if not doctor_id:
+        return error_response("Doctor ID is required", status_code=status.HTTP_400_BAD_REQUEST)
+    
+    insights = await service.get_performance_insights(doctor_id=str(doctor_id))
+    
+    return success_response(
+        message="Performance insights retrieved successfully",
+        data=insights
+    )
+
+
 async def get_current_doctor_patients(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
