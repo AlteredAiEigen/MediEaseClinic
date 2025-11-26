@@ -1007,9 +1007,9 @@ export function PatientOverview() {
           temperature: "",
           oxygenSaturation: "",
           weight: "",
-          bloodGlucose: "",
-          respiratoryRate: "",
-          height: "",
+        bloodGlucose: "",
+        respiratoryRate: "",
+        height: "",
         },
         currentMedications: [],
         medicalHistoryEntries: [],
@@ -3892,9 +3892,9 @@ export function PatientOverview() {
             <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FlaskConicalIcon className="w-5 h-5 text-[#00C4B3]" />
-                  Lab Results
-                </CardTitle>
+                <FlaskConicalIcon className="w-5 h-5 text-[#00C4B3]" />
+                Lab Results
+              </CardTitle>
                 <p className="text-xs text-muted-foreground mt-1">
                   Laboratory test results organized by month
                 </p>
@@ -3928,37 +3928,37 @@ export function PatientOverview() {
                             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00C4B3]/10 text-[#00C4B3]">
                               <FlaskConicalIcon className="w-5 h-5" />
                             </div>
-                            <div>
-                              <p className="text-base font-semibold text-foreground">
-                                {group.label}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
+                        <div>
+                          <p className="text-base font-semibold text-foreground">
+                            {group.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
                                 {group.reports.length}{" "}
                                 {group.reports.length === 1 ? "report" : "reports"} ·{" "}
                                 {group.totalTests} {group.totalTests === 1 ? "test" : "tests"}
-                              </p>
-                            </div>
+                          </p>
+                        </div>
                           </div>
                           <div className="flex items-center gap-2">
                             {group.abnormalTests > 0 ? (
-                              <Badge className="bg-red-100 text-red-700 border-red-200">
-                                {group.abnormalTests} abnormal
-                              </Badge>
+                            <Badge className="bg-red-100 text-red-700 border-red-200">
+                              {group.abnormalTests} abnormal
+                            </Badge>
                             ) : (
                               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">
                                 All normal
                               </Badge>
-                            )}
-                          </div>
+                          )}
                         </div>
+                      </div>
                       </AccordionTrigger>
                       <AccordionContent className="px-0">
                         <div className="space-y-2">
-                          {group.reports.map((report) => (
-                            <div
-                              key={report._id}
+                        {group.reports.map((report) => (
+                          <div
+                            key={report._id}
                               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
-                            >
+                          >
                               <div>
                                 <p className="text-sm font-semibold text-foreground">
                                   {report.reportType}
@@ -3976,21 +3976,21 @@ export function PatientOverview() {
                                   {formatDisplayDate(report.reportedDate)}
                                 </p>
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-                                onClick={() => handleViewLabReport(report)}
-                              >
-                                <FileTextIcon className="w-4 h-4 mr-2" />
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                                  onClick={() => handleViewLabReport(report)}
+                                >
+                                  <FileTextIcon className="w-4 h-4 mr-2" />
                                 View Report
-                              </Button>
+                                </Button>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
                       </AccordionContent>
                     </AccordionItem>
-                  ))}
+                        ))}
                 </Accordion>
               )}
             </CardContent>
@@ -4242,15 +4242,15 @@ export function PatientOverview() {
                     <div className="space-y-0.5">
                       <p className="text-[10px] uppercase tracking-[0.3em] opacity-80">
                         {insuranceProviderName}
-                      </p>
+                  </p>
                       <p className="text-xl font-semibold leading-tight">{insurancePlanName}</p>
                       <p className="text-[11px] opacity-80">
                         {activeInsuranceRecord ? "Linked insurance profile" : "Plan details pending update"}
-                      </p>
-                    </div>
+                  </p>
+                </div>
                     <Badge className="bg-white/20 text-white border-white/40 text-[10px] px-2 py-0.5">
                       {insuranceStatus}
-                    </Badge>
+                  </Badge>
                   </div>
                   <div className="grid gap-2 md:grid-cols-2 text-[11px] font-medium rounded-xl bg-white/10 p-3">
                     <div>
@@ -4259,14 +4259,14 @@ export function PatientOverview() {
                       </p>
                       <p className="text-base tracking-wide">
                         {insuranceCardNumberDisplay}
-                      </p>
-                    </div>
+                  </p>
+                </div>
                     <div className="text-right">
                       <p className="text-[10px] uppercase tracking-wider opacity-70">
                         Member
                       </p>
                       <p className="text-base">{insuranceMemberName}</p>
-                    </div>
+              </div>
                   </div>
                   <div className="grid gap-2 md:grid-cols-2 text-xs">
                     <div>
@@ -4324,10 +4324,10 @@ export function PatientOverview() {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-xl bg-muted/30 p-2.5">
                       <p className="text-xs text-muted-foreground">Days Remaining</p>
-                      <p className="text-sm font-semibold text-foreground mt-1">
+                    <p className="text-sm font-semibold text-foreground mt-1">
                         {daysRemainingLabel}
-                      </p>
-                    </div>
+                    </p>
+                  </div>
                     <div className="rounded-xl bg-muted/30 p-2.5">
                       <p className="text-xs text-muted-foreground">Total Claims</p>
                       <p className="text-sm font-semibold text-foreground mt-1">
@@ -4497,10 +4497,10 @@ export function PatientOverview() {
             <Card className="border-border shadow-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <Wallet2Icon className="w-5 h-5 text-[#00C4B3]" />
-                    Coverage Benefits
-                  </CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet2Icon className="w-5 h-5 text-[#00C4B3]" />
+                  Coverage Benefits
+                </CardTitle>
                   <Button
                     variant="outline"
                     size="sm"
@@ -4517,16 +4517,16 @@ export function PatientOverview() {
                   {insuranceBenefits
                     .filter((benefit) => selectedBenefits.has(benefit.title))
                     .map((benefit) => (
-                      <div key={benefit.title} className="rounded-lg border border-border/60 p-3">
-                        <div className="flex items-center gap-2">
-                          <benefit.icon className="w-4 h-4 text-[#00C4B3]" />
-                          <p className="font-semibold text-sm">{benefit.title}</p>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {benefit.description}
-                        </p>
+                    <div key={benefit.title} className="rounded-lg border border-border/60 p-3">
+                      <div className="flex items-center gap-2">
+                        <benefit.icon className="w-4 h-4 text-[#00C4B3]" />
+                        <p className="font-semibold text-sm">{benefit.title}</p>
                       </div>
-                    ))}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {benefit.description}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               </CardContent>
             </Card>

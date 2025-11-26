@@ -32,6 +32,8 @@ import {
   PhoneIcon,
   MailIcon,
   CalendarIcon,
+  UserIcon,
+  HeartPulseIcon,
 } from "lucide-react";
 import { get, post } from "@/lib/api-client";
 
@@ -64,6 +66,7 @@ type ApiPatient = {
   email?: string;
   presentInClinic: boolean;
   chiefComplaint?: string | null;
+  createdAt?: string;
 };
 
 type PatientStatus = "in-clinic" | "remote";
@@ -141,8 +144,30 @@ export function AdminPatients() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [inClinicToday, setInClinicToday] = useState(0);
+  const [newPatientsThisWeek, setNewPatientsThisWeek] = useState(0);
+  const [appointmentsThisWeek, setAppointmentsThisWeek] = useState(0);
+  const [appointmentsToday, setAppointmentsToday] = useState(0);
 
   const [newPatient, setNewPatient] = useState({ ...emptyNewPatientState });
+
+  // Helper to extract list from API response
+  const extractList = <T,>(rawData: any): T[] => {
+    if (Array.isArray(rawData)) {
+      return rawData as T[];
+    }
+    if (rawData && Array.isArray(rawData.data)) {
+      return rawData.data as T[];
+    }
+    if (rawData && Array.isArray(rawData.items)) {
+      return rawData.items as T[];
+    }
+    if (rawData && Array.isArray(rawData.patients)) {
+      return rawData.patients as T[];
+    }
+    return [];
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -151,11 +176,42 @@ export function AdminPatients() {
       setIsLoading(true);
       setFetchError(null);
       try {
-        const response = await get<ApiPatient[]>("/api/patients?limit=50");
+        // Fetch patients with max limit (100) for stats calculation
+        const response = await get<any>("/api/patients?limit=100&page=1");
         if (ignore) return;
 
-        if (response.success && Array.isArray(response.data)) {
-          setPatientsList(response.data.map(mapApiPatientToUi));
+        if (response.success) {
+          // Response structure: {success, message, data: [...], pagination: {total, page, limit, ...}}
+          const patientsData = Array.isArray(response.data) ? response.data : [];
+          const pagination = (response as any).pagination || {};
+          const total = pagination.total ?? patientsData.length;
+          
+          // Always set stats, even if 0
+          setTotalPatients(total);
+          
+          // For display, we'll use first 50 patients
+          const mappedPatients = patientsData.slice(0, 50).map(mapApiPatientToUi);
+          setPatientsList(mappedPatients);
+          
+          // Note: In Clinic Today will be calculated from queue entries, not from presentInClinic flag
+          
+          // Calculate new patients this week
+          const now = new Date();
+          const weekAgo = new Date(now);
+          weekAgo.setDate(now.getDate() - 7);
+          weekAgo.setHours(0, 0, 0, 0);
+          
+          const newThisWeek = patientsData.filter((patient: ApiPatient) => {
+            if (!patient.createdAt) return false;
+            try {
+              const createdDate = new Date(patient.createdAt);
+              return createdDate >= weekAgo && !isNaN(createdDate.getTime());
+            } catch {
+              return false;
+            }
+          }).length;
+          
+          setNewPatientsThisWeek(newThisWeek);
         } else {
           setFetchError(response.message ?? "Unable to load patients right now.");
         }
@@ -164,6 +220,7 @@ export function AdminPatients() {
         const message =
           error instanceof Error ? error.message : "Unable to load patients.";
         setFetchError(message);
+        console.error("Error fetching patients:", error);
       } finally {
         if (!ignore) {
           setIsLoading(false);
@@ -176,6 +233,137 @@ export function AdminPatients() {
     return () => {
       ignore = true;
     };
+  }, []);
+
+
+  // Fetch queue entries for "In Clinic Today" and appointments for stats
+  useEffect(() => {
+    const fetchQueueAndAppointments = async () => {
+      try {
+        // Helper to format date as YYYY-MM-DD in local timezone
+        const formatDateLocal = (date: Date): string => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+
+        const today = new Date();
+        const weekStart = new Date(today);
+        // Start of week (Sunday = 0)
+        const dayOfWeek = today.getDay();
+        weekStart.setDate(today.getDate() - dayOfWeek);
+        weekStart.setHours(0, 0, 0, 0);
+        
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6); // End of week (Saturday)
+        weekEnd.setHours(23, 59, 59, 999);
+        
+        const todayStr = formatDateLocal(today);
+        const weekStartStr = formatDateLocal(weekStart);
+        const weekEndStr = formatDateLocal(weekEnd);
+        
+        // Fetch queue entries first
+        const queueResponse = await get<any>("/api/queue");
+        
+        // Calculate "In Clinic Today" from queue entries
+        if (queueResponse.success) {
+          const payload = queueResponse.data as any;
+          const queueList = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.queue)
+            ? payload.queue
+            : Array.isArray(payload?.data)
+            ? payload.data
+            : [];
+          
+          // Filter queue entries from today that are active (in clinic)
+          const todayQueueEntries = queueList.filter((entry: any) => {
+            const checkedInAt = entry.checked_in_at || entry.checkedInAt;
+            if (!checkedInAt) return false;
+            
+            const entryDate = new Date(checkedInAt);
+            const entryDateStr = entryDate.toISOString().split("T")[0];
+            const isToday = entryDateStr === todayStr;
+            
+            const status = (entry.status || "").toLowerCase();
+            // Include: waiting, in-consultation, completed (patients still in clinic)
+            const isInClinic = ["waiting", "in-consultation", "completed"].includes(status);
+            
+            return isToday && isInClinic;
+          });
+          
+          // Count unique patients in clinic today
+          const uniquePatients = new Set(
+            todayQueueEntries
+              .map((entry: any) => {
+                const patientId = entry.patient?._id || entry.patient || entry.patientId;
+                return patientId ? String(patientId) : null;
+              })
+              .filter((id: string | null) => id !== null)
+          );
+          setInClinicToday(uniquePatients.size);
+        }
+        
+        // Fetch all appointments (handle pagination)
+        let allAppointments: any[] = [];
+        let page = 1;
+        const limit = 100;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const appointmentsResponse = await get<any>(`/api/appointments?limit=${limit}&page=${page}`);
+          
+          if (appointmentsResponse.success) {
+            let appointments: any[] = [];
+            if (Array.isArray(appointmentsResponse.data)) {
+              appointments = appointmentsResponse.data;
+            } else {
+              appointments = extractList<any>(appointmentsResponse.data);
+            }
+            
+            allAppointments = allAppointments.concat(appointments);
+            
+            const pagination = (appointmentsResponse as any).pagination;
+            if (pagination && pagination.totalPages) {
+              hasMore = page < pagination.totalPages;
+              page++;
+            } else {
+              // If no pagination info or we got fewer than limit, we're done
+              hasMore = appointments.length === limit;
+              page++;
+            }
+            
+            // Safety limit: don't fetch more than 10 pages (1000 appointments)
+            if (page > 10) break;
+          } else {
+            hasMore = false;
+          }
+        }
+        
+        // Filter for today
+        const todayCount = allAppointments.filter((apt: any) => {
+          return apt.date === todayStr;
+        }).length;
+        
+        // Filter for this week
+        const weekCount = allAppointments.filter((apt: any) => {
+          if (!apt.date) return false;
+          const aptDate = apt.date;
+          return aptDate >= weekStartStr && aptDate <= weekEndStr;
+        }).length;
+        
+        setAppointmentsToday(todayCount);
+        setAppointmentsThisWeek(weekCount);
+      } catch (error) {
+        console.error("Failed to fetch queue/appointments:", error);
+        setAppointmentsToday(0);
+        setAppointmentsThisWeek(0);
+        setInClinicToday(0);
+      }
+    };
+    
+    fetchQueueAndAppointments();
   }, []);
 
   const filteredPatients = useMemo(() => {
@@ -267,80 +455,76 @@ const statusLabels: Record<PatientStatus, string> = {
     <div className="space-y-6">
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="border-none shadow-lg bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 hover:shadow-xl transition-all">
+        <Card className="border border-border bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10 shadow-sm hover:shadow-md transition-shadow">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                <p className="text-sm font-medium text-muted-foreground">
                   Total Patients
                 </p>
-                <h3 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent mt-1">
-                  {patientsList.length}
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {totalPatients}
                 </h3>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/50">
-                <UsersIcon className="w-7 h-7 text-white" />
+              <div className="w-12 h-12 rounded-lg bg-teal-500 flex items-center justify-center">
+                <UserIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-lg bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 hover:shadow-xl transition-all">
+        <Card className="border border-border bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10 shadow-sm hover:shadow-md transition-shadow">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                <p className="text-sm font-medium text-muted-foreground">
                   In Clinic Today
                 </p>
-                <h3 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent mt-1">
-                  {patientsList.filter((p) => p.status === "in-clinic").length}
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {inClinicToday}
                 </h3>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/50">
-                <CheckCircleIcon className="w-7 h-7 text-white" />
+              <div className="w-12 h-12 rounded-lg bg-green-500 flex items-center justify-center">
+                <HeartPulseIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-lg bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-950/30 dark:to-blue-950/30 hover:shadow-xl transition-all">
+        <Card className="border border-border bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/20 dark:to-blue-900/10 shadow-sm hover:shadow-md transition-shadow">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">
-                  Remote Follow-ups
+                <p className="text-sm font-medium text-muted-foreground">
+                  New This Week
                 </p>
-                <h3 className="text-3xl font-bold bg-gradient-to-r from-cyan-600 to-blue-600 dark:from-cyan-400 dark:to-blue-400 bg-clip-text text-transparent mt-1">
-                  {patientsList.filter((p) => p.status === "remote").length}
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {newPatientsThisWeek}
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Patients completing care virtually or not currently in clinic.
-                </p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/50">
-                <MailIcon className="w-7 h-7 text-white" />
+              <div className="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center">
+                <UsersIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-lg bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30 hover:shadow-xl transition-all">
+        <Card className="border border-border bg-gradient-to-br from-yellow-50 to-yellow-100/50 dark:from-yellow-950/20 dark:to-yellow-900/10 shadow-sm hover:shadow-md transition-shadow">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-red-700 dark:text-red-300">
-                  Active Complaints
+                <p className="text-sm font-medium text-muted-foreground">
+                  Appointments This Week
                 </p>
-                <h3 className="text-3xl font-bold bg-gradient-to-r from-red-600 to-orange-600 dark:from-red-400 dark:to-orange-400 bg-clip-text text-transparent mt-1">
-                  {
-                    patientsList.filter(
-                      (p) => typeof p.chiefComplaint === "string" && p.chiefComplaint.trim().length > 0
-                    ).length
-                  }
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {appointmentsThisWeek}
                 </h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Today: {appointmentsToday}
+                </p>
               </div>
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shadow-lg shadow-red-500/50">
-                <AlertCircleIcon className="w-7 h-7 text-white" />
+              <div className="w-12 h-12 rounded-lg bg-orange-500 flex items-center justify-center">
+                <CalendarIcon className="w-6 h-6 text-white" />
               </div>
             </div>
           </CardContent>

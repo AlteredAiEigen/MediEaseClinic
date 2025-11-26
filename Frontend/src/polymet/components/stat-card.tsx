@@ -36,15 +36,17 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl border bg-gradient-to-br p-6 shadow-sm transition-all hover:shadow-md",
+        "relative overflow-hidden rounded-xl border bg-gradient-to-br p-4 shadow-sm transition-all hover:shadow-md",
         colorClasses[color],
         className
       )}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-3xl font-bold text-foreground">{value}</p>
+          <p className="text-xs font-medium text-muted-foreground">{title}</p>
+          <p className="text-xl font-bold text-foreground leading-tight">
+            {value}
+          </p>
           {trend && (
             <div
               className={cn(
@@ -68,10 +70,10 @@ export function StatCard({
             color === "red" && "bg-[#FF4F6E]/10"
           )}
         >
-          <Icon className="w-6 h-6" />
+          <Icon className="w-4 h-4" />
         </div>
       </div>
-      <div className="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-white/5 to-transparent rounded-tl-full" />
+      <div className="absolute bottom-0 right-0 w-20 h-20 bg-gradient-to-tl from-white/5 to-transparent rounded-tl-full" />
     </div>
   );
 }

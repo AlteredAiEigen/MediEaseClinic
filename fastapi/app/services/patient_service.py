@@ -9,6 +9,7 @@ from copy import deepcopy
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 
 from app.models.patient import (
     PatientCreate,
@@ -71,27 +72,45 @@ class PatientService:
     async def generate_patient_id(self) -> str:
         """
         Generate unique patient ID (e.g., P001, P002).
+        Finds the maximum numeric ID and increments it, with collision detection.
         
         Returns:
             Unique patient ID
         """
-        # Get the last patient
-        last_patient = await self.patients_collection.find_one(
-            {},
-            sort=[("patientId", -1)]
+        max_number = 0
+        
+        # Fetch all patient IDs to find the maximum numeric value
+        cursor = self.patients_collection.find(
+            {"patientId": {"$exists": True, "$ne": None, "$regex": "^P\\d+$"}},
+            {"patientId": 1}
         )
+        all_patients = await cursor.to_list(length=None)
         
-        if not last_patient or not last_patient.get("patientId"):
-            return "P001"
+        # Extract numeric part from all patient IDs and find the maximum
+        for patient in all_patients:
+            patient_id = patient.get("patientId", "")
+            if patient_id and patient_id.startswith("P") and len(patient_id) > 1:
+                try:
+                    number = int(patient_id[1:])
+                    max_number = max(max_number, number)
+                except (ValueError, IndexError):
+                    continue
         
-        # Extract number from last patient ID and increment
-        last_id = last_patient["patientId"]
-        try:
-            last_number = int(last_id[1:])
-            new_number = last_number + 1
-            return f"P{new_number:03d}"
-        except:
-            return "P001"
+        # Start from max_number + 1, but check for collisions
+        start_number = max_number + 1 if max_number > 0 else 1
+        
+        # Try up to 1000 times to find an unused ID (safety limit)
+        for attempt in range(start_number, start_number + 1000):
+            candidate_id = f"P{attempt:03d}"
+            
+            # Check if this ID already exists
+            existing = await self.patients_collection.find_one({"patientId": candidate_id})
+            if not existing:
+                return candidate_id
+        
+        # Fallback: if we somehow exhaust all possibilities, use timestamp-based ID
+        timestamp = int(datetime.utcnow().timestamp() * 1000)
+        return f"P{str(timestamp)[-6:]}"
     
     async def create_patient(
         self,
@@ -159,8 +178,41 @@ class PatientService:
             self.ENCRYPTED_FIELDS
         )
         
-        # Insert into database
-        result = await self.patients_collection.insert_one(patient_dict)
+        # Insert into database with retry logic for duplicate key errors
+        max_retries = 5
+        result = None
+        for attempt in range(max_retries):
+            try:
+                result = await self.patients_collection.insert_one(patient_dict)
+                break  # Success, exit retry loop
+            except DuplicateKeyError as e:
+                # Check if it's a patientId duplicate
+                error_msg = str(e)
+                if "patientId" in error_msg:
+                    if attempt < max_retries - 1:
+                        # Generate a new patient ID and retry
+                        patient_id = await self.generate_patient_id()
+                        patient_dict["patientId"] = patient_id
+                        continue
+                    else:
+                        # Max retries reached
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Failed to generate unique patient ID after {max_retries} attempts. Please try again."
+                        )
+                else:
+                    # Different duplicate key error (e.g., email)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="A patient with this information already exists."
+                    )
+        
+        # Ensure we have a result
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create patient. Please try again."
+            )
         
         # Retrieve created patient
         created_patient = await self.patients_collection.find_one({"_id": result.inserted_id})

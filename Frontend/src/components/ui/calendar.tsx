@@ -173,7 +173,7 @@ function CustomCalendar({
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .calendar-container {
           width: 100%;
           max-width: 100%;

@@ -138,32 +138,53 @@ class AuthService:
         
         Returns:
             User data if authentication successful, None otherwise
+        
+        Raises:
+            HTTPException: If user account is deactivated or password verification fails
         """
+        # Normalize email to lowercase for lookup
+        normalized_email = email.lower().strip()
+        
         # Find user by email
-        user = await self._get_users_collection().find_one({"email": email.lower()})
+        user = await self._get_users_collection().find_one({"email": normalized_email})
         
         if not user:
+            # User not found - return None to indicate invalid credentials
             return None
         
         # Check if user is active
         if not user.get("isActive", True):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is deactivated"
+                detail="User account is deactivated. Please contact your administrator."
+            )
+        
+        # Check if password field exists
+        if "password" not in user or not user.get("password"):
+            # Password not set - this shouldn't happen but handle gracefully
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="User account configuration error. Please contact support."
             )
         
         # Verify password
         if not verify_password(password, user["password"]):
+            # Password doesn't match - return None to indicate invalid credentials
             return None
         
         # Update last login
-        await self._get_users_collection().update_one(
-            {"_id": user["_id"]},
-            {"$set": {"lastLogin": datetime.utcnow()}}
-        )
-        
-        # Update user dict with new lastLogin
-        user["lastLogin"] = datetime.utcnow()
+        try:
+            await self._get_users_collection().update_one(
+                {"_id": user["_id"]},
+                {"$set": {"lastLogin": datetime.utcnow()}}
+            )
+            # Update user dict with new lastLogin
+            user["lastLogin"] = datetime.utcnow()
+        except Exception as e:
+            # Log error but don't fail authentication if lastLogin update fails
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to update lastLogin for user {user.get('_id')}: {str(e)}")
         
         return await user_helper(user)
     

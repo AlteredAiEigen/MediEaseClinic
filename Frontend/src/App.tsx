@@ -16,6 +16,7 @@ const AdminUserProfile = lazy(() => import("@/polymet/pages/admin-user-profile")
 const AdminPatients = lazy(() => import("@/polymet/pages/admin-patients").then(module => ({ default: module.AdminPatients })));
 const AdminAppointments = lazy(() => import("@/polymet/pages/admin-appointments").then(module => ({ default: module.AdminAppointments })));
 const AdminSettings = lazy(() => import("@/polymet/pages/admin-settings").then(module => ({ default: module.AdminSettings })));
+const AdminBilling = lazy(() => import("@/polymet/pages/admin-billing").then(module => ({ default: module.AdminBilling })));
 const DoctorDashboard = lazy(() => import("@/polymet/pages/doctor-dashboard").then(module => ({ default: module.DoctorDashboard })));
 const DoctorPatients = lazy(() => import("@/polymet/pages/doctor-patients").then(module => ({ default: module.DoctorPatients })));
 const DoctorWorkstation = lazy(() => import("@/polymet/pages/doctor-workstation").then(module => ({ default: module.DoctorWorkstation })));
@@ -182,6 +183,19 @@ export default function MediEaseClinicPrototype() {
                 <Suspense fallback={<LoadingFallback />}>
                   <HealthcareLayout>
                     <AdminSettings />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/admin-billing"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <AdminBilling />
                   </HealthcareLayout>
                 </Suspense>
               </RequireAuth>

@@ -88,7 +88,11 @@ async def login(
     """
     try:
         from app.services.auth_service import auth_service
-        result = await auth_service.login(credentials.email, credentials.password)
+        
+        # Normalize email input
+        email = credentials.email.lower().strip()
+        
+        result = await auth_service.login(email, credentials.password)
         
         return success_response(
             message="Login successful",
@@ -96,11 +100,17 @@ async def login(
         )
     
     except HTTPException as e:
+        # Re-raise HTTP exceptions (like 403 for deactivated accounts)
         raise e
     except Exception as e:
+        # Log the error for debugging but return generic message to client
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Login error for {credentials.email}: {str(e)}", exc_info=True)
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login failed: {str(e)}"
+            detail="Login failed. Please try again or contact support if the problem persists."
         )
 
 

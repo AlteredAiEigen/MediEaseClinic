@@ -31,6 +31,7 @@ import {
   CheckCircleIcon,
   InfoIcon,
   ActivityIcon,
+  DollarSignIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
@@ -154,6 +155,11 @@ export function HealthcareLayout({
         icon: CalendarIcon,
         label: "Appointments",
         path: "/admin-appointments",
+      },
+      {
+        icon: DollarSignIcon,
+        label: "Billing & Pricing",
+        path: "/admin-billing",
       },
       {
         icon: UserIcon,

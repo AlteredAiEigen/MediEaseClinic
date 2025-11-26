@@ -151,6 +151,11 @@ class Database:
             await cls.database.patient_reviews.create_index("patientId")
             await cls.database.patient_reviews.create_index("doctorId")
             await cls.database.patient_reviews.create_index([("doctorId", 1), ("createdAt", -1)])
+
+            # Billing items collection indexes
+            await cls.database.billing_items.create_index("category")
+            await cls.database.billing_items.create_index("key")
+            await cls.database.billing_items.create_index([("category", 1), ("key", 1)], unique=True)
             
             logger.info("Database indexes created successfully")
             
