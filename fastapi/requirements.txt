@@ -45,6 +45,7 @@ python-json-logger==2.0.7
 python-dateutil==2.8.2
 
 # Email (for future notifications)
+email-validator==2.2.0
 aiosmtplib==3.0.1
 
 # WhatsApp/Communication

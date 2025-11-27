@@ -1,8 +1,21 @@
-const DEFAULT_API_BASE_URL = "http://localhost:8000";
+const resolveDefaultApiBaseUrl = () => {
+  if (typeof window !== "undefined") {
+    const { protocol, hostname, host } = window.location;
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL
-).replace(/\/$/, "");
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+
+    return `${protocol}//${host}`;
+  }
+
+  return "http://localhost:8000";
+};
+
+const DEFAULT_API_BASE_URL = resolveDefaultApiBaseUrl();
+
+const apiBase = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+const API_BASE_URL = apiBase.replace(/\/$/, "");
 
 const ACCESS_TOKEN_KEY = "mediease:accessToken";
 const REFRESH_TOKEN_KEY = "mediease:refreshToken";

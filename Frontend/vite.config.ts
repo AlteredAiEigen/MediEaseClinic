@@ -17,5 +17,11 @@ export default defineConfig({
       '@lib': path.resolve(__dirname, './src/lib'),
       '(components)': path.resolve(__dirname, './src/(components)'),
     }
+  },
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    strictPort: true,
+    allowedHosts: ['app.clinic.alteredai.care'],
   }
 })

@@ -193,63 +193,84 @@ print_step "Checking for processes using required ports..."
 kill_port 8000 "Backend"
 kill_port 5173 "Frontend"
 
+# Stop existing PM2 frontend process if running (legacy dev server)
+if command_exists pm2 && pm2 list | grep -q "frontend"; then
+    print_warning "Stopping legacy PM2 frontend process..."
+    pm2 stop frontend 2>/dev/null || true
+    pm2 delete frontend 2>/dev/null || true
+fi
+
+# Stop any running FastAPI backend processes
+if pgrep -f "uvicorn app.main:app" >/dev/null 2>&1; then
+    print_warning "Stopping existing FastAPI backend process..."
+    pkill -f "uvicorn app.main:app" || true
+    sleep 1
+fi
+
 echo ""
 
-# Start Backend in background
-print_step "Starting FastAPI backend..."
+# Start Backend with nohup
+print_step "Starting FastAPI backend with nohup..."
 cd ../fastapi
+
+# Ensure virtual environment exists
+if [ ! -d "venv" ]; then
+    print_step "Creating Python virtual environment..."
+    python3 -m venv venv
+    print_success "Virtual environment created"
+fi
+
+# Activate virtual environment and install dependencies
+print_step "Installing Python dependencies..."
 source venv/bin/activate
 
-# Install/update requirements
-print_step "Installing Python dependencies..."
+# Upgrade pip first
+pip install --upgrade pip > /dev/null 2>&1
+
+# Install requirements
 pip install -r requirements.txt
 
 print_success "Dependencies installed"
 
-# Start backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 &
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
+# Start backend with nohup using venv's uvicorn
+print_step "Starting backend server with venv..."
+# Use the venv's python/uvicorn directly to ensure it runs in the virtual environment
+nohup venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*' > logs/backend.log 2>&1 &
 BACKEND_PID=$!
 
-print_success "Backend started (PID: $BACKEND_PID)"
+print_success "Backend started with nohup (PID: $BACKEND_PID)"
+print_step "Backend logs: fastapi/logs/backend.log"
 
 # Wait for backend to be ready
-wait_for_service "http://localhost:8000/docs" "FastAPI backend"
+wait_for_service "http://127.0.0.1:8000/docs" "FastAPI backend"
 
-# Start Frontend in background
-print_step "Starting React frontend..."
-cd ../Frontend
-
-# Start frontend
-npm run dev -- --host 0.0.0.0 --port 5173 &
-FRONTEND_PID=$!
-
-print_success "Frontend started (PID: $FRONTEND_PID)"
-
-# Wait for frontend to be ready
-wait_for_service "http://localhost:5173" "React frontend"
+print_success "Frontend production build generated in Frontend/dist (served via Nginx)"
 
 echo ""
 echo -e "${GREEN}=================================================="
 echo "🎉 MediEase Clinic is now running!"
 echo "=================================================="
 echo ""
-echo -e "📱 Frontend: ${BLUE}http://localhost:5173${NC}"
+echo -e "📱 Frontend: ${BLUE}https://app.clinic.alteredai.care${NC}"
 echo -e "🔧 Backend API: ${BLUE}http://localhost:8000/docs${NC}"
 echo ""
-echo -e "📋 Service PIDs:"
-echo -e "   Backend: ${YELLOW}$BACKEND_PID${NC}"
-echo -e "   Frontend: ${YELLOW}$FRONTEND_PID${NC}"
+echo -e "📋 Service Information:"
+echo -e "   Backend: ${YELLOW}Running with nohup (PID: $BACKEND_PID)${NC}"
+echo -e "   Frontend: ${YELLOW}Served statically from Frontend/dist via Nginx${NC}"
 echo ""
-echo -e "🛑 To stop services, run: ${RED}kill $BACKEND_PID $FRONTEND_PID${NC}"
+echo -e "📝 Logs:"
+echo -e "   Backend: ${BLUE}fastapi/logs/backend.log${NC}"
+echo -e "   Frontend: ${BLUE}/var/log/nginx/access.log & /var/log/nginx/error.log${NC}"
+echo ""
+echo -e "🛑 To stop services:"
+echo -e "   Backend: ${RED}kill $BACKEND_PID${NC}"
+echo -e "   Frontend: ${RED}Served by Nginx (no process to stop)${NC}"
 echo ""
 echo -e "${YELLOW}Note: Edit fastapi/.env file with your actual credentials${NC}"
 echo -e "${GREEN}==================================================${NC}"
 
-# Wait for user interrupt
-trap "echo -e '\n${YELLOW}Shutting down services...${NC}'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit 0" INT
-
-echo ""
-echo -e "${BLUE}Press Ctrl+C to stop all services${NC}"
-
-# Keep script running to show logs
-wait
+print_step "Startup complete. Script will exit now without holding the terminal."
+exit 0

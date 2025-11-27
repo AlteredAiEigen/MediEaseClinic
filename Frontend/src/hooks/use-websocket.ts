@@ -32,15 +32,29 @@ export function useWebSocket(
     const token = getStoredAccessToken();
     if (!token) return null;
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = process.env.NODE_ENV === 'production'
-      ? window.location.host
-      : 'localhost:8000';
+    let endpointBase: string | null = null;
+    if (import.meta.env.VITE_WS_BASE_URL) {
+      endpointBase = import.meta.env.VITE_WS_BASE_URL;
+    } else if (typeof window !== 'undefined') {
+      const { protocol, host, hostname } = window.location;
+      const wsProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
 
-    let url = `${protocol}//${host}/ws/${endpoint}?token=${encodeURIComponent(token)}`;
+      if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        endpointBase = `${wsProtocol}//localhost:8000`;
+      } else {
+        endpointBase = `${wsProtocol}//${host}`;
+      }
+    }
+
+    if (!endpointBase) {
+      endpointBase = 'ws://localhost:8000';
+    }
+
+    const base = endpointBase.replace(/\/$/, '');
+    let url = `${base}/ws/${endpoint}?token=${encodeURIComponent(token)}`;
 
     if (doctorId) {
-      url = `${protocol}//${host}/ws/queue/doctor/${doctorId}?token=${encodeURIComponent(token)}`;
+      url = `${base}/ws/queue/doctor/${doctorId}?token=${encodeURIComponent(token)}`;
     }
 
     return url;
