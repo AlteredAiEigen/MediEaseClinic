@@ -100,6 +100,9 @@ export function ConsultationSession() {
   const [diagnosis, setDiagnosis] = useState("");
   const [treatment, setTreatment] = useState("");
   const [followUp, setFollowUp] = useState("");
+  const [prescription, setPrescription] = useState("");
+  const [prescribedTest, setPrescribedTest] = useState("");
+  const [aiRecommendations, setAiRecommendations] = useState<any>(null);
 
   // AI Chat
   const [aiChatOpen, setAiChatOpen] = useState(false);
@@ -308,6 +311,14 @@ const appointmentTimeline = defaultAppointmentTimeline;
         }
         if (localQueueEntryId) {
           setQueueEntryId(localQueueEntryId);
+          // Load prescription details from queue entry
+          if (queueInfo?.entry) {
+            setPrescription(queueInfo.entry.prescription || "");
+            // No longer loading generic tests; only prescribed tests are used
+            if (queueInfo.entry.prescribedTest) {
+              setPrescribedTest(queueInfo.entry.prescribedTest || "");
+            }
+          }
         }
 
         let hasAccess = false;
@@ -539,6 +550,34 @@ const appointmentTimeline = defaultAppointmentTimeline;
     });
   };
 
+  const stopRecordingWithoutUpload = async () => {
+    if (!mediaRecorderRef.current || !isRecording) return;
+
+    await new Promise<void>((resolve) => {
+      const recorder = mediaRecorderRef.current!;
+      const previousOnStop = recorder.onstop;
+
+      recorder.onstop = async (event: Event) => {
+        previousOnStop?.call(recorder, event as any);
+
+        if (recordingInterval) {
+          clearInterval(recordingInterval);
+          setRecordingInterval(null);
+        }
+
+        setIsRecording(false);
+        setFinalRecordingDuration(recordingDuration);
+        
+        // Don't upload - just resolve after a short delay to ensure blob is ready
+        setTimeout(() => {
+          resolve();
+        }, 150);
+      };
+
+      recorder.stop();
+    });
+  };
+
   const uploadRecording = async () => {
     if (!isMountedRef.current) return;
 
@@ -747,13 +786,38 @@ const appointmentTimeline = defaultAppointmentTimeline;
   const saveClinicalNotes = async () => {
     if (!patientId) return;
 
+    // Only save clinical notes if there's meaningful content
+    const hasContent = notes?.trim() || diagnosis?.trim() || treatment?.trim() || followUp?.trim();
+    
+    if (!hasContent) {
+      console.log("No clinical notes content to save, skipping");
+      return;
+    }
+
     try {
+      // Get current user info for clinical notes
+      const currentTime = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+      const noteContent = [
+        notes?.trim() || "",
+        diagnosis?.trim() ? `Diagnosis: ${diagnosis.trim()}` : "",
+        treatment?.trim() ? `Treatment: ${treatment.trim()}` : "",
+        followUp?.trim() ? `Follow-up: ${followUp.trim()}` : "",
+      ].filter(Boolean).join("\n\n") || "No clinical notes added";
+
+      const doctorId = user?._id || (user as any)?.id || "";
+      if (!doctorId) {
+        console.warn("No doctor ID available, skipping clinical notes save");
+        return;
+      }
+
       const response = await post("/api/clinical-notes", {
-        patientId,
-        note: notes,
-        diagnosis,
-        treatment,
-        followUp,
+        patient: patientId,
+        doctor: String(doctorId),
+        type: "general",
+        title: `Consultation Note - ${new Date().toLocaleDateString()}`,
+        content: noteContent,
+        timestamp: currentTime,
+        category: "consultation",
       });
 
       if (response.success) {
@@ -762,8 +826,61 @@ const appointmentTimeline = defaultAppointmentTimeline;
       }
     } catch (err) {
       console.error("Error saving clinical notes:", err);
+      // Don't fail the entire consultation if clinical notes save fails
     }
   };
+
+  // Autosave consultation details to appointment
+  const saveConsultationDetails = async () => {
+    const targetQueueId = queueEntryId || queueIdParam;
+    if (!targetQueueId) return;
+
+    try {
+      // Build structured AI recommendations payload from AI analysis card
+      const aiRecommendationsPayload = aiAnalysis
+        ? {
+            riskAssessment: {
+              level: aiAnalysis.riskLevel,
+              successRate: aiAnalysis.successRate,
+              similarCases: aiAnalysis.similarCases,
+            },
+            keyFindings: aiAnalysis.keyFindings,
+            recommendations: aiAnalysis.recommendations,
+          }
+        : aiRecommendations;
+
+      await put(`/api/queue/${targetQueueId}/consultation`, {
+        prescription: prescription || null,
+        prescribedTest: prescribedTest || null,
+        diagnosis: diagnosis || null,
+        treatmentPlan: treatment || null,
+        followUpInstructions: followUp || null,
+        detailedNotes: notes || null,
+        aiRecommendations: aiRecommendationsPayload || null,
+      });
+      console.log("Consultation details autosaved");
+    } catch (err) {
+      console.error("Error autosaving consultation details:", err);
+    }
+  };
+
+  // Debounced autosave for consultation details
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return; // Skip autosave on initial mount
+    }
+    
+    if (!queueEntryId && !queueIdParam) return;
+    
+    const timeoutId = setTimeout(() => {
+      saveConsultationDetails();
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prescription, prescribedTest, diagnosis, treatment, followUp, notes, aiRecommendations, queueEntryId, queueIdParam]);
 
   // Transcription is now synchronous, so no polling needed
   const checkTranscriptionStatus = async (recordingId?: string) => {
@@ -820,44 +937,101 @@ const appointmentTimeline = defaultAppointmentTimeline;
   };
 
   const handleEndConsultation = async () => {
-    if (isRecording) {
-      void stopRecording().catch((err) =>
-        console.error("Failed to finalize recording before ending consultation", err)
-      );
-    } else if (audioBlob && !uploadedRecordingId && !isUploading) {
-      void uploadRecording().catch((err) =>
-        console.error("Failed to upload recording before ending consultation", err)
-      );
-    }
+    try {
+      // Save clinical notes first (these are separate from consultation details)
+      await saveClinicalNotes();
 
-    // Save clinical notes first
-    await saveClinicalNotes();
-
-    // If we have a queue entry, mark it as completed so it disappears from the queue
-    const targetQueueId = queueEntryId || queueIdParam;
-    if (targetQueueId) {
-      try {
-        await put(`/api/queue/${targetQueueId}/status`, {
-          status: "completed",
-        });
-      } catch (err) {
-        console.error("Failed to update queue status:", err);
+      // Prepare recording blob if available
+      let recordingBlob: Blob | null = null;
+      let recordingDuration: number | undefined = undefined;
+      
+      if (isRecording) {
+        // Stop recording first and get the blob
+        // Wait for recording to stop and blob to be ready
+        await stopRecordingWithoutUpload();
+        // Wait a bit for audioBlob to be set
+        await new Promise(resolve => setTimeout(resolve, 200));
+        recordingBlob = audioBlob;
+        if (finalRecordingDuration) {
+          const parts = finalRecordingDuration.split(":");
+          recordingDuration = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+        }
+      } else if (audioBlob && !uploadedRecordingId) {
+        recordingBlob = audioBlob;
+        if (finalRecordingDuration) {
+          const parts = finalRecordingDuration.split(":");
+          recordingDuration = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+        }
       }
-    }
 
-    // Update appointment status to checkout so receptionist can proceed
-    if (appointmentId) {
-      try {
-        await put(`/api/appointments/${appointmentId}`, {
-          status: "checkout",
-        });
-      } catch (err) {
-        console.error("Failed to update appointment status:", err);
+      // If we have appointment ID, use the new complete-consultation endpoint
+      // This handles everything in one call: consultation data + recording upload (in background)
+      if (appointmentId) {
+        const formData = new FormData();
+        
+        // Add consultation details
+        const targetQueueId = queueEntryId || queueIdParam;
+        if (targetQueueId) {
+          formData.append("queue_id", targetQueueId);
+        }
+        // Always append fields, use empty string or default if not provided
+        formData.append("prescribed_test", prescribedTest || "");
+        formData.append("diagnosis", diagnosis || "");
+        formData.append("treatment_plan", treatment || "");
+        formData.append("follow_up_instructions", followUp || "");
+        formData.append("detailed_notes", notes || "");
+        if (aiRecommendations) {
+          const aiRecStr = typeof aiRecommendations === 'string' 
+            ? aiRecommendations 
+            : JSON.stringify(aiRecommendations);
+          formData.append("ai_recommendations", aiRecStr);
+        }
+        formData.append("prescription", prescription || "");
+        
+        // Add recording if available
+        if (recordingBlob && recordingDuration) {
+          formData.append("recording_file", recordingBlob, "consultation-recording.wav");
+          formData.append("recording_duration", recordingDuration.toString());
+        }
+
+        try {
+          await post(`/api/appointments/${appointmentId}/complete-consultation`, formData);
+          // Success - recording upload happens in background, user can navigate away
+        } catch (err) {
+          console.error("Failed to complete consultation:", err);
+          // Still allow navigation - consultation details are saved
+        }
+      } else {
+        // Fallback: if no appointment ID, use old method
+        await saveConsultationDetails();
+
+        const targetQueueId = queueEntryId || queueIdParam;
+        if (targetQueueId) {
+          try {
+            await put(`/api/queue/${targetQueueId}/status`, {
+              status: "completed",
+            });
+          } catch (err) {
+            console.error("Failed to update queue status:", err);
+          }
+        }
+
+        // Upload recording separately if available
+        if (recordingBlob && !uploadedRecordingId) {
+          // Upload in background without blocking
+          void uploadRecording().catch((err) =>
+            console.error("Failed to upload recording:", err)
+          );
+        }
       }
-    }
 
-    // Set flag to indicate consultation completed
-    sessionStorage.setItem("consultationCompleted", "true");
+      // Set flag to indicate consultation completed
+      sessionStorage.setItem("consultationCompleted", "true");
+    } catch (err) {
+      console.error("Error completing consultation:", err);
+      // Still set the flag so user can navigate away
+      sessionStorage.setItem("consultationCompleted", "true");
+    }
   };
 
   if (isLoading) {
@@ -1184,7 +1358,7 @@ const appointmentTimeline = defaultAppointmentTimeline;
           <LabResultsCard />
         </div>
 
-        {/* Right Column - Vitals & Quick Info (Compact) */}
+        {/* Right Column - Quick Info & Consultation Actions */}
         <ConsultationSidebar
           notes={notes}
           diagnosis={diagnosis}
@@ -1198,10 +1372,14 @@ const appointmentTimeline = defaultAppointmentTimeline;
           condition={displayPatient.condition}
           carePlanSummary={displayPatient.carePlanSummary}
           followUpPlan={displayPatient.followUpPlan}
+          prescription={prescription}
+          prescribedTest={prescribedTest}
           onNotesChange={setNotes}
           onDiagnosisChange={setDiagnosis}
           onTreatmentChange={setTreatment}
           onFollowUpChange={setFollowUp}
+          onPrescriptionChange={setPrescription}
+          onPrescribedTestChange={setPrescribedTest}
         />
       </div>
 

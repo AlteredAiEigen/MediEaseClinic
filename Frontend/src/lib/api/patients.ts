@@ -37,8 +37,6 @@ export interface PatientDetail extends PatientSummary {
   vitals?: Record<string, unknown>;
   medicalHistory?: MedicalHistoryValue;
   allergies?: string;
-  familyHistory?: string;
-  previousSurgeries?: string;
   currentMedication?: string;
   medicationDosage?: string;
   medicationFrequency?: string;
@@ -86,8 +84,6 @@ export interface PatientCreateInput {
   vitals?: Record<string, unknown>;
   medicalHistory?: MedicalHistoryValue;
   allergies?: string;
-  familyHistory?: string;
-  previousSurgeries?: string;
   currentMedication?: string;
   medicationDosage?: string;
   medicationFrequency?: string;
@@ -195,39 +191,4 @@ export async function deletePatient(patientId: string): Promise<void> {
   }
 }
 
-export interface PatientHistoryEntry {
-  _id: string;
-  patientId: string;
-  changes: Array<{
-    field: string;
-    label: string;
-    oldValue: string;
-    newValue: string;
-  }>;
-  changedAt: string;
-  updatedBy?: {
-    userId?: string;
-    name?: string;
-    role?: string;
-    email?: string;
-  };
-}
-
-export async function fetchPatientHistory(
-  patientId: string,
-  field?: string,
-  limit = 50
-): Promise<PatientHistoryEntry[]> {
-  const params = new URLSearchParams();
-  params.set("limit", limit.toString());
-  if (field) {
-    params.set("field", field);
-  }
-
-  const response = await get<{ history: PatientHistoryEntry[] }>(
-    `/api/patients/${patientId}/history?${params.toString()}`
-  );
-
-  return response.data?.history ?? [];
-}
 

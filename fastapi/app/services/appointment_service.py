@@ -460,7 +460,6 @@ class AppointmentService:
             "prescriptionUploadedAt": timestamp,
             "prescriptionUploadedBy": uploaded_by if uploaded_by else None,
             "prescriptionUploadedByName": uploader_name,
-            "prescriptionNotes": notes.strip() if isinstance(notes, str) and notes.strip() else None,
             "updatedAt": timestamp,
         }
 
@@ -493,7 +492,6 @@ class AppointmentService:
         # Set timestamps based on status
         if new_status == "checked-in":
             update_data["checkedInAt"] = datetime.utcnow()
-            update_data["presentInClinic"] = True
         elif new_status == "in-progress":
             update_data["startedAt"] = datetime.utcnow()
         elif new_status == "completed":

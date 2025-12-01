@@ -30,6 +30,8 @@ class Queue(BaseModel):
     # Visit details
     reason: str = Field(default="General Consultation")
     notes: str = Field(default="")
+    prescription: Optional[str] = Field(default="", description="Prescription notes")
+    tests: Optional[str] = Field(default="", description="Test orders/notes")
     
     # Timestamps
     consultation_started_at: Optional[datetime] = None

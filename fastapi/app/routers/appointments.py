@@ -2,9 +2,11 @@
 Appointment management router.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form, BackgroundTasks
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional
+from datetime import datetime
+import asyncio
 
 from app.database import get_db
 from app.schemas.appointment import (
@@ -15,6 +17,8 @@ from app.schemas.appointment import (
 )
 from app.models.appointment import AppointmentCreate
 from app.services.appointment_service import AppointmentService
+from app.services.recording_service import RecordingService
+from app.services.queue_service import QueueService
 from app.middleware.auth import get_current_active_user, require_any_role, require_roles
 from app.utils.response import success_response, paginated_response
 
@@ -278,6 +282,171 @@ async def check_in_appointment(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Check-in failed: {str(e)}"
         )
+
+
+@router.post("/{appointment_id}/complete-consultation")
+async def complete_consultation(
+    appointment_id: str,
+    background_tasks: BackgroundTasks,
+    queue_id: Optional[str] = Form(None),
+    prescribed_test: Optional[str] = Form(None),
+    diagnosis: Optional[str] = Form(None),
+    treatment_plan: Optional[str] = Form(None),
+    follow_up_instructions: Optional[str] = Form(None),
+    detailed_notes: Optional[str] = Form(None),
+    ai_recommendations: Optional[str] = Form(None),
+    prescription: Optional[str] = Form(None),
+    recording_file: Optional[UploadFile] = File(None),
+    recording_duration: Optional[int] = Form(None),
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """
+    Complete consultation: save consultation details and optionally upload recording in background.
+    
+    This endpoint saves consultation data immediately and handles recording upload
+    in the background, allowing the frontend to navigate away quickly.
+    """
+    try:
+        from bson import ObjectId
+        # Validate appointment_id
+        if not ObjectId.is_valid(appointment_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid appointment ID"
+            )
+        
+        appointment_service = AppointmentService(db)
+        
+        # Save consultation details to appointment immediately
+        update_data = AppointmentUpdateRequest(
+            status="completed",
+            prescribed_test=prescribed_test,
+            diagnosis=diagnosis,
+            treatment_plan=treatment_plan,
+            follow_up_instructions=follow_up_instructions,
+            detailed_notes=detailed_notes,
+            ai_recommendations=ai_recommendations,
+            prescription=prescription
+        )
+        
+        appointment = await appointment_service.update_appointment(
+            appointment_id,
+            update_data
+        )
+        
+        # Update queue status - find queue entry by appointment if queue_id not provided
+        try:
+            from app.schemas.queue import QueueStatusUpdate
+            queue_service = QueueService(db)
+            
+            # If queue_id provided, use it; otherwise find by appointment
+            queue_entry_id = queue_id
+            if not queue_entry_id:
+                queue_entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
+                if queue_entry:
+                    queue_entry_id = queue_entry.get("_id")
+            
+            if queue_entry_id:
+                # Update queue status to completed (this will also set is_active to False)
+                await queue_service.update_queue_status(
+                    queue_entry_id, 
+                    QueueStatusUpdate(status="completed")
+                )
+        except Exception as e:
+            # Log but don't fail the request if queue update fails
+            import logging
+            logging.warning(f"Failed to update queue status: {e}", exc_info=True)
+        
+        # If recording is provided, upload it in the background
+        if recording_file and recording_duration:
+            # Get patient and doctor IDs from appointment
+            from bson import ObjectId
+            appointment_obj_id = ObjectId(appointment_id) if ObjectId.is_valid(appointment_id) else None
+            if appointment_obj_id:
+                appointment_data = await db.appointments.find_one({"_id": appointment_obj_id})
+                if appointment_data:
+                    patient_id = appointment_data.get("patientId")
+                    doctor_id = appointment_data.get("doctorId") or current_user.get("_id")
+                    
+                    if patient_id and doctor_id:
+                        # Read file content before request completes
+                        file_content = await recording_file.read()
+                        file_filename = recording_file.filename or "consultation-recording.wav"
+                        file_content_type = recording_file.content_type or "audio/wav"
+                        
+                        background_tasks.add_task(
+                            _upload_recording_background,
+                            db,
+                            file_content,
+                            file_filename,
+                            file_content_type,
+                            patient_id,
+                            appointment_id,
+                            doctor_id,
+                            recording_duration
+                        )
+        
+        return success_response(
+            message="Consultation completed successfully",
+            data={"appointment": appointment}
+        )
+    
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Consultation completion failed: {str(e)}"
+        )
+
+
+async def _upload_recording_background(
+    db: AsyncIOMotorDatabase,
+    file_content: bytes,
+    filename: str,
+    content_type: str,
+    patient_id: str,
+    appointment_id: str,
+    doctor_id: str,
+    duration: int
+):
+    """Background task to upload recording to S3."""
+    import logging
+    from io import BytesIO
+    logger = logging.getLogger(__name__)
+    try:
+        # Create a file-like object from bytes
+        file_obj = BytesIO(file_content)
+        file_obj.name = filename
+        
+        # Create a wrapper that implements the UploadFile interface
+        class FileWrapper:
+            def __init__(self, file_obj, filename, content_type):
+                self.file = file_obj
+                self.filename = filename
+                self.content_type = content_type
+            
+            async def read(self):
+                # Reset file pointer to beginning
+                self.file.seek(0)
+                return self.file.read()
+        
+        wrapped_file = FileWrapper(file_obj, filename, content_type)
+        
+        recording_service = RecordingService(db)
+        await recording_service.upload_recording(
+            file=wrapped_file,
+            patient_id=patient_id,
+            appointment_id=appointment_id,
+            doctor_id=doctor_id,
+            duration=duration,
+            retention_policy="standard"
+        )
+        logger.info(f"Successfully uploaded recording for appointment {appointment_id}")
+    except Exception as e:
+        # Log error but don't raise - this is a background task
+        logger.error(f"Background recording upload failed for appointment {appointment_id}: {e}", exc_info=True)
 
 
 @router.delete("/{appointment_id}")

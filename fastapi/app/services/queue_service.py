@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.models.queue import Queue, QueueInDB
-from app.schemas.queue import QueueCheckIn, QueueStatusUpdate
+from app.schemas.queue import QueueCheckIn, QueueStatusUpdate, QueueConsultationUpdate
 from app.services.websocket_service import WebSocketService
 
 logger = logging.getLogger(__name__)
@@ -688,6 +688,49 @@ class QueueService:
                 detail=f"Failed to fetch queue entry: {str(e)}"
             )
     
+    async def get_queue_entry_by_appointment(self, appointment_id: str) -> Optional[Dict]:
+        """Get queue entry by appointment ID. Returns the most relevant entry if multiple exist."""
+        try:
+            # Convert appointment_id to ObjectId if valid
+            appointment_object_id = None
+            if ObjectId.is_valid(appointment_id):
+                appointment_object_id = ObjectId(appointment_id)
+            else:
+                # Try to find by appointmentId string field if it exists
+                appointment_object_id = appointment_id
+            
+            # Find all queue entries for this appointment
+            cursor = self.queue_collection.find({"appointment": appointment_object_id})
+            entries = await cursor.to_list(length=100)
+            
+            if not entries:
+                return None
+            
+            # If multiple entries, prefer completed ones, then by most recent consultation_ended_at
+            if len(entries) > 1:
+                # Sort: completed first, then by consultation_ended_at descending
+                entries.sort(key=lambda x: (
+                    0 if x.get("status") == "completed" else 1,
+                    x.get("consultation_ended_at") is None,
+                    x.get("consultation_ended_at") or datetime.min
+                ), reverse=True)
+            
+            entry = entries[0]
+            entry["_id"] = str(entry["_id"])
+            # Convert all ObjectIds to strings
+            for key, value in entry.items():
+                if isinstance(value, ObjectId):
+                    entry[key] = str(value)
+            
+            return entry
+        
+        except Exception as e:
+            logger.error(f"Error fetching queue entry by appointment: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to fetch queue entry by appointment: {str(e)}"
+            )
+    
     async def update_queue_status(self, entry_id: str, status_update: QueueStatusUpdate) -> Optional[Dict]:
         """Update queue entry status."""
         try:
@@ -699,14 +742,15 @@ class QueueService:
             # Handle specific status transitions
             if status_update.status == "in-consultation":
                 update_data["consultation_started_at"] = datetime.utcnow()
-            elif status_update.status in ["completed", "checkout"]:  # ✅ Handle both
+            elif status_update.status in ["completed", "checkout", "checked-out"]:  # Handle all completion statuses
                 update_data["consultation_ended_at"] = datetime.utcnow()
+                update_data["is_active"] = False  # Mark as inactive when consultation completes
                 # Calculate wait time
                 entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
                 if entry and entry.get("consultation_started_at"):
                     wait_time = (entry["consultation_started_at"] - entry["checked_in_at"]).total_seconds() / 60
                     update_data["wait_time"] = int(wait_time)
-            elif status_update.status in ["checked-out", "cancelled"]:
+            elif status_update.status == "cancelled":
                 update_data["is_active"] = False
             
             result = await self.queue_collection.find_one_and_update(
@@ -835,6 +879,112 @@ class QueueService:
                 # Don't fail the consultation start if appointment update fails
         
         return result
+    
+    async def update_consultation_details(self, entry_id: str, consultation_update: QueueConsultationUpdate) -> Optional[Dict]:
+        """Update prescription and tests for a queue entry and the associated appointment."""
+        try:
+            # First, get the queue entry to find the associated appointment
+            queue_entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
+            if not queue_entry:
+                return None
+            
+            appointment_id = queue_entry.get("appointment")
+            
+            # Update queue entry (for backward compatibility and real-time updates)
+            queue_update_data = {
+                "updated_at": datetime.utcnow()
+            }
+            
+            # Only update fields that are provided (including empty strings)
+            if consultation_update.prescription is not None:
+                queue_update_data["prescription"] = consultation_update.prescription
+            if consultation_update.tests is not None:
+                queue_update_data["tests"] = consultation_update.tests
+            if consultation_update.prescribedTest is not None:
+                queue_update_data["prescribedTest"] = consultation_update.prescribedTest
+            if consultation_update.diagnosis is not None:
+                queue_update_data["diagnosis"] = consultation_update.diagnosis
+            if consultation_update.treatmentPlan is not None:
+                queue_update_data["treatmentPlan"] = consultation_update.treatmentPlan
+            if consultation_update.followUpInstructions is not None:
+                queue_update_data["followUpInstructions"] = consultation_update.followUpInstructions
+            if consultation_update.detailedNotes is not None:
+                queue_update_data["detailedNotes"] = consultation_update.detailedNotes
+            if consultation_update.aiRecommendations is not None:
+                queue_update_data["aiRecommendations"] = consultation_update.aiRecommendations
+            
+            result = await self.queue_collection.find_one_and_update(
+                {"_id": ObjectId(entry_id)},
+                {"$set": queue_update_data},
+                return_document=True
+            )
+            
+            if result:
+                result["_id"] = str(result["_id"])
+                # Convert all ObjectIds to strings
+                for key, value in result.items():
+                    if isinstance(value, ObjectId):
+                        result[key] = str(value)
+                
+                # Update the associated appointment with consultation details
+                if appointment_id:
+                    try:
+                        appointments_collection = self.db.appointments
+                        appointment_update_data = {
+                            "updatedAt": datetime.utcnow()
+                        }
+                        
+                        # Only update fields that are provided
+                        if consultation_update.prescription is not None:
+                            appointment_update_data["prescription"] = consultation_update.prescription
+                        if consultation_update.tests is not None:
+                            appointment_update_data["tests"] = consultation_update.tests
+                        if consultation_update.prescribedTest is not None:
+                            appointment_update_data["prescribedTest"] = consultation_update.prescribedTest
+                        if consultation_update.diagnosis is not None:
+                            appointment_update_data["diagnosis"] = consultation_update.diagnosis
+                        if consultation_update.treatmentPlan is not None:
+                            appointment_update_data["treatmentPlan"] = consultation_update.treatmentPlan
+                        if consultation_update.followUpInstructions is not None:
+                            appointment_update_data["followUpInstructions"] = consultation_update.followUpInstructions
+                        if consultation_update.detailedNotes is not None:
+                            appointment_update_data["detailedNotes"] = consultation_update.detailedNotes
+                        if consultation_update.aiRecommendations is not None:
+                            appointment_update_data["aiRecommendations"] = consultation_update.aiRecommendations
+                        
+                        # Convert appointment_id to ObjectId if it's a string
+                        appointment_object_id = appointment_id
+                        if isinstance(appointment_id, str) and ObjectId.is_valid(appointment_id):
+                            appointment_object_id = ObjectId(appointment_id)
+                        
+                        await appointments_collection.update_one(
+                            {"_id": appointment_object_id},
+                            {"$set": appointment_update_data}
+                        )
+                        logger.info(f"Updated consultation details in appointment {appointment_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to update appointment with consultation details: {e}")
+                        # Don't fail the whole operation if appointment update fails
+                
+                logger.info(f"Updated consultation details for queue entry {entry_id}")
+                
+                # Emit WebSocket event for real-time updates
+                try:
+                    populated_entry = await self._get_populated_queue_entry(entry_id)
+                    if populated_entry:
+                        await self.websocket_service.broadcast_patient_status_updated(populated_entry)
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast consultation update event: {e}")
+                
+                return result
+            return None
+        
+        except Exception as e:
+            logger.error(f"Error updating consultation details: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to update consultation details: {str(e)}"
+            )
     
     async def check_out_patient(self, entry_id: str) -> Optional[Dict]:
         """Check out patient from queue."""

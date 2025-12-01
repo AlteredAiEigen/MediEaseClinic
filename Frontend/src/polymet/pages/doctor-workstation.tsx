@@ -40,6 +40,7 @@ interface QueuePatient {
   avatar: string;
   patientId: string;
   status: string;
+  lastVisit?: string;
 }
 
 interface QueueEntry {
@@ -133,46 +134,135 @@ export function DoctorWorkstation() {
         const queueAppointmentIds = new Set<string>();
         
         if (queueResponse.success && queueResponse.data?.queue) {
-          mappedQueue = queueResponse.data.queue
-            .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
-            .map((entry) => {
-              const patientId = entry.patient._id || entry.patient.patientId;
+          const activeQueueEntries = queueResponse.data.queue.filter(
+            (entry) => entry.status === "waiting" || entry.status === "in-consultation"
+          );
+
+          // Collect patient and appointment IDs from active queue entries
+          activeQueueEntries.forEach((entry) => {
+            const patientId = entry.patient._id || entry.patient.patientId;
+            if (patientId) {
               queuePatientIds.add(patientId);
-              
-              // Collect appointment ID from queue entry (normalize to string)
-              if (entry.appointment) {
-                let aptId = "";
-                if (typeof entry.appointment === "string") {
-                  aptId = entry.appointment;
-                } else if (entry.appointment._id) {
-                  aptId = String(entry.appointment._id);
-                } else if (entry.appointment.appointmentId) {
-                  aptId = String(entry.appointment.appointmentId);
-                }
-                if (aptId) {
-                  queueAppointmentIds.add(aptId);
-                }
+            }
+
+            if (entry.appointment) {
+              let aptId = "";
+              if (typeof entry.appointment === "string") {
+                aptId = entry.appointment;
+              } else if (entry.appointment._id) {
+                aptId = String(entry.appointment._id);
+              } else if (entry.appointment.appointmentId) {
+                aptId = String(entry.appointment.appointmentId);
               }
-              
-              return {
-                id: entry._id,
-                name: entry.patient.fullName,
-                age: entry.patient.age || "N/A",
-                gender: entry.patient.gender || "N/A",
-                phone: entry.patient.phone || "N/A",
-                email: entry.patient.email || "N/A",
-                appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
-                reason: entry.reason || "Consultation",
-                priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
-                waitTime: `${entry.wait_time} min`,
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
-                patientId: patientId,
-                status: entry.status,
-              };
-            });
+              if (aptId) {
+                queueAppointmentIds.add(aptId);
+              }
+            }
+          });
+
+          // For each patient in the queue, fetch their appointment history and determine latest visit
+          const lastVisitByPatientId: Record<string, string> = {};
+          const patientIds = Array.from(queuePatientIds);
+
+          if (patientIds.length > 0) {
+            await Promise.all(
+              patientIds.map(async (patientId) => {
+                try {
+                  // Re-use the same flexible extractor used elsewhere in the app
+                  const response = await get<any>(`/api/appointments?patient_id=${patientId}&limit=50`);
+                  if (response.success) {
+                    const rawAppointments = extractList<any>(response.data);
+                    if (rawAppointments.length > 0) {
+                      // Only consider appointments that are strictly in the past (date < today)
+                      const todayDateOnly = new Date();
+                      todayDateOnly.setHours(0, 0, 0, 0);
+                      const todayTime = todayDateOnly.getTime();
+
+                      const pastAppointments = rawAppointments.filter((apt) => {
+                        const dateString =
+                          apt.date ||
+                          apt.createdAt ||
+                          apt.created_at ||
+                          apt.timestamp;
+                        if (!dateString) return false;
+                        const time = new Date(dateString).getTime();
+                        return !isNaN(time) && time < todayTime;
+                      });
+
+                      if (pastAppointments.length > 0) {
+                        // Find the latest past appointment
+                        const latest = pastAppointments.reduce<any | null>(
+                          (currentLatest, apt) => {
+                            const dateString =
+                              apt.date ||
+                              apt.createdAt ||
+                              apt.created_at ||
+                              apt.timestamp;
+                            if (!dateString) return currentLatest;
+                            const time = new Date(dateString).getTime();
+                            if (!currentLatest) {
+                              return { time, apt };
+                            }
+                            return time > currentLatest.time ? { time, apt } : currentLatest;
+                          },
+                          null
+                        );
+
+                        if (latest && latest.apt) {
+                          const latestDateString =
+                            latest.apt.date ||
+                            latest.apt.createdAt ||
+                            latest.apt.created_at ||
+                            latest.apt.timestamp;
+
+                          if (latestDateString) {
+                            const formattedDate = new Date(latestDateString).toLocaleDateString(
+                              "en-US",
+                              {
+                                year: "numeric",
+                                month: "short",
+                                day: "2-digit",
+                              }
+                            );
+                            lastVisitByPatientId[patientId] = formattedDate;
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (err) {
+                  // Non-blocking: if last visit fails, we simply won't show it
+                  console.warn("Failed to fetch last visit for patient", patientId, err);
+                }
+              })
+            );
+          }
+
+          // Finally, map active queue entries into QueuePatient objects, including lastVisit
+          mappedQueue = activeQueueEntries.map((entry) => {
+            const patientId = entry.patient._id || entry.patient.patientId;
+
+            return {
+              id: entry._id,
+              name: entry.patient.fullName,
+              age: entry.patient.age || "N/A",
+              gender: entry.patient.gender || "N/A",
+              phone: entry.patient.phone || "N/A",
+              email: entry.patient.email || "N/A",
+              appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+              reason: entry.reason || "Consultation",
+              priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
+              waitTime: `${entry.wait_time} min`,
+              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+              patientId: patientId,
+              status: entry.status,
+              lastVisit: patientId ? lastVisitByPatientId[patientId] : undefined,
+            };
+          });
+
           setQueuePatients(mappedQueue);
         }
 

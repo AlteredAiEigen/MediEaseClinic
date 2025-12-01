@@ -3,9 +3,10 @@ Patient management router with HIPAA compliance.
 All endpoints require authentication and log PHI access.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from typing import Optional
+from typing import Optional, Dict, Any
+import json
 
 from app.database import get_db
 from app.schemas.patient import PatientCreateRequest, PatientUpdateRequest
@@ -22,7 +23,7 @@ router = APIRouter()
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_patient(
-    patient_data: PatientCreateRequest,
+    body: Dict[str, Any] = Body(...),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -34,13 +35,23 @@ async def create_patient(
     Patients are universal across all clinics. The clinic info is stored for reference
     (to track which clinic created the patient) but does not restrict patient access.
     
+    Medical history fields (familyHistory, previousSurgeries, pastMedications) 
+    are automatically routed to the patient_medical_history table.
+    
     HIPAA Compliance: Sensitive fields are encrypted before storage.
     """
     try:
+        # Extract medical history fields before Pydantic validation
+        medical_history_fields = {}
+        body_copy = body.copy()  # Work with a copy to avoid modifying the original
+        for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
+            if field in body_copy:
+                medical_history_fields[field] = body_copy.pop(field)
+        
+        # Now validate the remaining fields with Pydantic
+        patient_data = PatientCreateRequest(**body_copy)
+        
         patient_service = PatientService(db)
-
-        # patient_payload = patient_data.model_dump()
-        # logger.info("patient_payload for creating patient %s", patient_payload)
         patient_payload = patient_data.model_dump(exclude_none=True)
         logger.info("patient_payload for creating patient %s", patient_payload)
 
@@ -57,6 +68,27 @@ async def create_patient(
             clinic_name=clinic_name  # Stored as createdByClinicName for reference only
         )
         
+        # Create medical history record if fields were provided
+        if medical_history_fields:
+            logger.info(f"Creating medical history record with fields: {list(medical_history_fields.keys())}")
+            try:
+                from app.services.patient_medical_history_service import PatientMedicalHistoryService
+                from app.models.patient_medical_history import PatientMedicalHistoryCreate
+                
+                medical_history_service = PatientMedicalHistoryService(db)
+                patient_obj_id = patient.get("_id") or patient.get("id")
+                logger.info(f"Creating medical history for patient ID: {patient_obj_id}")
+                
+                create_history_data = PatientMedicalHistoryCreate(
+                    patientId=str(patient_obj_id),
+                    **medical_history_fields
+                )
+                result = await medical_history_service.create_medical_history(create_history_data)
+                logger.info(f"✅ Medical history created successfully: {result.get('_id')}")
+            except Exception as e:
+                logger.error(f"❌ Failed to create medical history during patient creation: {e}", exc_info=True)
+                # Don't fail the request, but log the error clearly
+        
         return success_response(
             message="Patient created successfully",
             data={"patient": patient},
@@ -66,6 +98,7 @@ async def create_patient(
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.error(f"Patient creation failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Patient creation failed: {str(e)}"
@@ -201,7 +234,7 @@ async def get_patient_by_patient_id(
 @router.put("/{patient_id}")
 async def update_patient(
     patient_id: str,
-    update_data: PatientUpdateRequest,
+    body: Dict[str, Any] = Body(...),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -210,9 +243,62 @@ async def update_patient(
     
     Requires authentication. Only provided fields will be updated.
     
+    Medical history fields (familyHistory, previousSurgeries, pastMedications) 
+    are automatically routed to the patient_medical_history table.
+    
     HIPAA Compliance: Updates are logged in audit trail.
     """
     try:
+        # Log incoming request for debugging
+        logger.info(f"Update patient request for {patient_id}: received fields: {list(body.keys())}")
+        
+        # Extract medical history fields before Pydantic validation
+        medical_history_fields = {}
+        for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
+            if field in body:
+                medical_history_fields[field] = body.pop(field)
+                logger.info(f"Extracted {field} from patient update request: {medical_history_fields[field][:50] if medical_history_fields[field] else 'empty'}...")
+        
+        # Now validate the remaining fields with Pydantic
+        try:
+            update_data = PatientUpdateRequest(**body)
+        except Exception as e:
+            logger.error(f"Pydantic validation error: {e}, body keys: {list(body.keys())}")
+            raise
+        
+        # Handle medical history fields first
+        if medical_history_fields:
+            logger.info(f"Processing medical history fields: {list(medical_history_fields.keys())}")
+            try:
+                from app.services.patient_medical_history_service import PatientMedicalHistoryService
+                from app.models.patient_medical_history import PatientMedicalHistoryCreate, PatientMedicalHistoryUpdate
+                
+                medical_history_service = PatientMedicalHistoryService(db)
+                current_history = await medical_history_service.get_current_medical_history(patient_id)
+                
+                if current_history:
+                    # Update existing record (creates new version)
+                    logger.info(f"Updating existing medical history record: {current_history['_id']}")
+                    update_history_data = PatientMedicalHistoryUpdate(**medical_history_fields)
+                    result = await medical_history_service.update_medical_history(
+                        current_history["_id"],
+                        update_history_data
+                    )
+                    logger.info(f"Medical history updated successfully: {result.get('_id')}")
+                else:
+                    # Create new record
+                    logger.info(f"Creating new medical history record for patient: {patient_id}")
+                    create_history_data = PatientMedicalHistoryCreate(
+                        patientId=patient_id,
+                        **medical_history_fields
+                    )
+                    result = await medical_history_service.create_medical_history(create_history_data)
+                    logger.info(f"Medical history created successfully: {result.get('_id')}")
+            except Exception as e:
+                logger.error(f"Failed to update medical history during patient update: {e}", exc_info=True)
+                # Don't fail the request, but log the error
+        
+        # Update patient with remaining fields
         patient_service = PatientService(db)
         patient = await patient_service.update_patient(
             patient_id,
@@ -228,6 +314,7 @@ async def update_patient(
     except HTTPException as e:
         raise e
     except Exception as e:
+        logger.error(f"Patient update failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Patient update failed: {str(e)}"
@@ -263,33 +350,4 @@ async def delete_patient(
             detail=f"Patient deletion failed: {str(e)}"
         )
 
-
-@router.get("/{patient_id}/history")
-async def get_patient_history(
-    patient_id: str,
-    field: Optional[str] = Query(None, description="Filter by field name, e.g., currentMedications"),
-    limit: int = Query(50, ge=1, le=200),
-    current_user: dict = Depends(require_any_role),
-    db: AsyncIOMotorDatabase = Depends(get_db)
-):
-    """
-    Retrieve patient change history entries (for audit visibility).
-    """
-    try:
-        patient_service = PatientService(db)
-        entries = await patient_service.get_patient_history(
-            patient_id=patient_id,
-            field_filter=field,
-            limit=limit
-        )
-        
-        return success_response(
-            message="Patient history retrieved successfully",
-            data={"history": entries}
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve patient history: {str(e)}"
-        )
 

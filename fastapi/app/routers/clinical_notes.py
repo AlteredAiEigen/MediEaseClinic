@@ -2,6 +2,7 @@
 Clinical Notes API endpoints.
 """
 
+import logging
 from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
@@ -18,7 +19,7 @@ from app.schemas.clinical_note import (
 from app.services.clinical_note_service import clinical_note_service
 from app.services.ai_service import ai_service
 from app.middleware.auth import get_current_user, require_roles
-from app.utils.response import success_response, error_response
+from app.utils.response import success_response, error_response, paginated_response
 
 router = APIRouter()
 
@@ -38,8 +39,9 @@ async def create_clinical_note(
 
 @router.get("/", response_model=dict)
 async def get_clinical_notes(
-    patient: Optional[str] = Query(None),
-    doctor: Optional[str] = Query(None),
+    patient: Optional[str] = Query(None, alias="patient"),
+    doctor: Optional[str] = Query(None, alias="doctor"),
+    appointment: Optional[str] = Query(None, alias="appointment"),
     category: Optional[str] = Query(None),
     priority: Optional[str] = Query(None),
     actionable: Optional[bool] = Query(None),
@@ -48,21 +50,32 @@ async def get_clinical_notes(
     current_user: dict = Depends(require_roles(["doctor", "admin"]))
 ):
     """Get clinical notes with filters."""
-    notes, total = await clinical_note_service.get_notes(
-        patient_id=patient,
-        doctor_id=doctor,
-        category=category,
-        priority=priority,
-        actionable=actionable,
-        page=page,
-        limit=limit
-    )
-    
-    return success_response(
-        data=notes,
-        message="Clinical notes retrieved successfully",
-        metadata={"total": total, "page": page, "limit": limit}
-    )
+    try:
+        notes, total = await clinical_note_service.get_notes(
+            patient_id=patient,
+            doctor_id=doctor,
+            appointment_id=appointment,
+            category=category,
+            priority=priority,
+            actionable=actionable,
+            page=page,
+            limit=limit
+        )
+        
+        return paginated_response(
+            message="Clinical notes retrieved successfully",
+            data=notes,
+            total=total,
+            page=page,
+            limit=limit
+        )
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching clinical notes: {e}", exc_info=True)
+        return error_response(
+            message=f"Failed to fetch clinical notes: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @router.get("/actionable", response_model=dict)

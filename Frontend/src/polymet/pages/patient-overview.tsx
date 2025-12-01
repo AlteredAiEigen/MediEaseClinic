@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, FormEvent } from "react";
+import { useState, useEffect, useMemo, useCallback, FormEvent, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ import {
   ClockIcon,
   UsersIcon,
   EditIcon,
+  SparklesIcon,
+  CheckCircleIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -63,8 +65,6 @@ import {
   PatientUpdateInput,
   MedicationEntry,
   MedicalHistoryRecord,
-  fetchPatientHistory,
-  PatientHistoryEntry,
 } from "@/lib/api/patients";
 import {
   fetchPatientInsurances,
@@ -220,6 +220,23 @@ interface Appointment {
   doctorName?: string;
   createdAt?: string;
   created_at?: string;
+  prescription?: string;
+  tests?: string;
+  prescribedTest?: string;
+  diagnosis?: string;
+  treatmentPlan?: string;
+  followUpInstructions?: string;
+  detailedNotes?: string;
+  aiRecommendations?: string | {
+    riskAssessment?: {
+      level?: string;
+      successRate?: string;
+      similarCases?: number;
+    };
+    keyFindings?: string[];
+    recommendations?: string[];
+  };
+  clinicalNotes?: ClinicalNote[];
 }
 
 type EditableMedicationEntry = MedicationEntry & {
@@ -307,6 +324,26 @@ const defaultInsuranceFormState: InsuranceFormState = {
   isPrimary: false,
 };
 
+// Helper function to extract list from various response formats
+const extractList = <T,>(rawData: any): T[] => {
+  if (Array.isArray(rawData)) {
+    return rawData as T[];
+  }
+  if (rawData && Array.isArray(rawData.data)) {
+    return rawData.data as T[];
+  }
+  if (rawData && Array.isArray(rawData.items)) {
+    return rawData.items as T[];
+  }
+  if (rawData && Array.isArray(rawData.results)) {
+    return rawData.results as T[];
+  }
+  if (rawData && Array.isArray(rawData.appointments)) {
+    return rawData.appointments as T[];
+  }
+  return [];
+};
+
 export function PatientOverview() {
   const { patientId } = useParams();
   const navigate = useNavigate();
@@ -319,6 +356,7 @@ export function PatientOverview() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const enrichmentRef = useRef<Set<string>>(new Set()); // Track which appointments have been enriched
   const [hasAnyData, setHasAnyData] = useState(false);
   const [activeEditSection, setActiveEditSection] = useState<EditableSection | null>(null);
   const [isSavingSection, setIsSavingSection] = useState<EditableSection | null>(null);
@@ -377,7 +415,6 @@ export function PatientOverview() {
   // Lab report viewer state
   const [labReportViewerOpen, setLabReportViewerOpen] = useState(false);
   const [selectedLabReport, setSelectedLabReport] = useState<LabReportData | null>(null);
-  const [medicationHistory, setMedicationHistory] = useState<PatientHistoryEntry[]>([]);
   const [insuranceRecords, setInsuranceRecords] = useState<PatientInsuranceRecord[]>([]);
   const [selectedInsuranceId, setSelectedInsuranceId] = useState<string | null>(null);
   const [isInsuranceDialogOpen, setIsInsuranceDialogOpen] = useState(false);
@@ -439,82 +476,6 @@ export function PatientOverview() {
     notes: seed.notes ?? "",
     isNew,
   });
-
-  type MedicationSnapshotSegment = { label: string; value: string };
-
-  const formatMedicationSnapshot = (value?: string): MedicationSnapshotSegment[][] => {
-    if (!value) return [];
-    const labelMap: Record<string, string> = {
-      name: "Medicine",
-      dosage: "Dosage",
-      frequency: "Frequency",
-      duration: "Duration",
-      instructions: "Instructions",
-      startdate: "Start Date",
-      enddate: "End Date",
-    };
-
-    return value
-      .split(";")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map((entry) =>
-        entry
-          .split(",")
-          .map((segment) => segment.trim())
-          .filter(Boolean)
-          .map((segment) => {
-            const [rawLabel, ...rest] = segment.split(":");
-            const normalizedLabel = rawLabel?.trim().toLowerCase() ?? "";
-            const displayLabel =
-              labelMap[normalizedLabel] ||
-              (rawLabel
-                ? rawLabel
-                    .replace(/([A-Z])/g, " $1")
-                    .replace(/^\w/, (char) => char.toUpperCase())
-                : "Detail");
-            return {
-              label: displayLabel,
-              value: rest.join(":").trim() || "—",
-            };
-          })
-      );
-  };
-
-  const renderMedicationSnapshot = (
-    groups: MedicationSnapshotSegment[][],
-    emptyText: string
-  ) => {
-    if (!groups.length) {
-      return <p className="text-xs text-muted-foreground">{emptyText}</p>;
-    }
-
-    return (
-      <div className="space-y-2">
-        {groups.map((segments, groupIndex) => (
-          <div
-            key={`snapshot-${groupIndex}`}
-            className="rounded-md border border-dashed border-border/60 p-2"
-          >
-            <p className="text-[11px] font-semibold text-muted-foreground mb-1">
-              Medication {groupIndex + 1}
-            </p>
-            <dl className="space-y-1">
-              {segments.map((segment, segmentIndex) => (
-                <div
-                  key={`snapshot-${groupIndex}-${segmentIndex}`}
-                  className="flex justify-between gap-2 text-xs"
-                >
-                  <dt className="text-muted-foreground">{segment.label}:</dt>
-                  <dd className="text-foreground">{segment.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   const isValidObjectId = (value?: string) => Boolean(value && /^[a-fA-F0-9]{24}$/.test(value));
 
@@ -861,61 +822,125 @@ export function PatientOverview() {
           setError("Patient not found");
         }
 
-        // Fetch patient vitals
-        const vitalsResponse = await get<PatientVitals[]>(`/api/patient-vitals/${patientId}?limit=50`);
-        if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
-          setVitals(vitalsResponse.data);
-          if (vitalsResponse.data.length > 0) {
-            setHasAnyData(true);
+        // Fetch patient vitals - wrapped in try-catch
+        try {
+          const vitalsResponse = await get<PatientVitals[]>(`/api/patient-vitals/${patientId}?limit=50`);
+          if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
+            setVitals(vitalsResponse.data);
+            if (vitalsResponse.data.length > 0) {
+              setHasAnyData(true);
+            }
           }
+        } catch (vitalsError) {
+          console.warn('Failed to fetch vitals:', vitalsError);
+          // Continue execution
         }
 
-        // Fetch lab reports
-        const labReportsResponse = await get<LabReport[] | { data: LabReport[] }>(`/api/lab-reports?patientId=${patientId}&limit=50`);
-        if (labReportsResponse.success) {
-          const reports = Array.isArray(labReportsResponse.data)
-            ? labReportsResponse.data
-            : Array.isArray((labReportsResponse.data as { data?: LabReport[] })?.data)
-            ? (labReportsResponse.data as { data: LabReport[] }).data
-            : [];
-          setLabReports(reports);
-          if (reports.length > 0) {
-            setHasAnyData(true);
+        // Fetch lab reports - wrapped in try-catch
+        try {
+          const labReportsResponse = await get<LabReport[] | { data: LabReport[] }>(`/api/lab-reports?patientId=${patientId}&limit=50`);
+          if (labReportsResponse.success) {
+            const reports = Array.isArray(labReportsResponse.data)
+              ? labReportsResponse.data
+              : Array.isArray((labReportsResponse.data as { data?: LabReport[] })?.data)
+              ? (labReportsResponse.data as { data: LabReport[] }).data
+              : [];
+            setLabReports(reports);
+            if (reports.length > 0) {
+              setHasAnyData(true);
+            }
           }
+        } catch (labError) {
+          console.warn('Failed to fetch lab reports:', labError);
+          // Continue execution
         }
 
-        // Fetch clinical notes
-        const notesResponse = await get<any>(`/api/clinical-notes?patient=${patientId}&limit=25`);
-        if (notesResponse.success) {
-          const rawNotes = Array.isArray(notesResponse.data)
-            ? notesResponse.data
-            : Array.isArray((notesResponse.data as any)?.data)
-            ? (notesResponse.data as any).data
-            : [];
-          const transformedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
-            _id: note._id ?? note.id ?? generateTempId(),
-            patientId: note.patient ?? note.patientId ?? patientId,
-            doctorId: note.doctor ?? note.doctorId ?? "",
-            note: note.content ?? note.note ?? "",
-            diagnosis: note.title ?? note.diagnosis,
-            treatment: note.prescription?.instructions ?? note.treatment,
-            followUp: note.follow_up?.notes ?? note.followUp,
-            createdAt: note.created_at ?? note.createdAt ?? note.timestamp ?? new Date().toISOString(),
-            doctorName: note.doctor_name ?? note.doctorName ?? note.orderedBy ?? "Doctor",
-          }));
-          setClinicalNotes(transformedNotes);
-          if (transformedNotes.length > 0) {
-            setHasAnyData(true);
+        // Fetch clinical notes - wrapped in try-catch (THIS IS THE PROBLEMATIC ONE)
+        try {
+          const notesResponse = await get<any>(`/api/clinical-notes?patient=${patientId}&limit=25`);
+          if (notesResponse.success) {
+            const rawNotes = Array.isArray(notesResponse.data)
+              ? notesResponse.data
+              : Array.isArray((notesResponse.data as any)?.data)
+              ? (notesResponse.data as any).data
+              : [];
+            const transformedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
+              _id: note._id ?? note.id ?? generateTempId(),
+              patientId: note.patient ?? note.patientId ?? patientId,
+              doctorId: note.doctor ?? note.doctorId ?? "",
+              note: note.content ?? note.note ?? "",
+              diagnosis: note.title ?? note.diagnosis,
+              treatment: note.prescription?.instructions ?? note.treatment,
+              followUp: note.follow_up?.notes ?? note.followUp,
+              createdAt: note.created_at ?? note.createdAt ?? note.timestamp ?? new Date().toISOString(),
+              doctorName: note.doctor_name ?? note.doctorName ?? note.orderedBy ?? "Doctor",
+            }));
+            setClinicalNotes(transformedNotes);
+            if (transformedNotes.length > 0) {
+              setHasAnyData(true);
+            }
           }
+        } catch (notesError) {
+          console.warn('Failed to fetch clinical notes (non-blocking):', notesError);
+          // Continue execution - don't let this block other data
         }
 
-        // Fetch appointment history
-        const appointmentsResponse = await get<Appointment[]>(`/api/appointments?patient_id=${patientId}&limit=50`);
-        if (appointmentsResponse.success && Array.isArray(appointmentsResponse.data)) {
-          setAppointments(appointmentsResponse.data);
-          if (appointmentsResponse.data.length > 0) {
-            setHasAnyData(true);
+        // Fetch appointment history - wrapped in try-catch (THIS IS THE CRITICAL ONE)
+        try {
+          const appointmentsResponse = await get<any>(`/api/appointments?patient_id=${patientId}&limit=50`);
+          console.log('🔍 Appointments API Response:', {
+            success: appointmentsResponse.success,
+            data: appointmentsResponse.data,
+            dataType: typeof appointmentsResponse.data,
+            isArray: Array.isArray(appointmentsResponse.data),
+            pagination: appointmentsResponse.pagination
+          });
+          let fetchedAppointments: Appointment[] = [];
+          if (appointmentsResponse.success) {
+            // Use extractList helper to handle different response formats
+            const rawAppointments = extractList<any>(appointmentsResponse.data);
+            console.log('🔍 Raw appointments after extractList:', rawAppointments);
+            console.log('🔍 Raw appointments count:', rawAppointments.length);
+            
+            // Ensure all appointments have required fields
+            fetchedAppointments = rawAppointments.map((apt: any) => ({
+              _id: apt._id || apt.id || apt.appointmentId,
+              appointmentId: apt.appointmentId || apt._id || apt.id,
+              patientId: apt.patientId || patientId,
+              doctorId: apt.doctorId || apt.doctor?._id || apt.doctor?.id,
+              date: apt.date,
+              time: apt.time || "",
+              type: apt.type || "Consultation",
+              reason: apt.reason || "",
+              status: apt.status || "scheduled",
+              doctorName: apt.doctorName || apt.doctor?.fullName || (apt.doctor?.firstName 
+                ? `${apt.doctor?.firstName || ""} ${apt.doctor?.lastName || ""}`.trim() 
+                : "Doctor"),
+              createdAt: apt.createdAt || apt.created_at,
+              created_at: apt.created_at || apt.createdAt,
+              prescription: apt.prescription,
+              tests: apt.tests,
+              prescribedTest: apt.prescribedTest,
+              diagnosis: apt.diagnosis,
+              treatmentPlan: apt.treatmentPlan,
+              followUpInstructions: apt.followUpInstructions,
+              detailedNotes: apt.detailedNotes,
+              aiRecommendations: apt.aiRecommendations,
+            }));
+            
+            console.log('🔍 Final fetched appointments:', fetchedAppointments);
+            console.log('🔍 Final fetched appointments count:', fetchedAppointments.length);
+            
+            setAppointments(fetchedAppointments);
+            if (fetchedAppointments.length > 0) {
+              setHasAnyData(true);
+            }
+          } else {
+            console.error('❌ Failed to fetch appointments:', appointmentsResponse.message || 'Unknown error');
           }
+        } catch (appointmentsError) {
+          console.error('❌ Error fetching appointments:', appointmentsError);
+          // Don't fail the entire page load if appointments fail
         }
 
       } catch (err) {
@@ -924,6 +949,7 @@ export function PatientOverview() {
             ? err.message
             : "Failed to load patient data";
         setError(message);
+        console.error('Error in fetchPatientData:', err);
       } finally {
         setIsLoading(false);
       }
@@ -931,6 +957,300 @@ export function PatientOverview() {
 
     fetchPatientData();
   }, [patientId]);
+
+  // Enrich past appointments with queue entry data (prescription, tests) and clinical notes
+  useEffect(() => {
+    const enrichPastAppointments = async () => {
+      if (!appointments.length || !patientId) return;
+
+      // Separate past appointments using same logic as appointmentBuckets
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const pastAppts = appointments.filter((appointment) => {
+        if (!appointment || !appointment.date) return true;
+        
+        try {
+          const appointmentDate = new Date(appointment.date);
+          if (isNaN(appointmentDate.getTime())) return true;
+          
+          appointmentDate.setHours(0, 0, 0, 0);
+          const dateInFuture = appointmentDate.getTime() > today.getTime();
+          const dateIsToday = appointmentDate.getTime() === today.getTime();
+          const activeStatuses = ["scheduled", "checked-in", "in-progress"];
+          const isActiveStatus = activeStatuses.includes(appointment.status?.toLowerCase() || "");
+          const isUpcoming = dateInFuture || (dateIsToday && isActiveStatus);
+          return !isUpcoming;
+        } catch {
+          return true; // If error, treat as past
+        }
+      });
+
+      if (pastAppts.length === 0) return;
+
+      // Filter out already enriched appointments
+      const appointmentsToEnrich = pastAppts.filter((apt) => {
+        const aptId = apt._id || apt.appointmentId;
+        return aptId && !enrichmentRef.current.has(aptId);
+      });
+
+      if (appointmentsToEnrich.length === 0) return;
+
+      // Fetch enrichment data for each past appointment
+      // Use Promise.allSettled to ensure all appointments are processed even if some fail
+      const enrichmentResults = await Promise.allSettled(
+        appointmentsToEnrich.map(async (appointment) => {
+          const appointmentId = appointment._id || appointment.appointmentId;
+          if (!appointmentId) return appointment;
+
+          // Mark as being enriched
+          enrichmentRef.current.add(appointmentId);
+
+          let prescription: string | undefined;
+          let tests: string | undefined;
+          let clinicalNotes: ClinicalNote[] | undefined;
+
+          // Extract prescription and tests directly from appointment (now stored in appointment table)
+          // Check appointment object first, then fallback to queue for backward compatibility
+          prescription = (appointment.prescription && appointment.prescription.trim()) || undefined;
+          tests = (appointment.tests && appointment.tests.trim()) || undefined;
+
+          // If not found in appointment, try fetching from queue (for backward compatibility with old data)
+          if (!prescription || !tests) {
+            try {
+              const queueResponse = await get<any>(`/api/queue/by-appointment/${appointmentId}`);
+              if (queueResponse.success && queueResponse.data) {
+                const queueData = queueResponse.data;
+                // Only use queue data if appointment doesn't have it
+                if (!prescription) {
+                  prescription = (queueData.prescription && queueData.prescription.trim()) 
+                    || (queueData.consultation?.prescription && queueData.consultation.prescription.trim())
+                    || undefined;
+                }
+                if (!tests) {
+                  tests = (queueData.tests && queueData.tests.trim())
+                    || (queueData.consultation?.tests && queueData.consultation.tests.trim())
+                    || undefined;
+                }
+              }
+            } catch (queueError) {
+              // Silently ignore - appointment should have the data now
+            }
+          }
+
+          // Fetch clinical notes for this appointment - wrapped in try-catch
+          try {
+            // Ensure URL doesn't have trailing slash to avoid redirect issues
+            const notesUrl = `/api/clinical-notes?appointment=${appointmentId}&patient=${patientId}&limit=25`;
+            const notesResponse = await get<any>(notesUrl);
+
+            if (notesResponse.success) {
+              const rawNotes = Array.isArray(notesResponse.data)
+                ? notesResponse.data
+                : Array.isArray((notesResponse.data as any)?.data)
+                ? (notesResponse.data as any).data
+                : [];
+              const mappedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
+                _id: note._id ?? note.id ?? `temp-${Date.now()}`,
+                patientId: note.patient ?? note.patientId ?? patientId,
+                doctorId: note.doctor ?? note.doctorId ?? "",
+                note: note.content ?? note.note ?? "",
+                diagnosis: note.title ?? note.diagnosis,
+                treatment: note.prescription?.instructions ?? note.treatment,
+                followUp: note.follow_up?.notes ?? note.followUp,
+                createdAt: note.created_at ?? note.createdAt ?? note.timestamp ?? new Date().toISOString(),
+                doctorName: note.doctor_name ?? note.doctorName ?? note.orderedBy ?? "Doctor",
+              }));
+              clinicalNotes = mappedNotes.length > 0 ? mappedNotes : undefined;
+            }
+          } catch (notesError) {
+            console.warn(`Failed to fetch clinical notes for appointment ${appointmentId}:`, notesError);
+            // Continue - don't block enrichment, just skip clinical notes
+          }
+
+          // Return enriched appointment (even if some data failed to load)
+          return {
+            ...appointment,
+            prescription,
+            tests,
+            clinicalNotes,
+          };
+        })
+      );
+
+      // Extract successful results and handle failures
+      const enrichedAppointments = enrichmentResults.map((result, index) => {
+        if (result.status === 'fulfilled') {
+          return result.value;
+        } else {
+          // If enrichment failed, return the original appointment
+          console.error(`Failed to enrich appointment ${appointmentsToEnrich[index]._id}:`, result.reason);
+          const appointmentId = appointmentsToEnrich[index]._id || appointmentsToEnrich[index].appointmentId;
+          if (appointmentId) {
+            enrichmentRef.current.delete(appointmentId); // Remove from set on error
+          }
+          return appointmentsToEnrich[index];
+        }
+      });
+
+      // Update appointments state with enriched data
+      if (enrichedAppointments.length > 0) {
+        const enrichedMap = new Map(
+          enrichedAppointments.map((apt) => [apt._id || apt.appointmentId, apt])
+        );
+        setAppointments((current) =>
+          current.map((apt) => {
+            const enriched = enrichedMap.get(apt._id || apt.appointmentId);
+            return enriched || apt;
+          })
+        );
+      }
+    };
+
+    enrichPastAppointments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointments.length, patientId]); // Only run when appointments array length changes or patientId changes
+
+  // Reset enrichment tracking when patient changes
+  useEffect(() => {
+    enrichmentRef.current.clear();
+  }, [patientId]);
+
+  // Extract consultation notes from appointments and merge with clinical notes
+  useEffect(() => {
+    if (!appointments.length || !patientId) return;
+
+    const consultationNotes: ClinicalNote[] = [];
+
+    appointments.forEach((appointment) => {
+      // Only include completed appointments (checkout, completed, or past appointments) with consultation data
+      const status = (appointment.status || "").toLowerCase();
+      const isCompleted = status === "checkout" || status === "completed" || 
+                         (status !== "scheduled" && status !== "checked-in" && status !== "in-progress");
+      
+      if (!isCompleted) return;
+      
+      if (!appointment.diagnosis && !appointment.detailedNotes && 
+          !appointment.treatmentPlan && !appointment.followUpInstructions) {
+        return;
+      }
+
+      const appointmentDate = appointment.createdAt || appointment.created_at || appointment.date || new Date().toISOString();
+      const doctorId = appointment.doctorId || "";
+      const doctorName = appointment.doctorName || "Doctor";
+
+      // Create a clinical note from consultation data
+      const noteContent = [
+        appointment.detailedNotes,
+        appointment.diagnosis ? `Diagnosis: ${appointment.diagnosis}` : null,
+        appointment.treatmentPlan ? `Treatment Plan: ${appointment.treatmentPlan}` : null,
+      ].filter(Boolean).join("\n\n");
+
+      if (noteContent.trim() || appointment.diagnosis || appointment.treatmentPlan || appointment.followUpInstructions) {
+        consultationNotes.push({
+          _id: `consultation-${appointment._id}`,
+          patientId: patientId,
+          doctorId: doctorId,
+          note: noteContent || appointment.detailedNotes || "Consultation note",
+          diagnosis: appointment.diagnosis,
+          treatment: appointment.treatmentPlan,
+          followUp: appointment.followUpInstructions,
+          createdAt: appointmentDate,
+          doctorName: doctorName,
+        });
+      }
+    });
+
+    // Merge with existing clinical notes, avoiding duplicates
+    setClinicalNotes((existingNotes) => {
+      const existingIds = new Set(existingNotes.map(n => n._id));
+      const newNotes = consultationNotes.filter(n => !existingIds.has(n._id));
+      return [...existingNotes, ...newNotes].sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    });
+  }, [appointments, patientId]);
+
+  // Extract prescriptions from appointments and merge with medications
+  useEffect(() => {
+    if (!appointments.length || !patientId) return;
+
+    const consultationMedications: EditableMedicationEntry[] = [];
+
+    appointments.forEach((appointment) => {
+      // Only include completed appointments (checkout, completed, or past appointments) with prescription data
+      const status = (appointment.status || "").toLowerCase();
+      const isCompleted = status === "checkout" || status === "completed" || 
+                         (status !== "scheduled" && status !== "checked-in" && status !== "in-progress");
+      
+      if (!isCompleted) return;
+      if (!appointment.prescription || !appointment.prescription.trim()) return;
+
+      const appointmentDate = appointment.createdAt || appointment.created_at || appointment.date;
+      if (!appointmentDate) return;
+
+      // Parse prescription text - try to extract medication name, dosage, frequency
+      // This is a simple parser - you may want to enhance it based on your prescription format
+      const prescriptionText = appointment.prescription.trim();
+      
+      // Split by lines or common separators
+      const prescriptionLines = prescriptionText
+        .split(/\n|,|;/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      prescriptionLines.forEach((line, index) => {
+        const medicationId = `consultation-med-${appointment._id}-${index}`;
+        
+        // Try to extract medication details from the line
+        // Common formats: "Medication Name - Dosage - Frequency" or "Medication Name Dosage Frequency"
+        const medicationMatch = line.match(/^(.+?)(?:\s*-\s*|\s+)(.+?)(?:\s*-\s*|\s+)(.+)$/) || 
+                               line.match(/^(.+?)(?:\s+)(.+)$/) ||
+                               [null, line, "", ""];
+
+        if (medicationMatch && medicationMatch[1]) {
+          consultationMedications.push({
+            _localId: medicationId,
+            name: medicationMatch[1].trim(),
+            dosage: medicationMatch[2]?.trim() || "",
+            frequency: medicationMatch[3]?.trim() || medicationMatch[2]?.trim() || "",
+            instructions: appointment.prescription,
+            startDate: appointmentDate.split('T')[0], // Extract date part only
+            duration: "",
+            endDate: "",
+            isNew: false, // Mark as existing (from consultation)
+          });
+        } else if (line) {
+          // If parsing fails, treat the whole line as medication name
+          consultationMedications.push({
+            _localId: medicationId,
+            name: line,
+            dosage: "",
+            frequency: "",
+            instructions: appointment.prescription,
+            startDate: appointmentDate.split('T')[0],
+            duration: "",
+            endDate: "",
+            isNew: false, // Mark as existing (from consultation)
+          });
+        }
+      });
+    });
+
+    // Merge with existing medications in editForm, avoiding duplicates
+    if (consultationMedications.length > 0) {
+      setEditForm((prev) => {
+        const existingMedIds = new Set(prev.currentMedications.map(m => m._localId));
+        const newMedications = consultationMedications.filter(m => !existingMedIds.has(m._localId));
+        
+        if (newMedications.length === 0) return prev;
+
+        return {
+          ...prev,
+          currentMedications: [...prev.currentMedications, ...newMedications],
+        };
+      });
+    }
+  }, [appointments, patientId]);
 
   useEffect(() => {
     if (!insuranceRecords.length) {
@@ -963,22 +1283,6 @@ export function PatientOverview() {
     }
   }, [patient, patientId, labReports.length]);
 
-  useEffect(() => {
-    const loadHistory = async () => {
-      if (!patientId) return;
-      try {
-        const historyEntries = await fetchPatientHistory(
-          patientId,
-          "currentMedications",
-          50
-        );
-        setMedicationHistory(historyEntries);
-      } catch (err) {
-        console.error("Failed to fetch medication history", err);
-      }
-    };
-    loadHistory();
-  }, [patientId]);
 
   const mapPatientToFormState = (
     patientData: Patient | null
@@ -1357,18 +1661,6 @@ export function PatientOverview() {
       setActiveEditSection(null);
       setDirtySections((prev) => ({ ...prev, [section]: false }));
 
-      if (patientId && section === "medications") {
-        try {
-          const historyEntries = await fetchPatientHistory(
-            patientId,
-            "currentMedications",
-            50
-          );
-          setMedicationHistory(historyEntries);
-        } catch (historyError) {
-          console.error("Failed to refresh medication history", historyError);
-        }
-      }
 
       const sectionLabel =
         section === "overview"
@@ -1468,18 +1760,6 @@ export function PatientOverview() {
       setIsGlobalEditMode(false);
       setActiveEditSection(null);
 
-      if (patientId && updatedSections.includes("medications")) {
-        try {
-          const historyEntries = await fetchPatientHistory(
-            patientId,
-            "currentMedications",
-            50
-          );
-          setMedicationHistory(historyEntries);
-        } catch (historyError) {
-          console.error("Failed to refresh medication history", historyError);
-        }
-      }
 
       const sectionLabels: Record<EditableSection, string> = {
         overview: "Overview",
@@ -1769,34 +2049,77 @@ export function PatientOverview() {
   }, [labReports]);
 
   const appointmentBuckets = useMemo(() => {
-    if (!appointments.length) {
+    if (!appointments || appointments.length === 0) {
       return { upcoming: [] as Appointment[], past: [] as Appointment[] };
     }
 
-    const reference = new Date();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset to start of day for accurate date comparison
     const upcoming: Appointment[] = [];
     const past: Appointment[] = [];
 
-    appointments.forEach((appointment) => {
-      const appointmentDate = new Date(appointment.date);
-      const isUpcoming =
-        ["scheduled", "checked-in", "in-progress"].includes(
-          appointment.status
-        ) || appointmentDate.getTime() >= reference.getTime();
+    // Helper to compute a sortable timestamp using both date and time (if available)
+    const getAppointmentTimestamp = (appointment: Appointment): number => {
+      if (!appointment || !appointment.date) return 0;
+      try {
+        if (appointment.time) {
+          const combined = `${appointment.date}T${appointment.time}`;
+          const dt = new Date(combined);
+          if (!isNaN(dt.getTime())) return dt.getTime();
+        }
+        const d = new Date(appointment.date);
+        return isNaN(d.getTime()) ? 0 : d.getTime();
+      } catch {
+        return 0;
+      }
+    };
 
-      if (isUpcoming) {
-        upcoming.push(appointment);
-      } else {
+    appointments.forEach((appointment) => {
+      if (!appointment || !appointment.date) {
+        // If no date, consider it past
+        past.push(appointment);
+        return;
+      }
+
+      try {
+        // Parse appointment date (format: YYYY-MM-DD)
+        const appointmentDate = new Date(appointment.date);
+        
+        // Check if date is valid
+        if (isNaN(appointmentDate.getTime())) {
+          console.warn(`Invalid date for appointment ${appointment._id}: ${appointment.date}`);
+          past.push(appointment);
+          return;
+        }
+        
+        appointmentDate.setHours(0, 0, 0, 0); // Reset to start of day
+        
+        // Determine if appointment is upcoming or past
+        const dateInFuture = appointmentDate.getTime() > today.getTime();
+        const dateIsToday = appointmentDate.getTime() === today.getTime();
+        const status = (appointment.status || "").toLowerCase();
+        const activeStatuses = ["scheduled", "checked-in", "in-progress"];
+        const isActiveStatus = activeStatuses.includes(status);
+        
+        // Appointment is upcoming if:
+        // 1. Date is in the future, OR
+        // 2. Date is today AND status is active (scheduled/checked-in/in-progress)
+        const isUpcoming = dateInFuture || (dateIsToday && isActiveStatus);
+
+        if (isUpcoming) {
+          upcoming.push(appointment);
+        } else {
+          past.push(appointment);
+        }
+      } catch (err) {
+        console.error(`Error processing appointment ${appointment._id}:`, err);
         past.push(appointment);
       }
     });
 
-    upcoming.sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    past.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
+    // Upcoming: oldest first; Past: latest first (using full date + time)
+    upcoming.sort((a, b) => getAppointmentTimestamp(a) - getAppointmentTimestamp(b));
+    past.sort((a, b) => getAppointmentTimestamp(b) - getAppointmentTimestamp(a));
 
     return { upcoming, past };
   }, [appointments]);
@@ -3823,68 +4146,6 @@ export function PatientOverview() {
             </CardContent>
           </Card>
 
-
-          {medicationHistory.length > 0 && (
-            <Card className="border-border shadow-sm">
-              <CardHeader className="flex flex-col gap-2">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <HistoryIcon className="w-4 h-4 text-muted-foreground" />
-                  Medication History
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Every update is logged with the user, timestamp, and diff for auditing.
-                </p>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {medicationHistory.map((entry) => (
-                  <div
-                    key={entry._id}
-                    className="rounded-lg border border-border bg-card p-4 space-y-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                      <span>
-                        {entry.updatedBy?.name || entry.updatedBy?.email || "Unknown user"}
-                        {entry.updatedBy?.role ? ` (${entry.updatedBy.role})` : ""}
-                      </span>
-                      <span>{new Date(entry.changedAt).toLocaleString()}</span>
-                    </div>
-                    <div className="space-y-3">
-                      {entry.changes.map((change, idx) => {
-                        const prevValues = formatMedicationSnapshot(change.oldValue);
-                        const newValues = formatMedicationSnapshot(change.newValue);
-                        return (
-                          <div
-                            key={`${entry._id}-${idx}`}
-                            className="rounded-md border border-border/60 p-3 space-y-2"
-                          >
-                            <p className="font-semibold text-sm text-foreground">{change.label}</p>
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <div>
-                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                  Previous
-                                </p>
-                                {renderMedicationSnapshot(
-                                  prevValues,
-                                  "No medications recorded"
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                  Updated
-                                </p>
-                                {renderMedicationSnapshot(newValues, "Cleared")}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
         </TabsContent>
 
         <TabsContent value="lab-results" className="space-y-4 mt-6">
@@ -4107,21 +4368,28 @@ export function PatientOverview() {
                       key={`upcoming-${appointment._id}`}
                       className="rounded-xl border border-border/60 bg-card px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
                     >
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          {appointment.type || "Consultation"}
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-foreground mb-1">
+                          {appointment.reason || appointment.type || "Consultation"}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          {appointment.doctorName || "Doctor"}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {new Date(appointment.date).toLocaleDateString()} • {appointment.time}
-                        </p>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-medium">Date:</span> {appointment.date ? new Date(appointment.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not specified'}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-medium">Doctor:</span> {appointment.doctorName || "Doctor"}
+                          </p>
+                          {appointment.time && (
+                            <p className="text-xs text-muted-foreground">
+                              <span className="font-medium">Time:</span> {appointment.time}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {appointment.reason && (
+                        {appointment.reason && appointment.type && appointment.reason !== appointment.type && (
                           <Badge variant="outline" className="text-xs">
-                            {appointment.reason}
+                            {appointment.type}
                           </Badge>
                         )}
                         <Badge
@@ -4182,36 +4450,340 @@ export function PatientOverview() {
             <CardContent>
               {pastAppointments.length > 0 ? (
                 <div className="space-y-3">
-                  {pastAppointments.map((appointment) => (
-                    <div
-                      key={`past-${appointment._id}`}
-                      className="rounded-xl border border-dashed border-border/60 bg-muted/30 px-4 py-3"
+                  {pastAppointments.map((appointment) => {
+                    const hasDetails = appointment.prescription || 
+                                     appointment.tests || 
+                                     appointment.prescribedTest ||
+                                     appointment.diagnosis ||
+                                     appointment.treatmentPlan ||
+                                     appointment.followUpInstructions ||
+                                     appointment.detailedNotes ||
+                                     appointment.aiRecommendations ||
+                                     (appointment.clinicalNotes && appointment.clinicalNotes.length > 0);
+                    const appointmentValue = `appointment-${appointment._id}`;
+                    
+                    return (
+                    <Accordion 
+                      key={`past-${appointment._id}`} 
+                      type="single" 
+                      collapsible 
+                      className="w-full"
+                      defaultValue={hasDetails ? appointmentValue : undefined}
                     >
-                      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">
-                            {appointment.type || "Consultation"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {appointment.doctorName || "Doctor"}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(appointment.date).toLocaleDateString()} • {appointment.time}
-                          </p>
+                      <AccordionItem value={appointmentValue} className="border rounded-xl">
+                        <div className="px-4 py-3">
+                          <AccordionTrigger className="hover:no-underline">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full mr-4">
+                              <div className="text-left flex-1">
+                                <p className="text-sm font-semibold text-foreground mb-1">
+                                  {appointment.reason || appointment.type || "Consultation"}
+                                </p>
+                                <div className="space-y-0.5">
+                                  <p className="text-xs text-muted-foreground">
+                                    <span className="font-medium">Date:</span> {appointment.date ? new Date(appointment.date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'Not specified'}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    <span className="font-medium">Doctor:</span> {appointment.doctorName || "Doctor"}
+                                  </p>
+                                  {appointment.time && (
+                                    <p className="text-xs text-muted-foreground">
+                                      <span className="font-medium">Time:</span> {appointment.time}
+                                    </p>
+                                  )}
+                                </div>
+                                
+                                {/* Highlights - visible even when collapsed */}
+                                {hasDetails && (
+                                  <div className="flex flex-wrap items-center gap-2 mt-1">
+                                    {appointment.diagnosis && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+                                        <FileTextIcon className="w-3 h-3 text-red-600 dark:text-red-400" />
+                                        <span className="text-xs font-medium text-red-700 dark:text-red-400">Diagnosis</span>
+                                      </div>
+                                    )}
+                                    {appointment.prescription && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
+                                        <PillIcon className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                        <span className="text-xs font-medium text-purple-700 dark:text-purple-400">Prescription</span>
+                                      </div>
+                                    )}
+                                    {(appointment.tests || appointment.prescribedTest) && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                                        <FlaskConicalIcon className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                        <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Tests</span>
+                                      </div>
+                                    )}
+                                    {appointment.treatmentPlan && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
+                                        <FileTextIcon className="w-3 h-3 text-green-600 dark:text-green-400" />
+                                        <span className="text-xs font-medium text-green-700 dark:text-green-400">Treatment</span>
+                                      </div>
+                                    )}
+                                    {appointment.aiRecommendations && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800">
+                                        <SparklesIcon className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                                        <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">AI Analysis</span>
+                                      </div>
+                                    )}
+                                    {appointment.clinicalNotes && appointment.clinicalNotes.length > 0 && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+                                        <FileTextIcon className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                                        <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                                          {appointment.clinicalNotes.length} Note{appointment.clinicalNotes.length > 1 ? 's' : ''}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant="outline" className="bg-muted text-xs text-muted-foreground capitalize">
+                                  {appointment.status}
+                                </Badge>
+                                {appointment.reason && appointment.reason !== (appointment.type || "Consultation") && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {appointment.reason}
+                                  </Badge>
+                                )}
+                                {hasDetails && (
+                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800">
+                                    Details Available
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </AccordionTrigger>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className="bg-muted text-xs text-muted-foreground capitalize">
-                            {appointment.status}
-                          </Badge>
-                          {appointment.reason && (
-                            <Badge variant="outline" className="text-xs">
-                              {appointment.reason}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                        <AccordionContent className="px-4 pb-4">
+                          <div className="space-y-4">
+                            {/* Diagnosis Section */}
+                            {appointment.diagnosis ? (
+                              <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <FileTextIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
+                                  <p className="text-xs font-semibold text-red-700 dark:text-red-400">
+                                    Diagnosis
+                                  </p>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                  {appointment.diagnosis}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {/* Prescription Section */}
+                            {appointment.prescription ? (
+                              <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <PillIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                  <p className="text-xs font-semibold text-purple-700 dark:text-purple-400">
+                                    Prescription
+                                  </p>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                  {appointment.prescription}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {/* Prescribed Tests Section */}
+                            {(appointment.prescribedTest || appointment.tests) ? (
+                              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <FlaskConicalIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                                    Prescribed Tests
+                                  </p>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                  {appointment.prescribedTest || appointment.tests}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {/* Treatment Plan Section */}
+                            {appointment.treatmentPlan ? (
+                              <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <FileTextIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                  <p className="text-xs font-semibold text-green-700 dark:text-green-400">
+                                    Treatment Plan
+                                  </p>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                  {appointment.treatmentPlan}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {/* Follow-up Instructions Section */}
+                            {appointment.followUpInstructions ? (
+                              <div className="rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <CalendarIcon className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                                  <p className="text-xs font-semibold text-teal-700 dark:text-teal-400">
+                                    Follow-up Instructions
+                                  </p>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                  {appointment.followUpInstructions}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {/* Detailed Notes Section */}
+                            {appointment.detailedNotes ? (
+                              <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <FileTextIcon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                  <p className="text-xs font-semibold text-gray-700 dark:text-gray-400">
+                                    Detailed Notes
+                                  </p>
+                                </div>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">
+                                  {appointment.detailedNotes}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {/* AI Recommendations Section */}
+                            {appointment.aiRecommendations ? (
+                              <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-3">
+                                  <SparklesIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                                  <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">
+                                    AI Health Analysis
+                                  </p>
+                                </div>
+                                {typeof appointment.aiRecommendations === 'string' ? (
+                                  <p className="text-sm text-foreground whitespace-pre-wrap">
+                                    {appointment.aiRecommendations}
+                                  </p>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {/* Risk Assessment */}
+                                    {appointment.aiRecommendations.riskAssessment && (
+                                      <div className="p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">
+                                          Risk Assessment
+                                        </p>
+                                        <div className="space-y-1">
+                                          {appointment.aiRecommendations.riskAssessment.level && (
+                                            <p className="text-xs text-foreground">
+                                              <span className="font-medium">Level:</span> {appointment.aiRecommendations.riskAssessment.level.toUpperCase()}
+                                            </p>
+                                          )}
+                                          {appointment.aiRecommendations.riskAssessment.successRate && (
+                                            <p className="text-xs text-foreground">
+                                              <span className="font-medium">Success Rate:</span> {appointment.aiRecommendations.riskAssessment.successRate}
+                                            </p>
+                                          )}
+                                          {appointment.aiRecommendations.riskAssessment.similarCases !== undefined && (
+                                            <p className="text-xs text-foreground">
+                                              <span className="font-medium">Based on:</span> {appointment.aiRecommendations.riskAssessment.similarCases} similar cases
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {/* Key Findings */}
+                                    {appointment.aiRecommendations.keyFindings && appointment.aiRecommendations.keyFindings.length > 0 && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-2">
+                                          Key Findings
+                                        </p>
+                                        <ul className="space-y-2">
+                                          {appointment.aiRecommendations.keyFindings.map((finding: string, index: number) => (
+                                            <li key={index} className="text-xs text-foreground flex items-start gap-2">
+                                              <span className="text-indigo-600 dark:text-indigo-400 mt-0.5">•</span>
+                                              <span>{finding}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                    {/* Recommendations */}
+                                    {appointment.aiRecommendations.recommendations && appointment.aiRecommendations.recommendations.length > 0 && (
+                                      <div>
+                                        <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-2">
+                                          AI Recommendations
+                                        </p>
+                                        <ul className="space-y-2">
+                                          {appointment.aiRecommendations.recommendations.map((rec: string, index: number) => (
+                                            <li key={index} className="text-xs text-foreground flex items-start gap-2">
+                                              <CheckCircleIcon className="w-3 h-3 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                                              <span>{rec}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+
+                            {/* Clinical Notes Section */}
+                            {appointment.clinicalNotes && appointment.clinicalNotes.length > 0 ? (
+                              <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <FileTextIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                                    Clinical Notes
+                                  </p>
+                                </div>
+                                <div className="space-y-3">
+                                  {appointment.clinicalNotes.map((note) => (
+                                    <div key={note._id} className="border-l-2 border-blue-300 dark:border-blue-700 pl-3">
+                                      {note.diagnosis && (
+                                        <p className="text-xs font-medium text-foreground mb-1">
+                                          Diagnosis: <span className="font-normal">{note.diagnosis}</span>
+                                        </p>
+                                      )}
+                                      {note.note && (
+                                        <p className="text-sm text-foreground mb-1 whitespace-pre-wrap">
+                                          {note.note}
+                                        </p>
+                                      )}
+                                      {note.treatment && (
+                                        <p className="text-xs text-muted-foreground">
+                                          <span className="font-medium">Treatment:</span> {note.treatment}
+                                        </p>
+                                      )}
+                                      {note.followUp && (
+                                        <p className="text-xs text-muted-foreground">
+                                          <span className="font-medium">Follow-up:</span> {note.followUp}
+                                        </p>
+                                      )}
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        {new Date(note.createdAt).toLocaleDateString()} • {note.doctorName || "Doctor"}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {/* No details message */}
+                            {!appointment.prescription && 
+                             !appointment.tests && 
+                             !appointment.prescribedTest &&
+                             !appointment.diagnosis &&
+                             !appointment.treatmentPlan &&
+                             !appointment.followUpInstructions &&
+                             !appointment.detailedNotes &&
+                             !appointment.aiRecommendations &&
+                             (!appointment.clinicalNotes || appointment.clinicalNotes.length === 0) && (
+                              <p className="text-xs text-muted-foreground text-center py-2">
+                                No additional details available for this appointment
+                              </p>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

@@ -16,10 +16,8 @@ class AppointmentCreateRequest(BaseModel):
     duration: int = Field(30, ge=15, le=480, description="Duration in minutes")
     priority: str = Field("medium", pattern="^(low|medium|high)$")
     reason: str = Field(..., max_length=500)
-    notes: Optional[str] = Field("", max_length=1000)
     insurance: bool = False
     followUpRequired: bool = False
-    followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
 
 
@@ -30,11 +28,9 @@ class AppointmentUpdateRequest(BaseModel):
     duration: Optional[int] = Field(None, ge=15, le=480)
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reason: Optional[str] = Field(None, max_length=500)
-    notes: Optional[str] = Field(None, max_length=1000)
     insurance: Optional[bool] = None
     status: Optional[str] = Field(None, pattern="^(scheduled|checked-in|in-progress|ongoing|checkout|completed|cancelled|no-show)$")
     followUpRequired: Optional[bool] = None
-    followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
     # Fields for recording service updates
     s3Url: Optional[str] = None
@@ -49,7 +45,13 @@ class AppointmentUpdateRequest(BaseModel):
     prescriptionUploadedAt: Optional[str] = None
     prescriptionUploadedBy: Optional[str] = None
     prescriptionUploadedByName: Optional[str] = None
-    prescriptionNotes: Optional[str] = None
+    # Consultation details (added during consultation)
+    prescribedTest: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatmentPlan: Optional[str] = None
+    followUpInstructions: Optional[str] = None
+    detailedNotes: Optional[str] = None
+    aiRecommendations: Optional[str] = None
 
 
 class AppointmentStatusUpdate(BaseModel):
@@ -60,5 +62,5 @@ class AppointmentStatusUpdate(BaseModel):
 
 class AppointmentCheckIn(BaseModel):
     """Check-in appointment."""
-    presentInClinic: bool = True
+    pass
 

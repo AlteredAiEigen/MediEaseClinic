@@ -38,11 +38,8 @@ class AppointmentBase(BaseModel):
     status: str = Field("scheduled", pattern="^(scheduled|cancelled|checked-in|ongoing|checkout|completed)$")
     priority: str = Field("medium", pattern="^(low|medium|high)$")
     reason: str = Field(..., max_length=500)
-    notes: Optional[str] = Field("", max_length=1000)
-    presentInClinic: bool = False
     insurance: bool = False
     followUpRequired: bool = False
-    followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
     clinicId: Optional[str] = None
     consultationSummary: Optional[Dict[str, Any]] = None
@@ -53,7 +50,13 @@ class AppointmentBase(BaseModel):
     prescriptionUploadedAt: Optional[datetime] = None
     prescriptionUploadedBy: Optional[str] = None
     prescriptionUploadedByName: Optional[str] = None
-    prescriptionNotes: Optional[str] = None
+    # Consultation details (added during consultation)
+    prescribedTest: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatmentPlan: Optional[str] = None
+    followUpInstructions: Optional[str] = None
+    detailedNotes: Optional[str] = None
+    aiRecommendations: Optional[str] = None
 
 
 class AppointmentCreate(AppointmentBase):
@@ -104,8 +107,6 @@ class AppointmentResponse(BaseModel):
     status: str
     priority: str
     reason: str
-    notes: Optional[str] = None
-    presentInClinic: bool
     insurance: bool
     checkedInAt: Optional[datetime] = None
     startedAt: Optional[datetime] = None
@@ -116,7 +117,6 @@ class AppointmentResponse(BaseModel):
     consultationTimeMinutes: Optional[float] = None
     consultationSummary: Optional[Dict[str, Any]] = None
     followUpRequired: bool
-    followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
     createdAt: datetime
     updatedAt: datetime
@@ -129,7 +129,13 @@ class AppointmentResponse(BaseModel):
     prescriptionUploadedAt: Optional[datetime] = None
     prescriptionUploadedBy: Optional[str] = None
     prescriptionUploadedByName: Optional[str] = None
-    prescriptionNotes: Optional[str] = None
+    # Consultation details (added during consultation)
+    prescribedTest: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatmentPlan: Optional[str] = None
+    followUpInstructions: Optional[str] = None
+    detailedNotes: Optional[str] = None
+    aiRecommendations: Optional[str] = None
     
     class Config:
         populate_by_name = True
@@ -144,12 +150,9 @@ class AppointmentUpdate(BaseModel):
     isNoShow: Optional[bool] = None
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reason: Optional[str] = Field(None, max_length=500)
-    notes: Optional[str] = Field(None, max_length=1000)
-    presentInClinic: Optional[bool] = None
     insurance: Optional[bool] = None
     cancellationReason: Optional[str] = None
     followUpRequired: Optional[bool] = None
-    followUpDate: Optional[str] = None
     followUpNotes: Optional[str] = None
     consultationSummary: Optional[Dict[str, Any]] = None
     prescriptionFileUrl: Optional[str] = None
@@ -159,7 +162,13 @@ class AppointmentUpdate(BaseModel):
     prescriptionUploadedAt: Optional[datetime] = None
     prescriptionUploadedBy: Optional[str] = None
     prescriptionUploadedByName: Optional[str] = None
-    prescriptionNotes: Optional[str] = None
+    # Consultation details (added during consultation)
+    prescribedTest: Optional[str] = None
+    diagnosis: Optional[str] = None
+    treatmentPlan: Optional[str] = None
+    followUpInstructions: Optional[str] = None
+    detailedNotes: Optional[str] = None
+    aiRecommendations: Optional[str] = None
 
 
 async def appointment_helper(appointment: dict) -> dict:
@@ -182,8 +191,6 @@ async def appointment_helper(appointment: dict) -> dict:
         "status": appointment.get("status", "scheduled"),
         "priority": appointment.get("priority", "medium"),
         "reason": appointment["reason"],
-        "notes": appointment.get("notes", ""),
-        "presentInClinic": appointment.get("presentInClinic", False),
         "insurance": appointment.get("insurance", False),
         "checkedInAt": appointment.get("checkedInAt"),
         "startedAt": appointment.get("startedAt"),
@@ -193,7 +200,6 @@ async def appointment_helper(appointment: dict) -> dict:
         "isNoShow": appointment.get("isNoShow", False),
         "consultationTimeMinutes": appointment.get("consultationTimeMinutes"),
         "followUpRequired": appointment.get("followUpRequired", False),
-        "followUpDate": appointment.get("followUpDate"),
         "followUpNotes": appointment.get("followUpNotes"),
         "clinicId": appointment.get("clinicId"),
         "createdAt": appointment.get("createdAt"),
@@ -214,6 +220,12 @@ async def appointment_helper(appointment: dict) -> dict:
         "prescriptionUploadedAt": appointment.get("prescriptionUploadedAt"),
         "prescriptionUploadedBy": appointment.get("prescriptionUploadedBy"),
         "prescriptionUploadedByName": appointment.get("prescriptionUploadedByName"),
-        "prescriptionNotes": appointment.get("prescriptionNotes"),
+        # Consultation details (added during consultation)
+        "prescribedTest": appointment.get("prescribedTest"),
+        "diagnosis": appointment.get("diagnosis"),
+        "treatmentPlan": appointment.get("treatmentPlan"),
+        "followUpInstructions": appointment.get("followUpInstructions"),
+        "detailedNotes": appointment.get("detailedNotes"),
+        "aiRecommendations": appointment.get("aiRecommendations"),
     }
 

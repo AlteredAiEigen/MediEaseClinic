@@ -23,6 +23,18 @@ class QueueStatusUpdate(BaseModel):
     status: str = Field(..., pattern="^(waiting|in-consultation|completed|checked-out|cancelled)$")
 
 
+class QueueConsultationUpdate(BaseModel):
+    """Update consultation details for a queue entry and associated appointment."""
+    prescription: Optional[str] = Field(None, description="Prescription notes")
+    tests: Optional[str] = Field(None, description="Test orders/notes")
+    prescribedTest: Optional[str] = Field(None, description="Prescribed tests")
+    diagnosis: Optional[str] = Field(None, description="Diagnosis")
+    treatmentPlan: Optional[str] = Field(None, description="Treatment plan")
+    followUpInstructions: Optional[str] = Field(None, description="Follow-up instructions")
+    detailedNotes: Optional[str] = Field(None, description="Detailed notes")
+    aiRecommendations: Optional[str] = Field(None, description="AI recommendations")
+
+
 class QueueEntryResponse(BaseModel):
     """Queue entry response schema."""
     id: str = Field(..., alias="_id")
@@ -36,6 +48,8 @@ class QueueEntryResponse(BaseModel):
     priority: str
     reason: str
     notes: str
+    prescription: Optional[str] = None
+    tests: Optional[str] = None
     consultation_started_at: Optional[datetime] = None
     consultation_ended_at: Optional[datetime] = None
     wait_time: int

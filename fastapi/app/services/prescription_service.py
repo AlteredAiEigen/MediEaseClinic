@@ -2,13 +2,17 @@
 Prescription service for managing patient prescriptions.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
+import re
+import logging
 
 from app.models.prescription import PrescriptionCreate, PrescriptionUpdate, prescription_helper
+
+logger = logging.getLogger(__name__)
 
 
 class PrescriptionService:
@@ -70,9 +74,73 @@ class PrescriptionService:
         # Populate names
         prescription_dict = await self.populate_names(prescription_dict)
         
-        # Insert
+        # Insert prescription
         result = await self.prescriptions_collection.insert_one(prescription_dict)
         created_prescription = await self.prescriptions_collection.find_one({"_id": result.inserted_id})
+        
+        # Update patient's current medications list
+        try:
+            # Convert medications to patient medication format
+            patient_medications = []
+            for med in prescription_data.medications:
+                # Get instructions from medication or from prescription notes
+                med_instructions = ""
+                if hasattr(med, 'instructions') and med.instructions:
+                    med_instructions = med.instructions
+                elif prescription_data.notes:
+                    med_instructions = prescription_data.notes
+                
+                medication_entry = {
+                    "name": med.name,
+                    "dosage": med.dosage,
+                    "frequency": med.frequency,
+                    "duration": med.duration,
+                    "instructions": med_instructions,
+                    "startDate": datetime.utcnow().strftime("%Y-%m-%d"),
+                    "endDate": "",  # No end date for active medications
+                }
+                # Calculate end date from duration if provided
+                if med.duration:
+                    try:
+                        # Try to parse duration like "2 weeks", "1 month", etc.
+                        duration_match = re.match(r'(\d+)\s*(day|days|week|weeks|month|months)', med.duration.lower())
+                        if duration_match:
+                            amount = int(duration_match.group(1))
+                            unit = duration_match.group(2)
+                            if 'week' in unit:
+                                delta = timedelta(weeks=amount)
+                            elif 'month' in unit:
+                                delta = timedelta(days=amount * 30)
+                            else:
+                                delta = timedelta(days=amount)
+                            end_date = datetime.utcnow() + delta
+                            medication_entry["endDate"] = end_date.strftime("%Y-%m-%d")
+                    except:
+                        pass  # If duration parsing fails, leave endDate empty
+                
+                patient_medications.append(medication_entry)
+            
+            # Get existing medications or initialize empty list
+            existing_medications = patient.get("currentMedications", [])
+            if not isinstance(existing_medications, list):
+                existing_medications = []
+            
+            # Merge new medications with existing ones (avoid duplicates based on name)
+            existing_names = {med.get("name", "").lower() for med in existing_medications if isinstance(med, dict)}
+            new_medications = [med for med in patient_medications if med["name"].lower() not in existing_names]
+            
+            if new_medications:
+                updated_medications = existing_medications + new_medications
+                await self.patients_collection.update_one(
+                    {"_id": ObjectId(prescription_data.patientId)},
+                    {"$set": {
+                        "currentMedications": updated_medications,
+                        "updatedAt": datetime.utcnow()
+                    }}
+                )
+        except Exception as e:
+            # Log error but don't fail prescription creation if medication update fails
+            logger.warning(f"Failed to update patient medications for prescription: {e}")
         
         return await prescription_helper(created_prescription)
     

@@ -83,6 +83,7 @@ app = FastAPI(
 )
 
 # CORS Configuration
+# Note: CORS middleware must be added before other middleware to handle preflight and redirects
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -90,6 +91,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # Add HIPAA Audit Logging Middleware
@@ -177,6 +179,7 @@ from app.routers import (
     patient_insurances,
     insurance_coverage,
     patient_reviews,
+    patient_medical_history,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -209,6 +212,11 @@ app.include_router(
     patient_reviews.router,
     prefix="/api/patient-reviews",
     tags=["Patient Reviews"],
+)
+app.include_router(
+    patient_medical_history.router,
+    prefix="/api/patient-medical-history",
+    tags=["Patient Medical History"],
 )
 
 

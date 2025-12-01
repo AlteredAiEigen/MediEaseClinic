@@ -25,8 +25,6 @@ class PatientCreateRequest(BaseModel):
         Union[str, List[MedicalHistoryEntry], List[str], List[Dict[str, str]]]
     ] = None
     allergies: Optional[str] = ""
-    familyHistory: Optional[str] = ""
-    previousSurgeries: Optional[str] = ""
     currentMedication: Optional[str] = ""
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
@@ -71,8 +69,6 @@ class PatientUpdateRequest(BaseModel):
         Union[str, List[MedicalHistoryEntry], List[str], List[Dict[str, str]]]
     ] = None
     allergies: Optional[str] = None
-    familyHistory: Optional[str] = None
-    previousSurgeries: Optional[str] = None
     currentMedication: Optional[str] = None
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None

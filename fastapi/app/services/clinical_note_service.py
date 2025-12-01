@@ -8,7 +8,7 @@ from typing import List, Optional, Dict
 from bson import ObjectId
 from fastapi import HTTPException, status
 
-from app.database import db
+from app.database import Database
 from app.models.clinical_note import ClinicalNote, ClinicalNoteInDB
 from app.schemas.clinical_note import (
     ClinicalNoteCreate,
@@ -21,8 +21,7 @@ logger = logging.getLogger(__name__)
 
 def get_notes_collection():
     """Get clinical notes collection."""
-    if db is None:
-        raise Exception("Database not initialized")
+    db = Database.get_database()
     return db["clinical_notes"]
 
 
@@ -75,6 +74,7 @@ class ClinicalNoteService:
     async def get_notes(
         patient_id: Optional[str] = None,
         doctor_id: Optional[str] = None,
+        appointment_id: Optional[str] = None,
         category: Optional[str] = None,
         priority: Optional[str] = None,
         actionable: Optional[bool] = None,
@@ -89,6 +89,12 @@ class ClinicalNoteService:
                 query["patient"] = patient_id
             if doctor_id:
                 query["doctor"] = doctor_id
+            if appointment_id:
+                from bson import ObjectId
+                if ObjectId.is_valid(appointment_id):
+                    query["appointment"] = ObjectId(appointment_id)
+                else:
+                    query["appointment"] = appointment_id
             if category:
                 query["category"] = category
             if priority:

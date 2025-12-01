@@ -89,8 +89,6 @@ class PatientBase(BaseModel):
     vitals: Optional[Vitals] = Vitals()
     medicalHistory: Optional[Union[str, List[Union[str, MedicalHistoryEntry]]]] = None
     allergies: Optional[str] = ""
-    familyHistory: Optional[str] = ""
-    previousSurgeries: Optional[str] = ""
     currentMedication: Optional[str] = ""
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
@@ -157,8 +155,6 @@ class PatientResponse(BaseModel):
     vitals: Optional[Vitals] = None
     medicalHistory: Optional[List[MedicalHistoryEntry]] = None
     allergies: Optional[str] = None
-    familyHistory: Optional[str] = None
-    previousSurgeries: Optional[str] = None
     currentMedication: Optional[str] = None
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
@@ -198,8 +194,6 @@ class PatientUpdate(BaseModel):
     vitals: Optional[Vitals] = None
     medicalHistory: Optional[Union[str, List[Union[str, MedicalHistoryEntry]]]] = None
     allergies: Optional[str] = None
-    familyHistory: Optional[str] = None
-    previousSurgeries: Optional[str] = None
     currentMedication: Optional[str] = None
     medicationDosage: Optional[str] = None
     medicationFrequency: Optional[str] = None
@@ -322,8 +316,6 @@ async def patient_helper(patient: dict) -> dict:
         "vitals": patient.get("vitals", {}),
         "medicalHistory": medical_history_value,
         "allergies": allergy_value,
-        "familyHistory": patient.get("familyHistory", ""),
-        "previousSurgeries": patient.get("previousSurgeries", ""),
         "currentMedication": patient.get("currentMedication", ""),
         "medicationDosage": patient.get("medicationDosage"),
         "medicationFrequency": patient.get("medicationFrequency"),

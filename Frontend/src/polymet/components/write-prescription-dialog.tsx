@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SearchIcon, PlusIcon, XIcon, PillIcon, AlertCircleIcon, Loader2 } from "lucide-react";
 import { post, get } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 
 interface Patient {
   _id: string;
@@ -40,6 +41,7 @@ export function WritePrescriptionDialog({
   open,
   onOpenChange,
 }: WritePrescriptionDialogProps) {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -64,9 +66,34 @@ export function WritePrescriptionDialog({
           setIsLoading(true);
           setError(null);
 
-          const response = await get<{ data: Patient[] }>("/api/patients?limit=100");
-          if (response.success && response.data?.data) {
-            setPatients(response.data.data);
+          const response = await get<Patient[] | { data: Patient[] }>("/api/patients?limit=100");
+          let patientList: Patient[] = [];
+          
+          if (response.success) {
+            // Handle different response formats
+            if (Array.isArray(response.data)) {
+              patientList = response.data;
+            } else if (response.data && Array.isArray(response.data.data)) {
+              patientList = response.data.data;
+            } else if (response.data && Array.isArray((response.data as any)?.items)) {
+              patientList = (response.data as any).items;
+            }
+            
+            // Normalize patient data to ensure consistent structure
+            const normalizedPatients = patientList.map((patient: any) => ({
+              ...patient,
+              _id: String(patient._id ?? patient.id ?? patient.patientId ?? ""),
+              patientId: patient.patientId ?? patient._id ?? String(patient.id ?? ""),
+              fullName: patient.fullName ?? `${patient.firstName || ""} ${patient.lastName || ""}`.trim() ?? "Unknown",
+              age: patient.age ?? "",
+              gender: patient.gender ?? "",
+              phone: patient.phone ?? "",
+              email: patient.email,
+            }));
+            
+            setPatients(
+              [...normalizedPatients].sort((a, b) => a.fullName.localeCompare(b.fullName))
+            );
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : "Failed to load patients";
@@ -90,25 +117,44 @@ export function WritePrescriptionDialog({
   }, [open]);
 
   const filteredPatients = useMemo(() => {
-    if (!searchQuery.trim()) return patients.slice(0, 10); // Show first 10 if no search
+    if (!searchQuery.trim()) {
+      // Show all patients if no search, sorted alphabetically
+      return patients.slice().sort((a, b) => a.fullName.localeCompare(b.fullName));
+    }
 
     const query = searchQuery.toLowerCase();
     return patients.filter(
       (patient) =>
         patient.fullName.toLowerCase().includes(query) ||
         patient.patientId.toLowerCase().includes(query) ||
+        patient.phone?.toLowerCase().includes(query) ||
         patient.email?.toLowerCase().includes(query)
-    );
+    ).sort((a, b) => a.fullName.localeCompare(b.fullName));
   }, [patients, searchQuery]);
 
   const addMedication = () => {
-    if (currentMed.name && currentMed.dosage) {
-      setMedications([
-        ...medications,
-        { ...currentMed, id: Date.now().toString() },
-      ]);
-      setCurrentMed({ name: "", dosage: "", frequency: "", duration: "" });
+    if (!currentMed.name || !currentMed.name.trim()) {
+      setError("Please enter a medication name");
+      return;
     }
+    if (!currentMed.dosage || !currentMed.dosage.trim()) {
+      setError("Please enter a dosage");
+      return;
+    }
+    
+    setMedications([
+      ...medications,
+      { 
+        ...currentMed, 
+        id: Date.now().toString(),
+        name: currentMed.name.trim(),
+        dosage: currentMed.dosage.trim(),
+        frequency: currentMed.frequency.trim() || "",
+        duration: currentMed.duration.trim() || "",
+      },
+    ]);
+    setCurrentMed({ name: "", dosage: "", frequency: "", duration: "" });
+    setError(null); // Clear any previous errors
   };
 
   const removeMedication = (id: string) => {
@@ -116,35 +162,101 @@ export function WritePrescriptionDialog({
   };
 
   const handleSubmit = async () => {
-    if (!selectedPatient || !diagnosis || medications.length === 0) {
-      setError("Please fill in all required fields");
+    console.log("handleSubmit called");
+    console.log("Selected patient:", selectedPatient);
+    console.log("Diagnosis:", diagnosis);
+    console.log("Medications:", medications);
+    console.log("User:", user);
+    
+    // Validate required fields first
+    if (!selectedPatient) {
+      setError("Please select a patient");
+      console.error("Validation failed: No patient selected");
+      return;
+    }
+    
+    if (!diagnosis || !diagnosis.trim()) {
+      setError("Please enter a diagnosis");
+      console.error("Validation failed: No diagnosis");
+      return;
+    }
+    
+    if (medications.length === 0) {
+      setError("Please add at least one medication");
+      console.error("Validation failed: No medications");
       return;
     }
 
+    // Check authentication before submitting
+    if (!user?._id && !user?.id) {
+      setError("User not authenticated. Please log in again.");
+      console.error("Validation failed: No user ID");
+      return;
+    }
+
+    // All validations passed, proceed with submission
+    console.log("All validations passed, submitting...");
     setIsSubmitting(true);
     setError(null);
 
     try {
+      // Ensure doctorId is a string
+      const doctorId = String(user._id || user.id || "");
+      if (!doctorId) {
+        setError("Unable to get doctor ID. Please log in again.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Validate and prepare medications - backend requires all fields
+      const validatedMedications = medications.map((med, index) => {
+        const name = med.name.trim();
+        const dosage = med.dosage.trim();
+        const frequency = med.frequency.trim() || "Once daily";
+        const duration = med.duration.trim() || "30 days";
+        
+        if (!name) {
+          throw new Error(`Medication #${index + 1} is missing a name`);
+        }
+        if (!dosage) {
+          throw new Error(`Medication "${name}" is missing dosage`);
+        }
+        
+        return {
+          name,
+          dosage,
+          frequency,
+          duration,
+          instructions: instructions.trim() || "",
+        };
+      });
+
       const prescriptionData = {
-        patientId: selectedPatient._id,
-        diagnosis,
-        medications: medications.map(med => ({
-          name: med.name,
-          dosage: med.dosage,
-          frequency: med.frequency,
-          duration: med.duration,
-        })),
-        instructions,
+        patientId: String(selectedPatient._id),
+        doctorId: doctorId,
+        diagnosis: diagnosis.trim(),
+        medications: validatedMedications,
+        notes: instructions.trim() || "",
       };
+
+      console.log("Submitting prescription:", prescriptionData);
 
       const response = await post<{ prescription: any }>("/api/prescriptions", prescriptionData);
 
+      console.log("Prescription response:", response);
+
       if (response.success) {
+        // Show success message briefly before closing
+        setError(null);
+        // Close dialog and reset form
         onOpenChange(false);
+        // Optionally show success toast here
       } else {
-        setError(response.message ?? "Failed to create prescription");
+        const errorMsg = response.message ?? response.errors ?? "Failed to create prescription";
+        setError(typeof errorMsg === "string" ? errorMsg : "Failed to create prescription");
       }
     } catch (err) {
+      console.error("Error creating prescription:", err);
       const message = err instanceof Error ? err.message : "Failed to create prescription";
       setError(message);
     } finally {
@@ -261,6 +373,11 @@ export function WritePrescriptionDialog({
                 <Label className="text-sm font-medium mb-2 block">
                   Medications
                 </Label>
+                {medications.length === 0 && (
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Add at least one medication below and click "Add Medication"
+                  </p>
+                )}
                 <div className="space-y-2 mb-3">
                   {medications.map((med) => (
                     <div
@@ -294,6 +411,12 @@ export function WritePrescriptionDialog({
                     onChange={(e) =>
                       setCurrentMed({ ...currentMed, name: e.target.value })
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && currentMed.name && currentMed.dosage) {
+                        e.preventDefault();
+                        addMedication();
+                      }
+                    }}
                   />
 
                   <div className="grid grid-cols-2 gap-2">
@@ -325,9 +448,14 @@ export function WritePrescriptionDialog({
                   />
 
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
-                    onClick={addMedication}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      addMedication();
+                    }}
+                    disabled={!currentMed.name.trim() || !currentMed.dosage.trim()}
                     className="w-full"
                   >
                     <PlusIcon className="w-4 h-4 mr-2" />
@@ -359,11 +487,30 @@ export function WritePrescriptionDialog({
                 Cancel
               </Button>
               <Button
-                onClick={handleSubmit}
+                type="button"
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("Button clicked - calling handleSubmit");
+                  await handleSubmit();
+                }}
                 disabled={
-                  !selectedPatient || !diagnosis || medications.length === 0 || isSubmitting
+                  !selectedPatient || 
+                  !diagnosis || 
+                  !diagnosis.trim() || 
+                  medications.length === 0 || 
+                  isSubmitting || 
+                  (!user?._id && !user?.id)
                 }
-                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white"
+                title={
+                  !selectedPatient ? "Please select a patient" :
+                  !diagnosis?.trim() ? "Please enter a diagnosis" :
+                  medications.length === 0 ? "Please add at least one medication" :
+                  (!user?._id && !user?.id) ? "User not authenticated" :
+                  isSubmitting ? "Creating prescription..." :
+                  "Create prescription"
+                }
+                className="flex-1 bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? (
                   <>

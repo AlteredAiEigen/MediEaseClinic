@@ -146,10 +146,26 @@ class PatientService:
         
         # Prepare patient document
         patient_dict = patient_data.model_dump()
+        
+        # Extract medical history fields that should be stored in separate table
+        medical_history_fields = {}
+        for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
+            if field in patient_dict:
+                medical_history_fields[field] = patient_dict.pop(field)
+        
         patient_dict["patientId"] = patient_id
         patient_dict["email"] = patient_dict["email"].lower()
         patient_dict["createdAt"] = datetime.utcnow()
         patient_dict["updatedAt"] = datetime.utcnow()
+        # Explicitly remove medical history fields to ensure they're never saved to patient table
+        patient_dict.pop("familyHistory", None)
+        patient_dict.pop("previousSurgeries", None)
+        patient_dict.pop("pastMedications", None)
+        
+        # Log if these fields were found (shouldn't happen)
+        if any(k in patient_dict for k in ["familyHistory", "previousSurgeries", "pastMedications"]):
+            service_logger.warning(f"Medical history fields found in patient_dict after extraction! Keys: {[k for k in patient_dict.keys() if k in ['familyHistory', 'previousSurgeries', 'pastMedications']]}")
+        
         patient_dict.setdefault("condition", None)
         patient_dict.setdefault("carePlanSummary", "")
         patient_dict.setdefault("followUpPlan", "")
@@ -183,6 +199,11 @@ class PatientService:
         result = None
         for attempt in range(max_retries):
             try:
+                # Final safeguard: ensure medical history fields are NEVER in patient_dict
+                patient_dict.pop("familyHistory", None)
+                patient_dict.pop("previousSurgeries", None)
+                patient_dict.pop("pastMedications", None)
+                
                 result = await self.patients_collection.insert_one(patient_dict)
                 break  # Success, exit retry loop
             except DuplicateKeyError as e:
@@ -222,6 +243,24 @@ class PatientService:
             created_patient,
             self.ENCRYPTED_FIELDS
         )
+        
+        # Create medical history record if fields were provided
+        if medical_history_fields:
+            try:
+                from app.services.patient_medical_history_service import PatientMedicalHistoryService
+                from app.models.patient_medical_history import PatientMedicalHistoryCreate
+                
+                medical_history_service = PatientMedicalHistoryService(self.db)
+                create_history_data = PatientMedicalHistoryCreate(
+                    patientId=str(result.inserted_id),
+                    **medical_history_fields
+                )
+                await medical_history_service.create_medical_history(create_history_data)
+            except Exception as e:
+                # Log but don't fail patient creation if medical history creation fails
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to create medical history: {e}")
         
         return await patient_helper(created_patient)
     
@@ -368,25 +407,68 @@ class PatientService:
                 detail="Patient not found"
             )
 
-        decrypted_existing = field_encryption.decrypt_dict_fields(
-            deepcopy(existing_patient),
-            self.ENCRYPTED_FIELDS
-        )
-        previous_snapshot = await patient_helper(decrypted_existing)
-        
         # Prepare update data
         update_dict = update_data.model_dump(exclude_unset=True)
+        
+        # Log for debugging
+        import logging
+        service_logger = logging.getLogger(__name__)
+        service_logger.info(f"Patient update for {patient_id}: update_dict keys: {list(update_dict.keys())}")
 
         if "medicalHistory" in update_dict:
             update_dict["medicalHistory"] = self._normalize_medical_history_payload(
                 update_dict.get("medicalHistory")
             )
         
+        # Extract medical history fields that should be stored in separate table
+        medical_history_fields = {}
+        for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
+            if field in update_dict:
+                medical_history_fields[field] = update_dict.pop(field)
+                service_logger.warning(f"Found {field} in update_dict - this should not happen! Extracted: {medical_history_fields[field][:50] if medical_history_fields[field] else 'empty'}...")
+        
+        # Handle medical history fields - create/update in separate table
+        if medical_history_fields:
+            try:
+                from app.services.patient_medical_history_service import PatientMedicalHistoryService
+                from app.models.patient_medical_history import PatientMedicalHistoryCreate
+                
+                medical_history_service = PatientMedicalHistoryService(self.db)
+                
+                # Get current medical history record
+                current_history = await medical_history_service.get_current_medical_history(patient_id)
+                
+                if current_history:
+                    # Update existing current record by creating new version
+                    from app.models.patient_medical_history import PatientMedicalHistoryUpdate
+                    update_history_data = PatientMedicalHistoryUpdate(**medical_history_fields)
+                    await medical_history_service.update_medical_history(
+                        current_history["_id"],
+                        update_history_data
+                    )
+                else:
+                    # Create new record
+                    create_history_data = PatientMedicalHistoryCreate(
+                        patientId=patient_id,
+                        **medical_history_fields
+                    )
+                    await medical_history_service.create_medical_history(create_history_data)
+            except Exception as e:
+                # Log but don't fail patient update if medical history update fails
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to update medical history: {e}")
+        
         if not update_dict:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No fields to update"
             )
+        
+        # Explicitly remove medical history fields to ensure they're never saved to patient table
+        update_dict.pop("familyHistory", None)
+        update_dict.pop("previousSurgeries", None)
+        update_dict.pop("pastMedications", None)
         
         # Encrypt sensitive fields
         if update_dict.get("email"):
@@ -400,11 +482,30 @@ class PatientService:
         # Add updated timestamp
         update_dict["updatedAt"] = datetime.utcnow()
         
-        # Update patient
-        await self.patients_collection.update_one(
+        # ALWAYS unset medical history fields from patient document (safeguard)
+        # These fields should NEVER be in the patient table - remove them on EVERY update
+        unset_fields = {
+            "familyHistory": "",
+            "previousSurgeries": "",
+            "pastMedications": ""
+        }
+        
+        # Update patient - always unset these fields as a safeguard
+        # This ensures they're removed even if they somehow got into the document
+        update_operation = {
+            "$set": update_dict,
+            "$unset": unset_fields  # Always remove these fields on every update
+        }
+        
+        service_logger.info(f"Updating patient {patient_id}: $set keys={list(update_dict.keys())}, ALWAYS removing medical history fields via $unset")
+        
+        update_result = await self.patients_collection.update_one(
             {"_id": ObjectId(patient_id)},
-            {"$set": update_dict}
+            update_operation
         )
+        
+        if update_result.modified_count > 0:
+            service_logger.info(f"Patient {patient_id} updated. Modified count: {update_result.modified_count}")
         
         # Retrieve updated patient
         updated_patient = await self.patients_collection.find_one({"_id": ObjectId(patient_id)})
@@ -416,146 +517,8 @@ class PatientService:
         )
         
         formatted_patient = await patient_helper(updated_patient)
-        await self._log_patient_history(previous_snapshot, formatted_patient, updated_by)
         
         return formatted_patient
-    
-    async def _log_patient_history(
-        self,
-        previous_snapshot: Optional[dict],
-        updated_snapshot: Optional[dict],
-        updated_by: Optional[dict]
-    ):
-        """Record detailed patient change history."""
-        if not updated_by or not previous_snapshot or not updated_snapshot:
-            return
-        
-        tracked_fields = [
-            ("firstName", "First Name"),
-            ("lastName", "Last Name"),
-            ("email", "Email"),
-            ("phone", "Phone"),
-            ("gender", "Gender"),
-            ("dateOfBirth", "Date of Birth"),
-            ("bloodGroup", "Blood Group"),
-            ("address", "Address"),
-            ("medicalHistory", "Medical History"),
-            ("allergies", "Allergies"),
-            ("emergencyContact", "Emergency Contact"),
-            ("emergencyContactPhone", "Emergency Contact Phone"),
-            ("carePlanSummary", "Care Plan Summary"),
-            ("followUpPlan", "Follow-up Plan"),
-            ("condition", "Current Condition"),
-            ("chiefComplaint", "Chief Complaint"),
-            ("presentInClinic", "Clinic Presence"),
-            ("currentMedications", "Current Medications"),
-        ]
-        
-        def normalize_value(field_name: str, value):
-            if value is None:
-                return ""
-            if field_name == "medicalHistory":
-                normalized_history = PatientService._normalize_medical_history_payload(value)
-                if not normalized_history:
-                    return ""
-                formatted_entries = []
-                for entry in normalized_history:
-                    parts = [
-                        entry.get("title"),
-                        entry.get("diagnosis"),
-                        entry.get("treatedBy"),
-                        entry.get("recordedOn"),
-                    ]
-                    summary = ", ".join(part for part in parts if part)
-                    notes = entry.get("notes")
-                    if notes:
-                        summary = f"{summary} - {notes}" if summary else notes
-                    formatted_entries.append(summary.strip())
-                return "; ".join(item for item in formatted_entries if item)
-            if field_name == "allergies":
-                if isinstance(value, list):
-                    return ", ".join([str(item).strip() for item in value if str(item).strip()])
-                return str(value).strip()
-            if field_name == "currentMedications":
-                if isinstance(value, list):
-                    return "; ".join(
-                        [
-                            ", ".join(
-                                f"{key}: {val}"
-                                for key, val in entry.items()
-                                if val
-                            )
-                            for entry in value
-                        ]
-                    )
-                return str(value).strip()
-            if field_name == "presentInClinic":
-                return "Yes" if value else "No"
-            return str(value).strip()
-        
-        changes = []
-        for field, label in tracked_fields:
-            old_value = normalize_value(field, previous_snapshot.get(field))
-            new_value = normalize_value(field, updated_snapshot.get(field))
-            if old_value == new_value:
-                continue
-            changes.append(
-                {
-                    "field": field,
-                    "label": label,
-                    "oldValue": old_value,
-                    "newValue": new_value,
-                }
-            )
-        
-        if not changes:
-            return
-        
-        user_name = " ".join(
-            part
-            for part in [
-                updated_by.get("firstName", ""),
-                updated_by.get("lastName", ""),
-            ]
-            if part
-        ).strip() or updated_by.get("email")
-        
-        entry = {
-            "patientObjectId": updated_snapshot.get("_id"),
-            "patientId": updated_snapshot.get("patientId"),
-            "changes": changes,
-            "changedAt": datetime.utcnow(),
-            "updatedBy": {
-                "userId": str(updated_by.get("_id")) if updated_by.get("_id") else None,
-                "name": user_name,
-                "role": updated_by.get("role"),
-                "email": updated_by.get("email"),
-            },
-        }
-        
-        await self.db.patient_history.insert_one(entry)
-    
-    async def get_patient_history(
-        self,
-        patient_id: str,
-        field_filter: Optional[str] = None,
-        limit: int = 50
-    ) -> List[dict]:
-        """Fetch patient history entries for auditing purposes."""
-        query = {"patientId": patient_id}
-        if field_filter:
-            query["changes.field"] = field_filter
-        
-        cursor = (
-            self.db.patient_history
-            .find(query)
-            .sort("changedAt", -1)
-            .limit(limit)
-        )
-        entries = await cursor.to_list(length=limit)
-        for entry in entries:
-            entry["_id"] = str(entry["_id"])
-        return entries
     
     async def delete_patient(self, patient_id: str) -> bool:
         """

@@ -23,8 +23,16 @@ async def create_prescription(
 ):
     """Create new prescription. Only doctors and admins can create prescriptions."""
     try:
+        # Override doctorId with current user's ID for security
+        prescription_dict = prescription_data.model_dump()
+        prescription_dict["doctorId"] = str(current_user["_id"])
+        
+        # Create a new PrescriptionCreate object with the updated doctorId
+        from app.models.prescription import PrescriptionCreate
+        updated_prescription_data = PrescriptionCreate(**prescription_dict)
+        
         prescription_service = PrescriptionService(db)
-        prescription = await prescription_service.create_prescription(prescription_data)
+        prescription = await prescription_service.create_prescription(updated_prescription_data)
         
         return success_response(
             message="Prescription created successfully",

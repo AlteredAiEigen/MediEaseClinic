@@ -13,6 +13,7 @@ from app.schemas.queue import (
     QueueEntryResponse,
     QueueStats,
     QueueReorderRequest,
+    QueueConsultationUpdate,
 )
 from app.services.queue_service import QueueService
 from app.database import get_db
@@ -106,6 +107,24 @@ async def get_doctor_queue(
     )
 
 
+@router.get("/by-appointment/{appointment_id}", response_model=dict)
+async def get_queue_entry_by_appointment(
+    appointment_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Get queue entry by appointment ID."""
+    queue_service = QueueService(db)
+    entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
+    if not entry:
+        # Return success with null data instead of 404 - not all appointments have queue entries
+        return success_response(
+            data=None,
+            message="No queue entry found for this appointment"
+        )
+    return success_response(data=entry, message="Queue entry retrieved successfully")
+
+
 @router.get("/{entry_id}", response_model=dict)
 async def get_queue_entry(
     entry_id: str,
@@ -191,6 +210,24 @@ async def reorder_queue(
         data={"queue": updated_entries},
         message="Queue reordered successfully"
     )
+
+
+@router.put("/{entry_id}/consultation", response_model=dict)
+async def update_consultation_details(
+    entry_id: str,
+    consultation_update: QueueConsultationUpdate,
+    current_user: dict = Depends(require_roles(["doctor"])),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """Update prescription and tests for a queue entry."""
+    queue_service = QueueService(db)
+    entry = await queue_service.update_consultation_details(entry_id, consultation_update)
+    if not entry:
+        return error_response(
+            message="Queue entry not found",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
+    return success_response(data=entry, message="Consultation details updated successfully")
 
 
 @router.post("/cleanup", response_model=dict)

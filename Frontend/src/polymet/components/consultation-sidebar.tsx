@@ -6,12 +6,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ActivityIcon,
-  HeartPulseIcon,
-  ThermometerIcon,
-  WindIcon,
   FileTextIcon,
+  PillIcon,
+  FlaskConicalIcon,
 } from "lucide-react";
+import { useState } from "react";
 
 interface ConsultationSidebarProps {
   notes: string;
@@ -26,10 +25,14 @@ interface ConsultationSidebarProps {
   condition?: string;
   carePlanSummary?: string;
   followUpPlan?: string;
+  prescription?: string;
+  prescribedTest?: string;
   onNotesChange: (notes: string) => void;
   onDiagnosisChange: (diagnosis: string) => void;
   onTreatmentChange: (treatment: string) => void;
   onFollowUpChange: (followUp: string) => void;
+  onPrescriptionChange: (prescription: string) => void;
+  onPrescribedTestChange?: (prescribedTest: string) => void;
   className?: string;
 }
 
@@ -46,91 +49,21 @@ export function ConsultationSidebar({
   condition,
   carePlanSummary,
   followUpPlan,
+  prescription = "",
+  prescribedTest = "",
   onNotesChange,
   onDiagnosisChange,
   onTreatmentChange,
   onFollowUpChange,
+  onPrescriptionChange,
+  onPrescribedTestChange,
   className = "",
 }: ConsultationSidebarProps) {
+  const [prescriptionOpen, setPrescriptionOpen] = useState(false);
+  const [testsOpen, setTestsOpen] = useState(false);
+
   return (
     <div className={`space-y-6 ${className}`}>
-      {/* Current Vitals - Compact Version */}
-      <Card className="border-border shadow-md">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <ActivityIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            Current Vitals
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-2">
-            {/* Blood Pressure */}
-            <div className="p-2 rounded-lg bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/20 border border-red-200 dark:border-red-800">
-              <div className="flex items-center gap-1.5 mb-1">
-                <HeartPulseIcon className="w-3 h-3 text-red-600 dark:text-red-400" />
-
-                <p className="text-[10px] font-medium text-red-700 dark:text-red-400">
-                  BP
-                </p>
-              </div>
-              <p className="text-base font-bold text-red-700 dark:text-red-400">
-                145/95
-              </p>
-              <p className="text-[9px] text-red-600 dark:text-red-400">High</p>
-            </div>
-
-            {/* Heart Rate */}
-            <div className="p-2 rounded-lg bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-950/30 dark:to-pink-900/20 border border-pink-200 dark:border-pink-800">
-              <div className="flex items-center gap-1.5 mb-1">
-                <HeartPulseIcon className="w-3 h-3 text-pink-600 dark:text-pink-400" />
-
-                <p className="text-[10px] font-medium text-pink-700 dark:text-pink-400">
-                  HR
-                </p>
-              </div>
-              <p className="text-base font-bold text-pink-700 dark:text-pink-400">
-                78
-              </p>
-              <p className="text-[9px] text-pink-600 dark:text-pink-400">bpm</p>
-            </div>
-
-            {/* Temperature */}
-            <div className="p-2 rounded-lg bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950/30 dark:to-orange-900/20 border border-orange-200 dark:border-orange-800">
-              <div className="flex items-center gap-1.5 mb-1">
-                <ThermometerIcon className="w-3 h-3 text-orange-600 dark:text-orange-400" />
-
-                <p className="text-[10px] font-medium text-orange-700 dark:text-orange-400">
-                  Temp
-                </p>
-              </div>
-              <p className="text-base font-bold text-orange-700 dark:text-orange-400">
-                98.6°F
-              </p>
-              <p className="text-[9px] text-orange-600 dark:text-orange-400">
-                Normal
-              </p>
-            </div>
-
-            {/* Oxygen Saturation */}
-            <div className="p-2 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200 dark:border-blue-800">
-              <div className="flex items-center gap-1.5 mb-1">
-                <WindIcon className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-
-                <p className="text-[10px] font-medium text-blue-700 dark:text-blue-400">
-                  SpO2
-                </p>
-              </div>
-              <p className="text-base font-bold text-blue-700 dark:text-blue-400">
-                98%
-              </p>
-              <p className="text-[9px] text-blue-600 dark:text-blue-400">
-                Normal
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Quick Medical Info */}
       <Card className="border-border shadow-md">
         <CardHeader className="pb-3">
@@ -181,7 +114,7 @@ export function ConsultationSidebar({
               Current Condition
             </p>
             <div className="text-sm text-foreground font-semibold">
-              {condition || "Under Observation"}
+              {condition}
             </div>
             {carePlanSummary && (
               <p className="text-xs text-muted-foreground mt-1.5">{carePlanSummary}</p>
@@ -193,6 +126,79 @@ export function ConsultationSidebar({
               </p>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Prescription and Tests Section */}
+      <Card className="border-border shadow-md">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Consultation Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Buttons Side by Side */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Write Prescription Button */}
+            <button
+              type="button"
+              onClick={() => setPrescriptionOpen(!prescriptionOpen)}
+              className={`relative flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
+                prescriptionOpen
+                  ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-300 dark:border-purple-700"
+                  : "bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800"
+              }`}
+            >
+              <PillIcon className="w-6 h-6 text-purple-600 dark:text-purple-400 mb-2" />
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">
+                Write Prescription
+              </span>
+            </button>
+
+            {/* Prescribe Tests Button */}
+            <button
+              type="button"
+              onClick={() => setTestsOpen(!testsOpen)}
+              className={`relative flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
+                testsOpen
+                  ? "bg-amber-100 dark:bg-amber-900/30 border-2 border-amber-300 dark:border-amber-700"
+                  : "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
+              }`}
+            >
+              <FlaskConicalIcon className="w-6 h-6 text-amber-600 dark:text-amber-400 mb-2" />
+              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">
+                Prescribe Tests
+              </span>
+            </button>
+          </div>
+
+          {/* Prescription Text Box */}
+          {prescriptionOpen && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Prescription Details
+              </Label>
+              <Textarea
+                placeholder="Enter prescription details..."
+                value={prescription}
+                onChange={(e) => onPrescriptionChange(e.target.value)}
+                className="min-h-[120px] resize-none"
+              />
+            </div>
+          )}
+
+          {/* Tests Text Box - only show prescribed tests */}
+          {testsOpen && onPrescribedTestChange && (
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-muted-foreground">
+                Prescribed Tests
+              </Label>
+              <Textarea
+                placeholder="Enter prescribed tests..."
+                value={prescribedTest}
+                onChange={(e) => onPrescribedTestChange(e.target.value)}
+                className="min-h-[120px] resize-none"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
