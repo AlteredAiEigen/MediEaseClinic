@@ -89,6 +89,7 @@ interface Patient {
   fullName: string;
   email?: string;
   phone?: string;
+  medieaseClinicEmail?: string;
   dateOfBirth?: string;
   gender?: string;
   address?: string;
@@ -278,6 +279,21 @@ interface EditPatientFormState {
   };
   currentMedications: EditableMedicationEntry[];
   medicalHistoryEntries: EditableMedicalHistoryEntry[];
+  familyHistory: string;
+  previousSurgeries: string;
+  familyHistoryEntries: {
+    _localId: string;
+    relation: string;
+    condition: string;
+    notes: string;
+  }[];
+  previousSurgeryEntries: {
+    _localId: string;
+    surgery: string;
+    date: string;
+    hospital: string;
+    notes: string;
+  }[];
 }
 
 type EditableSection = "overview" | "history" | "medications";
@@ -390,6 +406,10 @@ export function PatientOverview() {
     },
     currentMedications: [],
   medicalHistoryEntries: [],
+    familyHistory: "",
+    previousSurgeries: "",
+    familyHistoryEntries: [],
+    previousSurgeryEntries: [],
   });
   const [dirtySections, setDirtySections] = useState<Record<EditableSection, boolean>>({
     overview: false,
@@ -398,6 +418,7 @@ export function PatientOverview() {
   });
   const [isGlobalEditMode, setIsGlobalEditMode] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [lastVisitDisplay, setLastVisitDisplay] = useState<string | null>(null);
   const markSectionDirty = (section: EditableSection) => {
     setDirtySections((prev) =>
       prev[section] ? prev : { ...prev, [section]: true }
@@ -445,6 +466,89 @@ export function PatientOverview() {
     ])
   );
   const generateMedId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  // --- Last visit logic (reused from doctor workstation) ---
+  useEffect(() => {
+    const fetchLastVisit = async () => {
+      const targetPatientId = patient?._id || patientId;
+      if (!targetPatientId) {
+        setLastVisitDisplay(null);
+        return;
+      }
+
+      try {
+        const response = await get<any>(
+          `/api/appointments?patient_id=${targetPatientId}&limit=50`
+        );
+        if (!response.success) {
+          setLastVisitDisplay(null);
+          return;
+        }
+
+        const rawAppointments = extractList<any>(response.data);
+        if (!rawAppointments.length) {
+          setLastVisitDisplay(null);
+          return;
+        }
+
+        const todayDateOnly = new Date();
+        todayDateOnly.setHours(0, 0, 0, 0);
+        const todayTime = todayDateOnly.getTime();
+
+        const pastAppointments = rawAppointments.filter((apt) => {
+          const dateString =
+            apt.date || apt.createdAt || apt.created_at || apt.timestamp;
+          if (!dateString) return false;
+          const time = new Date(dateString).getTime();
+          return !isNaN(time) && time < todayTime;
+        });
+
+        if (!pastAppointments.length) {
+          setLastVisitDisplay(null);
+          return;
+        }
+
+        const latest = pastAppointments.reduce<any | null>((currentLatest, apt) => {
+          const dateString =
+            apt.date || apt.createdAt || apt.created_at || apt.timestamp;
+          if (!dateString) return currentLatest;
+          const time = new Date(dateString).getTime();
+          if (!currentLatest) {
+            return { time, apt };
+          }
+          return time > currentLatest.time ? { time, apt } : currentLatest;
+        }, null);
+
+        if (latest && latest.apt) {
+          const latestDateString =
+            latest.apt.date ||
+            latest.apt.createdAt ||
+            latest.apt.created_at ||
+            latest.apt.timestamp;
+
+          if (latestDateString) {
+            const formattedDate = new Date(latestDateString).toLocaleDateString(
+              "en-US",
+              {
+                year: "numeric",
+                month: "short",
+                day: "2-digit",
+              }
+            );
+            setLastVisitDisplay(formattedDate);
+            return;
+          }
+        }
+
+        setLastVisitDisplay(null);
+      } catch (err) {
+        console.warn("Failed to fetch last visit for patient", targetPatientId, err);
+        setLastVisitDisplay(null);
+      }
+    };
+
+    fetchLastVisit();
+  }, [patient?._id, patientId]);
 
   const createEditableMedication = (
     seed: Partial<MedicationEntry> = {},
@@ -1317,6 +1421,10 @@ export function PatientOverview() {
         },
         currentMedications: [],
         medicalHistoryEntries: [],
+        familyHistory: "",
+        previousSurgeries: "",
+        familyHistoryEntries: [],
+        previousSurgeryEntries: [],
       };
     }
 
@@ -1366,6 +1474,47 @@ export function PatientOverview() {
         : patientData.emergencyContactPhone ?? "";
 
     const vitalsData = patientData.vitals || {};
+
+    const rawFamilyHistory = (patientData as any).familyHistory;
+    const rawPreviousSurgeries = (patientData as any).previousSurgeries;
+
+    const parseLines = (value: string | undefined | null): string[] =>
+      (value || "")
+        .split(/\r?\n|,/)
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
+
+    const familyHistoryEntries =
+      Array.isArray(rawFamilyHistory) && rawFamilyHistory.length
+        ? rawFamilyHistory.map((item: any) => ({
+            _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            relation: item?.relation ?? "",
+            condition: item?.condition ?? "",
+            notes: item?.notes ?? "",
+          }))
+        : parseLines(rawFamilyHistory).map((line) => ({
+            _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            relation: "",
+            condition: line,
+            notes: "",
+          }));
+
+    const previousSurgeryEntries =
+      Array.isArray(rawPreviousSurgeries) && rawPreviousSurgeries.length
+        ? rawPreviousSurgeries.map((item: any) => ({
+            _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            surgery: item?.surgery ?? "",
+            date: item?.date ?? "",
+            hospital: item?.hospital ?? "",
+            notes: item?.notes ?? "",
+          }))
+        : parseLines(rawPreviousSurgeries).map((line) => ({
+            _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            surgery: line,
+            date: "",
+            hospital: "",
+            notes: "",
+          }));
 
     return {
       firstName: patientData.firstName ?? "",
@@ -1452,6 +1601,10 @@ export function PatientOverview() {
         }
         return [];
       })(),
+      familyHistory: "",
+      previousSurgeries: "",
+      familyHistoryEntries,
+      previousSurgeryEntries,
     };
   };
 
@@ -1592,7 +1745,69 @@ export function PatientOverview() {
       })
       .filter((item): item is MedicalHistoryRecord => Boolean(item));
 
-    return { medicalHistory: cleanedHistory };
+    const payload: Record<string, unknown> = {
+      medicalHistory: cleanedHistory,
+    };
+
+    const formattedFamilyHistory = editForm.familyHistoryEntries
+      .map((entry) => {
+        const relation = entry.relation?.trim();
+        const condition = entry.condition?.trim();
+        const notes = entry.notes?.trim();
+
+        if (!relation && !condition && !notes) {
+          return null;
+        }
+
+        const mainParts = [relation, condition].filter(Boolean);
+        const mainText = mainParts.join(" - ");
+
+        if (notes) {
+          return mainText ? `${mainText} (${notes})` : notes;
+        }
+        return mainText;
+      })
+      .filter((line): line is string => Boolean(line));
+
+    if (formattedFamilyHistory.length > 0) {
+      payload.familyHistory = editForm.familyHistoryEntries.map((entry) => ({
+        relation: entry.relation?.trim() || undefined,
+        condition: entry.condition?.trim() || undefined,
+        notes: entry.notes?.trim() || undefined,
+      }));
+    }
+
+    const formattedPreviousSurgeries = editForm.previousSurgeryEntries
+      .map((entry) => {
+        const surgery = entry.surgery?.trim();
+        const date = entry.date?.trim();
+        const hospital = entry.hospital?.trim();
+        const notes = entry.notes?.trim();
+
+        if (!surgery && !date && !hospital && !notes) {
+          return null;
+        }
+
+        const mainParts = [surgery, date, hospital].filter(Boolean);
+        const mainText = mainParts.join(" • ");
+
+        if (notes) {
+          return mainText ? `${mainText} (${notes})` : notes;
+        }
+        return mainText;
+      })
+      .filter((line): line is string => Boolean(line));
+
+    if (formattedPreviousSurgeries.length > 0) {
+      payload.previousSurgeries = editForm.previousSurgeryEntries.map((entry) => ({
+        surgery: entry.surgery?.trim() || undefined,
+        date: entry.date?.trim() || undefined,
+        hospital: entry.hospital?.trim() || undefined,
+        notes: entry.notes?.trim() || undefined,
+      }));
+    }
+
+    return payload;
   };
 
   const buildMedicationsPayload = () => {
@@ -1611,6 +1826,87 @@ export function PatientOverview() {
       );
 
     return { currentMedications: cleanedMedications };
+  };
+
+  const handleAddFamilyHistoryEntry = () => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      familyHistoryEntries: [
+        ...prev.familyHistoryEntries,
+        {
+          _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          relation: "",
+          condition: "",
+          notes: "",
+        },
+      ],
+    }));
+  };
+
+  const handleFamilyHistoryEntryChange = (
+    id: string,
+    field: "relation" | "condition" | "notes",
+    value: string
+  ) => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      familyHistoryEntries: prev.familyHistoryEntries.map((entry) =>
+        entry._localId === id ? { ...entry, [field]: value } : entry
+      ),
+    }));
+  };
+
+  const handleRemoveFamilyHistoryEntry = (id: string) => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      familyHistoryEntries: prev.familyHistoryEntries.filter(
+        (entry) => entry._localId !== id
+      ),
+    }));
+  };
+
+  const handleAddPreviousSurgeryEntry = () => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      previousSurgeryEntries: [
+        ...prev.previousSurgeryEntries,
+        {
+          _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          surgery: "",
+          date: "",
+          hospital: "",
+          notes: "",
+        },
+      ],
+    }));
+  };
+
+  const handlePreviousSurgeryEntryChange = (
+    id: string,
+    field: "surgery" | "date" | "hospital" | "notes",
+    value: string
+  ) => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      previousSurgeryEntries: prev.previousSurgeryEntries.map((entry) =>
+        entry._localId === id ? { ...entry, [field]: value } : entry
+      ),
+    }));
+  };
+
+  const handleRemovePreviousSurgeryEntry = (id: string) => {
+    markSectionDirty("history");
+    setEditForm((prev) => ({
+      ...prev,
+      previousSurgeryEntries: prev.previousSurgeryEntries.filter(
+        (entry) => entry._localId !== id
+      ),
+    }));
   };
 
   const applyPatientUpdate = (updatedPatient: Patient) => {
@@ -2676,11 +2972,6 @@ export function PatientOverview() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 text-sm leading-relaxed">
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <UserIcon className="w-4 h-4" />
-
-                  <span>ID: {displayPatient.patientId}</span>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
                   <CalendarIcon className="w-4 h-4" />
 
                   {isOverviewEditing ? (
@@ -2770,6 +3061,12 @@ export function PatientOverview() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
+                  <MailIcon className="w-4 h-4 text-[#00C4B3]" />
+                  <span className="text-foreground">
+                    {(displayPatient as any).medieaseClinicEmail || "Not generated"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-muted-foreground">
                   <MailIcon className="w-4 h-4" />
 
                   {isOverviewEditing ? (
@@ -2792,7 +3089,7 @@ export function PatientOverview() {
                   <CalendarIcon className="w-4 h-4" />
 
                   <span>
-                    Last Visit: {displayPatient.lastVisit || "Not available"}
+                    Last Visit: {lastVisitDisplay || "Not available"}
                   </span>
                 </div>
               </div>
@@ -3337,7 +3634,7 @@ export function PatientOverview() {
               <Card className="border-border shadow-sm">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <AlertCircleIcon className="w-5 h-5 text-[#FF4F6E]" />
+                    <PillIcon className="w-5 h-5 text-[#fb7185]" />
                     Allergies
                   </CardTitle>
                 </CardHeader>
@@ -3448,34 +3745,47 @@ export function PatientOverview() {
                       </div>
                     </div>
                   ) : (
-                    <>
-                  <p className="text-base font-semibold text-foreground">
-                    {displayPatient.condition}
-                  </p>
-                  {displayPatient.carePlanSummary && (
+                    <div className="grid gap-4 md:grid-cols-2 text-sm">
+                      {/* Left column: condition + chief complaint */}
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
+                            Condition
+                          </p>
+                          <p className="text-base text-foreground">
+                            {displayPatient.condition || "Not recorded"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
+                            Chief Complaint
+                          </p>
                     <p className="text-sm text-muted-foreground">
-                      {displayPatient.carePlanSummary}
+                            {displayPatient.chiefComplaint || "Not recorded"}
                     </p>
-                  )}
-                  {displayPatient.followUpPlan && (
-                    <div className="text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">Follow-up:</span>{" "}
-                      {displayPatient.followUpPlan}
                     </div>
-                  )}
-                  {displayPatient.insights?.keyFindings?.length ? (
-                    <div className="space-y-1.5 mt-2">
-                      <p className="text-xs font-semibold text-muted-foreground">
-                        Key Findings
-                      </p>
-                      <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
-                        {displayPatient.insights.keyFindings.slice(0, 3).map((finding, idx) => (
-                          <li key={`${finding}-${idx}`}>{finding}</li>
-                        ))}
-                      </ul>
+                      </div>
+
+                      {/* Right column: care plan + follow-up */}
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
+                            Care Plan Summary
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {displayPatient.carePlanSummary || "Not recorded"}
+                          </p>
                     </div>
-                  ) : null}
-                    </>
+                        <div>
+                          <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
+                            Follow-up Plan
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {displayPatient.followUpPlan || "Not recorded"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -3485,16 +3795,8 @@ export function PatientOverview() {
 
         <TabsContent value="history" className="mt-6">
           <div className="rounded-2xl border border-border/70 bg-white shadow-sm dark:bg-muted/30">
-            <div className="flex flex-col gap-4 border-b border-border/60 px-6 py-5 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Medical History
-                </p>
-                <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold text-foreground">
-                  <ClipboardListIcon className="h-5 w-5 text-[#00C4B3]" />
-                  Chronic & acute conditions on record
-                </h3>
-              </div>
+            <div className="flex flex-col gap-4 border-b border-border/60 px-6 py-4 md:flex-row md:items-center md:justify-between">
+              <div />
               {canEditPatientProfile && !isGlobalEditMode && (
                 isHistoryEditing ? (
                   <div className="flex flex-wrap items-center gap-2">
@@ -3537,7 +3839,317 @@ export function PatientOverview() {
               )}
             </div>
 
-            <div className="px-6 py-5 space-y-4">
+            <div className="px-6 py-5 space-y-6">
+              {/* Family history entries */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                    Family History
+                  </Label>
+                  {isHistoryEditing && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddFamilyHistoryEntry}
+                    >
+                      <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
+                      Add family history
+                    </Button>
+                  )}
+                </div>
+                {isHistoryEditing ? (
+                  editForm.familyHistoryEntries.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No family history recorded yet. Use &quot;Add family history&quot; to capture
+                      relevant family conditions.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {editForm.familyHistoryEntries.map((entry) => (
+                        <div
+                          key={entry._localId}
+                          className="rounded-xl border border-border/60 bg-card p-3 shadow-sm space-y-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase">
+                              Family Member
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground hover:text-red-600"
+                              onClick={() => handleRemoveFamilyHistoryEntry(entry._localId)}
+                              aria-label="Remove family history entry"
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Relation</Label>
+                              <Input
+                                placeholder="e.g., Father, Mother, Sibling"
+                                value={entry.relation}
+                                onChange={(event) =>
+                                  handleFamilyHistoryEntryChange(
+                                    entry._localId,
+                                    "relation",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Condition</Label>
+                              <Input
+                                placeholder="e.g., Hypertension, Type 2 Diabetes"
+                                value={entry.condition}
+                                onChange={(event) =>
+                                  handleFamilyHistoryEntryChange(
+                                    entry._localId,
+                                    "condition",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Notes</Label>
+                            <Textarea
+                              rows={2}
+                              placeholder="Additional context, age of onset, complications..."
+                              value={entry.notes}
+                              onChange={(event) =>
+                                handleFamilyHistoryEntryChange(
+                                  entry._localId,
+                                  "notes",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : editForm.familyHistoryEntries.length > 0 ? (
+                  <div className="space-y-3">
+                    {editForm.familyHistoryEntries.map((entry) => (
+                      <div
+                        key={entry._localId}
+                        className="rounded-xl border border-border/60 bg-gradient-to-br from-white via-white to-[#F4FFFD] p-4 shadow-sm transition-all hover:border-[#00C4B3]/40 hover:shadow-md dark:from-muted dark:via-muted dark:to-muted/70"
+                      >
+                        <div className="grid gap-3 md:grid-cols-2 text-sm">
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase">
+                              Relation
+                            </p>
+                            <p className="text-foreground">
+                              {entry.relation?.trim() || "—"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase">
+                              Disease
+                            </p>
+                            <p className="text-foreground">
+                              {entry.condition?.trim() || "—"}
+                            </p>
+                          </div>
+                        </div>
+                        {entry.notes?.trim() && (
+                          <div className="mt-2 space-y-1 text-xs">
+                            <p className="font-semibold text-muted-foreground uppercase">
+                              Notes
+                            </p>
+                            <p className="leading-relaxed text-muted-foreground">
+                              {entry.notes}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-muted-foreground min-h-[1.5rem]">
+                    No family history recorded.
+                  </p>
+                )}
+              </div>
+
+              {/* Previous surgeries entries */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                    Previous Surgeries
+                  </Label>
+                  {isHistoryEditing && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddPreviousSurgeryEntry}
+                    >
+                      <PlusIcon className="mr-1.5 h-3.5 w-3.5" />
+                      Add surgery
+                    </Button>
+                  )}
+                </div>
+                {isHistoryEditing ? (
+                  editForm.previousSurgeryEntries.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No previous surgeries recorded yet. Use &quot;Add surgery&quot; to capture
+                      details.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {editForm.previousSurgeryEntries.map((entry) => (
+                        <div
+                          key={entry._localId}
+                          className="rounded-xl border border-border/60 bg-card p-3 shadow-sm space-y-3"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase">
+                              Surgery
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-muted-foreground hover:text-red-600"
+                              onClick={() => handleRemovePreviousSurgeryEntry(entry._localId)}
+                              aria-label="Remove surgery entry"
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Surgery</Label>
+                              <Input
+                                placeholder="e.g., Appendectomy"
+                                value={entry.surgery}
+                                onChange={(event) =>
+                                  handlePreviousSurgeryEntryChange(
+                                    entry._localId,
+                                    "surgery",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">Performed On</Label>
+                              <Input
+                                type="date"
+                                value={entry.date}
+                                onChange={(event) =>
+                                  handlePreviousSurgeryEntryChange(
+                                    entry._localId,
+                                    "date",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground">
+                                Hospital / Clinic
+                              </Label>
+                              <Input
+                                placeholder="e.g., City Hospital"
+                                value={entry.hospital}
+                                onChange={(event) =>
+                                  handlePreviousSurgeryEntryChange(
+                                    entry._localId,
+                                    "hospital",
+                                    event.target.value
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">Notes</Label>
+                            <Textarea
+                              rows={2}
+                              placeholder="Intraoperative details, complications, recovery notes..."
+                              value={entry.notes}
+                              onChange={(event) =>
+                                handlePreviousSurgeryEntryChange(
+                                  entry._localId,
+                                  "notes",
+                                  event.target.value
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : editForm.previousSurgeryEntries.length > 0 ? (
+                  <div className="space-y-3">
+                    {editForm.previousSurgeryEntries.map((entry) => (
+                      <div
+                        key={entry._localId}
+                        className="rounded-xl border border-border/60 bg-gradient-to-br from-white via-white to-[#F4FFFD] p-4 shadow-sm transition-all hover:border-[#00C4B3]/40 hover:shadow-md dark:from-muted dark:via-muted dark:to-muted/70"
+                      >
+                        <div className="grid gap-3 md:grid-cols-3 text-sm">
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase">
+                              Surgery
+                            </p>
+                            <p className="text-foreground">
+                              {entry.surgery?.trim() || "—"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase">
+                              Performed On
+                            </p>
+                            <p className="text-foreground">
+                              {entry.date?.trim() || "—"}
+                            </p>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase">
+                              Hospital / Clinic
+                            </p>
+                            <p className="text-foreground">
+                              {entry.hospital?.trim() || "—"}
+                            </p>
+                          </div>
+                        </div>
+                        {entry.notes?.trim() && (
+                          <div className="mt-2 space-y-1 text-xs">
+                            <p className="font-semibold text-muted-foreground uppercase">
+                              Notes
+                            </p>
+                            <p className="leading-relaxed text-muted-foreground">
+                              {entry.notes}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm leading-relaxed text-muted-foreground min-h-[1.5rem]">
+                    No previous surgeries recorded.
+                  </p>
+                )}
+              </div>
+
+              {/* Structured medical history (conditions) */}
+              <div className="flex items-center justify-between pt-2">
+                <Label className="text-xs font-semibold text-foreground uppercase tracking-wide">
+                  Medical History
+                </Label>
+              </div>
               {isHistoryEditing ? (
                 <div className="space-y-4">
                   {editForm.medicalHistoryEntries.length === 0 ? (

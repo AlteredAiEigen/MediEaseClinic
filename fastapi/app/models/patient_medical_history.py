@@ -3,7 +3,8 @@ Patient medical history model for tracking family history, previous surgeries, a
 """
 
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
+
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
@@ -29,14 +30,45 @@ class PyObjectId(ObjectId):
         return ObjectId(v)
 
 
-class PatientMedicalHistoryBase(BaseModel):
-    """Shared medical history fields."""
+class FamilyHistoryItem(BaseModel):
+    relation: Optional[str] = None
+    condition: Optional[str] = None
+    notes: Optional[str] = None
 
-    familyHistory: Optional[str] = Field(None, max_length=5000, description="Family medical history")
-    previousSurgeries: Optional[str] = Field(None, max_length=5000, description="Previous surgical procedures")
-    pastMedications: Optional[str] = Field(None, max_length=5000, description="Past medications that are no longer active")
-    startDate: Optional[datetime] = Field(None, description="Date when this record became active (defaults to now if not provided)")
-    endDate: Optional[datetime] = Field(None, description="Date when this record ended (null for current record)")
+
+class PreviousSurgeryItem(BaseModel):
+    surgery: Optional[str] = None
+    date: Optional[str] = None
+    hospital: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PatientMedicalHistoryBase(BaseModel):
+    """Shared medical history fields stored outside the main patient document."""
+
+    # NOTE: We intentionally keep `medicalHistory` here instead of on the
+    # patient document so that the patients collection stays slim.
+    # Shape mirrors the patient API: string or list of structured records.
+    medicalHistory: Optional[Union[str, List[Dict[str, str]]]] = Field(
+        None,
+        description="Structured medical history (string or list of records) stored separately from patient",
+    )
+    familyHistory: Optional[Union[str, List[FamilyHistoryItem]]] = Field(
+        None,
+        description="Structured family history entries (relation, condition, notes) or legacy string",
+    )
+    previousSurgeries: Optional[Union[str, List[PreviousSurgeryItem]]] = Field(
+        None,
+        description="Structured previous surgeries (surgery, date, hospital, notes) or legacy string",
+    )
+    startDate: Optional[datetime] = Field(
+        None,
+        description="Date when this record became active (defaults to now if not provided)",
+    )
+    endDate: Optional[datetime] = Field(
+        None,
+        description="Date when this record ended (null for current record)",
+    )
 
 
 class PatientMedicalHistoryCreate(PatientMedicalHistoryBase):
@@ -48,9 +80,9 @@ class PatientMedicalHistoryCreate(PatientMedicalHistoryBase):
 class PatientMedicalHistoryUpdate(BaseModel):
     """Schema for updating medical history entry."""
 
-    familyHistory: Optional[str] = Field(None, max_length=5000)
-    previousSurgeries: Optional[str] = Field(None, max_length=5000)
-    pastMedications: Optional[str] = Field(None, max_length=5000)
+    medicalHistory: Optional[Union[str, List[Dict[str, str]]]] = None
+    familyHistory: Optional[Union[str, List[FamilyHistoryItem]]] = None
+    previousSurgeries: Optional[Union[str, List[PreviousSurgeryItem]]] = None
     startDate: Optional[datetime] = None
     endDate: Optional[datetime] = None
 
@@ -74,9 +106,9 @@ class PatientMedicalHistoryResponse(BaseModel):
 
     id: str = Field(alias="_id")
     patientId: str
-    familyHistory: Optional[str]
-    previousSurgeries: Optional[str]
-    pastMedications: Optional[str]
+    medicalHistory: Optional[Union[str, List[Dict[str, str]]]]
+    familyHistory: Optional[Union[str, List[FamilyHistoryItem]]]
+    previousSurgeries: Optional[Union[str, List[PreviousSurgeryItem]]]
     startDate: datetime
     endDate: Optional[datetime]
     createdAt: datetime
@@ -93,9 +125,9 @@ def patient_medical_history_helper(document: dict) -> dict:
     return {
         "_id": str(document["_id"]),
         "patientId": document.get("patientId"),
+        "medicalHistory": document.get("medicalHistory"),
         "familyHistory": document.get("familyHistory"),
         "previousSurgeries": document.get("previousSurgeries"),
-        "pastMedications": document.get("pastMedications"),
         "startDate": document.get("startDate"),
         "endDate": document.get("endDate"),
         "createdAt": document.get("createdAt"),

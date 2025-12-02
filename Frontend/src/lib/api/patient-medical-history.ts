@@ -1,11 +1,17 @@
 import { apiClient } from "@/lib/api-client";
+import type { MedicalHistoryRecord } from "@/lib/api/patients";
 
 export interface PatientMedicalHistoryRecord {
   _id: string;
   patientId: string;
-  familyHistory?: string;
-  previousSurgeries?: string;
-  pastMedications?: string;
+  medicalHistory?: string | MedicalHistoryRecord[];
+  familyHistory?: { relation?: string; condition?: string; notes?: string }[] | string;
+  previousSurgeries?: {
+    surgery?: string;
+    date?: string;
+    hospital?: string;
+    notes?: string;
+  }[] | string;
   startDate: string;
   endDate?: string;
   createdAt?: string;
@@ -14,9 +20,14 @@ export interface PatientMedicalHistoryRecord {
 
 export interface PatientMedicalHistoryPayload {
   patientId: string;
-  familyHistory?: string;
-  previousSurgeries?: string;
-  pastMedications?: string;
+  medicalHistory?: string | MedicalHistoryRecord[];
+  familyHistory?: { relation?: string; condition?: string; notes?: string }[] | string;
+  previousSurgeries?: {
+    surgery?: string;
+    date?: string;
+    hospital?: string;
+    notes?: string;
+  }[] | string;
   startDate?: string;
 }
 

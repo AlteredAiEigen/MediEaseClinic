@@ -112,6 +112,7 @@ class PatientBase(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    medieaseClinicEmail: Optional[str] = Field(None, description="Auto-generated unique clinic email")
     # Note: Patients are universal - clinic info is for reference only (which clinic created the patient)
     createdByClinicId: Optional[str] = None
     createdByClinicName: Optional[str] = None
@@ -168,6 +169,7 @@ class PatientResponse(BaseModel):
     emergencyContactPhone: Optional[str] = None
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    medieaseClinicEmail: Optional[str] = None
     condition: Optional[str] = None
     lastVisit: Optional[str] = None
     carePlanSummary: Optional[str] = None
@@ -334,6 +336,7 @@ async def patient_helper(patient: dict) -> dict:
         "emergencyContactPhone": patient.get("emergencyContactPhone"),
         "insuranceProvider": patient.get("insuranceProvider"),
         "insuranceNumber": patient.get("insuranceNumber"),
+        "medieaseClinicEmail": patient.get("medieaseClinicEmail"),
         "currentMedications": patient.get("currentMedications", []),
         "createdAt": patient.get("createdAt"),
         "updatedAt": patient.get("updatedAt"),

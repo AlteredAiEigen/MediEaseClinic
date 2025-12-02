@@ -20,6 +20,9 @@ from app.models.patient import (
     MedicalHistoryEntry,
 )
 from app.utils.security import field_encryption
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PatientService:
@@ -112,6 +115,95 @@ class PatientService:
         timestamp = int(datetime.utcnow().timestamp() * 1000)
         return f"P{str(timestamp)[-6:]}"
     
+    async def generate_mediease_clinic_email(
+        self,
+        first_name: str,
+        last_name: str,
+        date_of_birth: str
+    ) -> str:
+        """
+        Generate unique MediEase clinic email based on patient name and date of birth.
+
+        New format rules (for @mediease.alteredai.care):
+        - Primary local part: first initial + full last name + 4-digit birth year
+          e.g. Ram Tha, 2000-12-20 -> rtha2000
+        - If that exists, extend with more letters from the first name:
+          ratha2000, ramtha2000, ...
+        - If still collision, append numeric suffix: _01, _02, ...
+        - All characters are lowercase a–z0–9, max 30 chars before the @.
+        """
+        import re
+        from datetime import datetime
+
+        DOMAIN = "mediease.alteredai.care"
+        MAX_LOCAL_LENGTH = 30
+
+        def normalize(value: str) -> str:
+            if not value:
+                return ""
+            value = value.lower().strip()
+            return re.sub(r"[^a-z0-9]", "", value)
+
+        # Normalize name parts
+        fn = normalize(first_name)
+        ln = normalize(last_name)
+
+        # Extract 4-digit year from DOB
+        year = "0000"
+        if date_of_birth:
+            try:
+                year_val = datetime.fromisoformat(date_of_birth).year
+                year = f"{year_val:04d}"
+            except Exception:
+                digits = re.sub(r"[^\d]", "", date_of_birth)
+                if len(digits) >= 4:
+                    year = digits[:4]
+
+        # Build base local part
+        if not fn and not ln:
+            base_local = f"patient{year}"
+        elif ln:
+            base_local = (fn[:1] if fn else "") + ln + year
+        else:
+            base_local = fn + year
+
+        base_local = (base_local or "patient")[:MAX_LOCAL_LENGTH]
+
+        async def email_exists(local_part: str) -> bool:
+            candidate_email = f"{local_part}@{DOMAIN}"
+            existing = await self.patients_collection.find_one(
+                {"medieaseClinicEmail": candidate_email}
+            )
+            return existing is not None
+
+        # 1) Try base
+        if not await email_exists(base_local):
+            return f"{base_local}@{DOMAIN}"
+
+        # 2) Extend first name letters if both names are present
+        if fn and ln:
+            for i in range(2, len(fn) + 1):
+                cand_local = (fn[:i] + ln + year)[:MAX_LOCAL_LENGTH]
+                if not await email_exists(cand_local):
+                    return f"{cand_local}@{DOMAIN}"
+
+        # 3) Add numeric suffix
+        for counter in range(1, 1000):
+            suffix = f"_{counter:02d}"
+            trimmed_base = base_local
+            if len(trimmed_base) + len(suffix) > MAX_LOCAL_LENGTH:
+                trimmed_base = trimmed_base[: MAX_LOCAL_LENGTH - len(suffix)]
+            cand_local = trimmed_base + suffix
+            if not await email_exists(cand_local):
+                return f"{cand_local}@{DOMAIN}"
+
+        # 4) Fallback with timestamp
+        ts = int(datetime.utcnow().timestamp())
+        cand_local = (base_local[: MAX_LOCAL_LENGTH - 6] + f"_{ts % 100000}")[
+            :MAX_LOCAL_LENGTH
+        ]
+        return f"{cand_local}@{DOMAIN}"
+    
     async def create_patient(
         self,
         patient_data: PatientCreate,
@@ -155,6 +247,15 @@ class PatientService:
         
         patient_dict["patientId"] = patient_id
         patient_dict["email"] = patient_dict["email"].lower()
+        
+        # Generate unique MediEase clinic email
+        clinic_email = await self.generate_mediease_clinic_email(
+            first_name=patient_data.firstName,
+            last_name=patient_data.lastName,
+            date_of_birth=patient_data.dateOfBirth
+        )
+        patient_dict["medieaseClinicEmail"] = clinic_email
+        
         patient_dict["createdAt"] = datetime.utcnow()
         patient_dict["updatedAt"] = datetime.utcnow()
         # Explicitly remove medical history fields to ensure they're never saved to patient table
@@ -164,7 +265,7 @@ class PatientService:
         
         # Log if these fields were found (shouldn't happen)
         if any(k in patient_dict for k in ["familyHistory", "previousSurgeries", "pastMedications"]):
-            service_logger.warning(f"Medical history fields found in patient_dict after extraction! Keys: {[k for k in patient_dict.keys() if k in ['familyHistory', 'previousSurgeries', 'pastMedications']]}")
+            logger.warning(f"Medical history fields found in patient_dict after extraction! Keys: {[k for k in patient_dict.keys() if k in ['familyHistory', 'previousSurgeries', 'pastMedications']]}")
         
         patient_dict.setdefault("condition", None)
         patient_dict.setdefault("carePlanSummary", "")
@@ -258,8 +359,6 @@ class PatientService:
                 await medical_history_service.create_medical_history(create_history_data)
             except Exception as e:
                 # Log but don't fail patient creation if medical history creation fails
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to create medical history: {e}")
         
         return await patient_helper(created_patient)
@@ -411,27 +510,30 @@ class PatientService:
         update_dict = update_data.model_dump(exclude_unset=True)
         
         # Log for debugging
-        import logging
-        service_logger = logging.getLogger(__name__)
-        service_logger.info(f"Patient update for {patient_id}: update_dict keys: {list(update_dict.keys())}")
+        logger.info(f"Patient update for {patient_id}: update_dict keys: {list(update_dict.keys())}")
 
         if "medicalHistory" in update_dict:
             update_dict["medicalHistory"] = self._normalize_medical_history_payload(
                 update_dict.get("medicalHistory")
             )
         
-        # Extract medical history fields that should be stored in separate table
+        # Extract legacy medical history fields that should be stored in separate table.
+        # These should no longer be used, but we keep this block as a safeguard in case
+        # old clients still send them.
         medical_history_fields = {}
         for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
             if field in update_dict:
                 medical_history_fields[field] = update_dict.pop(field)
-                service_logger.warning(f"Found {field} in update_dict - this should not happen! Extracted: {medical_history_fields[field][:50] if medical_history_fields[field] else 'empty'}...")
+                logger.warning(
+                    f"Found deprecated field {field} in update_dict - this should not happen! "
+                    f"Extracted: {str(medical_history_fields[field])[:50] if medical_history_fields[field] else 'empty'}..."
+                )
         
-        # Handle medical history fields - create/update in separate table
+        # Handle legacy medical history fields - create/update in separate table
         if medical_history_fields:
             try:
                 from app.services.patient_medical_history_service import PatientMedicalHistoryService
-                from app.models.patient_medical_history import PatientMedicalHistoryCreate
+                from app.models.patient_medical_history import PatientMedicalHistoryCreate, PatientMedicalHistoryUpdate
                 
                 medical_history_service = PatientMedicalHistoryService(self.db)
                 
@@ -440,7 +542,6 @@ class PatientService:
                 
                 if current_history:
                     # Update existing current record by creating new version
-                    from app.models.patient_medical_history import PatientMedicalHistoryUpdate
                     update_history_data = PatientMedicalHistoryUpdate(**medical_history_fields)
                     await medical_history_service.update_medical_history(
                         current_history["_id"],
@@ -455,8 +556,6 @@ class PatientService:
                     await medical_history_service.create_medical_history(create_history_data)
             except Exception as e:
                 # Log but don't fail patient update if medical history update fails
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.warning(f"Failed to update medical history: {e}")
         
         if not update_dict:
@@ -473,6 +572,25 @@ class PatientService:
         # Encrypt sensitive fields
         if update_dict.get("email"):
             update_dict["email"] = update_dict["email"].lower()
+
+        # Backfill MediEase clinic email for legacy patients that don't have it yet.
+        # We only generate it if it doesn't already exist on the document.
+        if not existing_patient.get("medieaseClinicEmail"):
+            try:
+                first_name = update_dict.get("firstName", existing_patient.get("firstName", ""))
+                last_name = update_dict.get("lastName", existing_patient.get("lastName", ""))
+                date_of_birth = update_dict.get("dateOfBirth", existing_patient.get("dateOfBirth", ""))
+
+                if first_name and date_of_birth:
+                    clinic_email = await self.generate_mediease_clinic_email(
+                        first_name=first_name,
+                        last_name=last_name,
+                        date_of_birth=date_of_birth,
+                    )
+                    update_dict["medieaseClinicEmail"] = clinic_email
+                    logger.info(f"Generated MediEase clinic email during update for patient {patient_id}: {clinic_email}")
+            except Exception as e:
+                logger.warning(f"Failed to generate MediEase clinic email during update for patient {patient_id}: {e}")
 
         update_dict = field_encryption.encrypt_dict_fields(
             update_dict,
@@ -497,7 +615,7 @@ class PatientService:
             "$unset": unset_fields  # Always remove these fields on every update
         }
         
-        service_logger.info(f"Updating patient {patient_id}: $set keys={list(update_dict.keys())}, ALWAYS removing medical history fields via $unset")
+        logger.info(f"Updating patient {patient_id}: $set keys={list(update_dict.keys())}, ALWAYS removing medical history fields via $unset")
         
         update_result = await self.patients_collection.update_one(
             {"_id": ObjectId(patient_id)},
@@ -505,7 +623,7 @@ class PatientService:
         )
         
         if update_result.modified_count > 0:
-            service_logger.info(f"Patient {patient_id} updated. Modified count: {update_result.modified_count}")
+            logger.info(f"Patient {patient_id} updated. Modified count: {update_result.modified_count}")
         
         # Retrieve updated patient
         updated_patient = await self.patients_collection.find_one({"_id": ObjectId(patient_id)})

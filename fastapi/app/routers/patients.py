@@ -35,8 +35,8 @@ async def create_patient(
     Patients are universal across all clinics. The clinic info is stored for reference
     (to track which clinic created the patient) but does not restrict patient access.
     
-    Medical history fields (familyHistory, previousSurgeries, pastMedications) 
-    are automatically routed to the patient_medical_history table.
+    Medical history field (medicalHistory) is automatically routed to the
+    patient_medical_history collection instead of being stored on the patient.
     
     HIPAA Compliance: Sensitive fields are encrypted before storage.
     """
@@ -44,7 +44,7 @@ async def create_patient(
         # Extract medical history fields before Pydantic validation
         medical_history_fields = {}
         body_copy = body.copy()  # Work with a copy to avoid modifying the original
-        for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
+        for field in ["medicalHistory", "familyHistory", "previousSurgeries"]:
             if field in body_copy:
                 medical_history_fields[field] = body_copy.pop(field)
         
@@ -198,6 +198,24 @@ async def get_patient(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found"
         )
+
+    # Attach current medical history fields from the separate collection so that
+    # the API response still exposes `medicalHistory`, `familyHistory`, and
+    # `previousSurgeries` while the patients collection itself does not store them.
+    try:
+        from app.services.patient_medical_history_service import PatientMedicalHistoryService
+
+        history_service = PatientMedicalHistoryService(db)
+        current_history = await history_service.get_current_medical_history(patient_id)
+        if current_history:
+            if "medicalHistory" in current_history:
+                patient["medicalHistory"] = current_history["medicalHistory"]
+            if "familyHistory" in current_history:
+                patient["familyHistory"] = current_history["familyHistory"]
+            if "previousSurgeries" in current_history:
+                patient["previousSurgeries"] = current_history["previousSurgeries"]
+    except Exception as e:
+        logger.warning(f"Failed to enrich patient with medical history: {e}", exc_info=True)
     
     return success_response(
         message="Patient retrieved successfully",
@@ -224,6 +242,27 @@ async def get_patient_by_patient_id(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found"
         )
+
+    # Enrich patient response with current medical history fields from the
+    # patient_medical_history collection.
+    try:
+        from app.services.patient_medical_history_service import PatientMedicalHistoryService
+
+        history_service = PatientMedicalHistoryService(db)
+        # patient_id here is the human-readable ID (e.g. P001), so we need
+        # the actual Mongo ObjectId for fetching history.
+        patient_obj_id = patient.get("_id")
+        if patient_obj_id:
+            current_history = await history_service.get_current_medical_history(patient_obj_id)
+            if current_history:
+                if "medicalHistory" in current_history:
+                    patient["medicalHistory"] = current_history["medicalHistory"]
+                if "familyHistory" in current_history:
+                    patient["familyHistory"] = current_history["familyHistory"]
+                if "previousSurgeries" in current_history:
+                    patient["previousSurgeries"] = current_history["previousSurgeries"]
+    except Exception as e:
+        logger.warning(f"Failed to enrich patient (by patientId) with medical history: {e}", exc_info=True)
     
     return success_response(
         message="Patient retrieved successfully",
@@ -243,8 +282,8 @@ async def update_patient(
     
     Requires authentication. Only provided fields will be updated.
     
-    Medical history fields (familyHistory, previousSurgeries, pastMedications) 
-    are automatically routed to the patient_medical_history table.
+    Medical history field (medicalHistory) is automatically routed to the
+    patient_medical_history collection instead of being stored on the patient.
     
     HIPAA Compliance: Updates are logged in audit trail.
     """
@@ -254,10 +293,13 @@ async def update_patient(
         
         # Extract medical history fields before Pydantic validation
         medical_history_fields = {}
-        for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
+        for field in ["medicalHistory", "familyHistory", "previousSurgeries"]:
             if field in body:
                 medical_history_fields[field] = body.pop(field)
-                logger.info(f"Extracted {field} from patient update request: {medical_history_fields[field][:50] if medical_history_fields[field] else 'empty'}...")
+                logger.info(
+                    f"Extracted {field} from patient update request: "
+                    f"{str(medical_history_fields[field])[:50] if medical_history_fields[field] else 'empty'}..."
+                )
         
         # Now validate the remaining fields with Pydantic
         try:
@@ -297,14 +339,26 @@ async def update_patient(
             except Exception as e:
                 logger.error(f"Failed to update medical history during patient update: {e}", exc_info=True)
                 # Don't fail the request, but log the error
-        
-        # Update patient with remaining fields
-        patient_service = PatientService(db)
-        patient = await patient_service.update_patient(
-            patient_id,
-            update_data,
-            updated_by=current_user
-        )
+
+        # If there are no remaining fields after stripping medical history,
+        # we don't need to update the main patient document. Just return
+        # the latest patient state.
+        if not body:
+            patient_service = PatientService(db)
+            patient = await patient_service.get_patient(patient_id)
+            if not patient:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Patient not found",
+                )
+        else:
+            # Update patient with remaining fields
+            patient_service = PatientService(db)
+            patient = await patient_service.update_patient(
+                patient_id,
+                update_data,
+                updated_by=current_user,
+            )
         
         return success_response(
             message="Patient updated successfully",

@@ -113,7 +113,7 @@ class PatientMedicalHistoryService:
         is_current_record = existing.get("endDate") is None
         data_changed = any(
             existing.get(key) != update_dict.get(key)
-            for key in ["familyHistory", "previousSurgeries", "pastMedications"]
+            for key in ["medicalHistory", "familyHistory", "previousSurgeries"]
             if key in update_dict
         )
 
@@ -133,9 +133,9 @@ class PatientMedicalHistoryService:
             # Create new record with updated data
             new_payload = {
                 "patientId": existing["patientId"],
+                "medicalHistory": update_dict.get("medicalHistory", existing.get("medicalHistory")),
                 "familyHistory": update_dict.get("familyHistory", existing.get("familyHistory")),
                 "previousSurgeries": update_dict.get("previousSurgeries", existing.get("previousSurgeries")),
-                "pastMedications": update_dict.get("pastMedications", existing.get("pastMedications")),
                 "startDate": now,
                 "endDate": None,
                 "createdAt": now,

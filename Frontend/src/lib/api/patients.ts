@@ -48,6 +48,7 @@ export interface PatientDetail extends PatientSummary {
   emergencyContactPhone?: string;
   insuranceProvider?: string;
   insuranceNumber?: string;
+  medieaseClinicEmail?: string;
   currentMedications?: MedicationEntry[];
   createdAt?: string;
   updatedAt?: string;
