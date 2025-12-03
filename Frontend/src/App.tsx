@@ -32,6 +32,7 @@ const PatientOverview = lazy(() => import("@/polymet/pages/patient-overview").th
 const ConsultationSession = lazy(() => import("@/polymet/pages/consultation-session-new").then(module => ({ default: module.ConsultationSession })));
 const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout").then(module => ({ default: module.HealthcareLayout })));
 const LoaderShowcasePage = lazy(() => import("@/polymet/pages/loader-showcase-page").then(module => ({ default: module.LoaderShowcasePage })));
+const ResetPasswordPage = lazy(() => import("@/polymet/pages/reset-password").then(module => ({ default: module.ResetPasswordPage })));
 
 // Loading component for Suspense fallback
 const LoadingFallback = () => (
@@ -107,6 +108,8 @@ export default function MediEaseClinicPrototype() {
           <Route path="/role-selection" element={<RoleSelection />} />
 
           <Route path="/auth" element={<AuthPage />} />
+
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           <Route path="/loader" element={<LoaderShowcasePage />} />
 

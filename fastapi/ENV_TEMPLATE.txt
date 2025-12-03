@@ -53,3 +53,28 @@ ENABLE_AUDIT_LOGGING=true
 ENABLE_DATA_MASKING=true
 PHI_ENCRYPTION_ENABLED=true
 
+# Email + Lead Capture
+SMTP_HOST="smtp.gmail.com"
+SMTP_PORT=587
+SMTP_USER=""
+SMTP_PASSWORD=""
+SMTP_FROM="noreply@medieaseclinic.com"
+LEAD_EMAIL_RECIPIENT="ops@medieaseclinic.com"
+
+# Frontend + password reset links
+FRONTEND_BASE_URL="https://app.clinic.alteredai.care"
+PASSWORD_RESET_ROUTE="/reset-password"
+PASSWORD_RESET_TOKEN_EXP_MINUTES=1440
+
+# AWS S3 additional settings
+AWS_S3_PRESIGNED_URL_EXPIRATION=900
+
+# Mailgun inbound webhook
+MAILGUN_SIGNING_KEY=""
+MAILGUN_ALLOWED_TEST_TOKENS=""
+MAILGUN_EXPECTED_RECIPIENT_DOMAIN="mediease.clinic"
+MAILGUN_REPORTS_FROM="Mediease Clinic <reports@mediease.clinic>"
+MAILGUN_API_KEY=""
+MAILGUN_DOMAIN="mediease.alteredai.care"
+MAILGUN_API_BASE_URL="https://api.mailgun.net/v3"
+

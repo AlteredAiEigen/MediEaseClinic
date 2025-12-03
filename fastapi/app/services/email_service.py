@@ -4,13 +4,21 @@ Email service for sending transactional notifications via SMTP.
 
 import logging
 from email.message import EmailMessage
-from typing import Iterable, List, Optional, Sequence, Union
+from typing import Iterable, List, Optional, Sequence, Union, TypedDict
 
 import aiosmtplib
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+class EmailAttachment(TypedDict, total=False):
+    """Attachment payload for outbound emails."""
+
+    filename: str
+    content: bytes
+    mime_type: str
 
 
 class EmailService:
@@ -41,15 +49,17 @@ class EmailService:
         subject: str,
         body: str,
         reply_to: Optional[str] = None,
+        attachments: Optional[Sequence[EmailAttachment]] = None,
     ) -> dict:
         """
         Send an email using SMTP.
-
+        
         Args:
             to: Recipient or list of recipients.
             subject: Email subject.
             body: Plain-text body.
             reply_to: Optional reply-to address.
+            attachments: Optional list of attachments (filename/content/mime_type).
         """
         if not self.is_configured():
             message = "Email service is not configured. Skip sending."
@@ -73,6 +83,24 @@ class EmailService:
         if reply_to:
             email["Reply-To"] = reply_to
         email.set_content(body)
+
+        if attachments:
+            for attachment in attachments:
+                if not attachment.get("content"):
+                    continue
+                filename = attachment.get("filename") or "attachment"
+                mime_type = attachment.get("mime_type") or "application/octet-stream"
+                maintype, _, subtype = mime_type.partition("/")
+                if not maintype:
+                    maintype = "application"
+                if not subtype:
+                    subtype = "octet-stream"
+                email.add_attachment(
+                    attachment["content"],
+                    maintype=maintype,
+                    subtype=subtype,
+                    filename=filename,
+                )
 
         try:
             logger.info("Sending email to %s", recipients)

@@ -2,6 +2,7 @@
 Admin management API endpoints.
 """
 
+import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Optional, List, Dict
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field, EmailStr
 from app.database import get_db
 from app.schemas.auth import UserCreate
 from app.services.auth_service import auth_service
+from app.services.password_reset_service import password_reset_service
 from app.services.queue_service import QueueService
 from app.middleware.auth import require_roles
 from app.utils.response import success_response, error_response, paginated_response
@@ -27,6 +29,8 @@ from app.schemas.billing import (
     BillingItemUpdateRequest,
 )
 from app.models.user import user_helper
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -678,8 +682,22 @@ async def create_user(
     user_data.clinicId = current_user.get("clinicId")
 
     user = await auth_service.register_user(user_data)
+    try:
+        await password_reset_service.send_password_reset_email(
+            user,
+            is_new_account=True,
+        )
+    except Exception as exc:
+        logger.error("Failed to send onboarding email to %s: %s", user.get("email"), exc)
+        onboarding_notice = {
+            "emailNotificationSent": False,
+            "error": str(exc),
+        }
+    else:
+        onboarding_notice = {"emailNotificationSent": True}
+
     return success_response(
-        data={"user": user},
+        data={"user": user, **onboarding_notice},
         message="User created successfully"
     )
 

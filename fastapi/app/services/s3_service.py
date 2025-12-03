@@ -32,7 +32,8 @@ class S3Service:
         file_content: bytes,
         file_name: str,
         content_type: str,
-        folder: str = "uploads"
+        folder: str = "uploads",
+        bucket_override: Optional[str] = None,
     ) -> dict:
         """
         Upload file to S3 with server-side encryption.
@@ -50,10 +51,11 @@ class S3Service:
             # Generate unique S3 key
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             s3_key = f"{folder}/{timestamp}_{file_name}"
+            bucket_name = bucket_override or self.bucket_name
             
             # Upload with server-side encryption (SSE-S3)
             self.s3_client.put_object(
-                Bucket=self.bucket_name,
+                Bucket=bucket_name,
                 Key=s3_key,
                 Body=file_content,
                 ContentType=content_type,
@@ -65,14 +67,14 @@ class S3Service:
             )
             
             # Generate file URL
-            file_url = f"https://{self.bucket_name}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"
+            file_url = f"https://{bucket_name}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"
             
             logger.info(f"File uploaded successfully to S3: {s3_key}")
             
             return {
                 "s3_key": s3_key,
                 "file_url": file_url,
-                "bucket": self.bucket_name
+                "bucket": bucket_name
             }
         
         except ClientError as e:

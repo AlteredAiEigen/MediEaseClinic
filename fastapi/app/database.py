@@ -157,6 +157,21 @@ class Database:
             await cls.database.billing_items.create_index("key")
             await cls.database.billing_items.create_index([("category", 1), ("key", 1)], unique=True)
             
+            # Password reset tokens
+            await cls.database.password_reset_tokens.create_index("tokenHash", unique=True)
+            await cls.database.password_reset_tokens.create_index("userId")
+            await cls.database.password_reset_tokens.create_index(
+                "expiresAt",
+                expireAfterSeconds=0
+            )
+
+            # S3 reports collection
+            await cls.database.s3_reports.create_index("patientId")
+            await cls.database.s3_reports.create_index("patientMongoId")
+            await cls.database.s3_reports.create_index("clinicId")
+            await cls.database.s3_reports.create_index("s3Key", unique=True)
+            await cls.database.s3_reports.create_index("mailgunMessageId")
+            
             logger.info("Database indexes created successfully")
             
         except Exception as e:

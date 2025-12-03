@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     s3_bucket_name: str
     s3_transcripts_bucket: str = ""  # Optional separate bucket for transcripts
+    aws_s3_presigned_url_expiration: int = 900
     
     # AWS Transcribe Configuration
     aws_transcribe_region: str = ""  # Optional, defaults to aws_region if not set
@@ -97,6 +98,18 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = "noreply@medieaseclinic.com"
+    lead_email_recipient: str = ""
+
+    # Frontend + password reset
+    frontend_base_url: str = "https://app.clinic.alteredai.care"
+    password_reset_route: str = "/reset-password"
+    password_reset_token_exp_minutes: int = 60 * 24  # default 24 hours
+
+    # Mailgun / inbound email processing
+    mailgun_signing_key: str = ""
+    mailgun_allowed_test_tokens: str = ""
+    mailgun_expected_recipient_domain: str = "mediease.clinic"
+    mailgun_reports_from: str = "Mediease Clinic <reports@mediease.clinic>"
     
     class Config:
         env_file = ".env"
@@ -128,6 +141,26 @@ class Settings(BaseSettings):
     def image_formats_list(self) -> List[str]:
         """Parse allowed image formats."""
         return [fmt.strip() for fmt in self.allowed_image_formats.split(",")]
+
+    @property
+    def password_reset_url(self) -> str:
+        """Construct the absolute password reset URL."""
+        base = (self.frontend_base_url or "").rstrip("/") or "https://app.clinic.alteredai.care"
+        route = self.password_reset_route or "/reset-password"
+        if not route.startswith("/"):
+            route = f"/{route}"
+        return f"{base}{route}"
+
+    @property
+    def mailgun_test_tokens(self) -> List[str]:
+        """List of tokens that should bypass signature validation (for QA)."""
+        if not self.mailgun_allowed_test_tokens:
+            return []
+        return [
+            token.strip()
+            for token in self.mailgun_allowed_test_tokens.split(",")
+            if token.strip()
+        ]
 
 
 @lru_cache()

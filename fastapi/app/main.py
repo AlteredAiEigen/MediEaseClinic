@@ -180,6 +180,7 @@ from app.routers import (
     insurance_coverage,
     patient_reviews,
     patient_medical_history,
+    mailgun,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -218,6 +219,7 @@ app.include_router(
     prefix="/api/patient-medical-history",
     tags=["Patient Medical History"],
 )
+app.include_router(mailgun.router, tags=["Mailgun"])
 
 
 if __name__ == "__main__":

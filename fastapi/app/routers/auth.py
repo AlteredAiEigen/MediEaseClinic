@@ -2,6 +2,8 @@
 Authentication router with login, register, and token management endpoints.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -11,11 +13,16 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenResponse,
     RefreshTokenRequest,
-    ChangePasswordRequest
+    ChangePasswordRequest,
+    ResetPasswordRequest,
+    ResetPasswordConfirm,
 )
 from app.services.auth_service import AuthService
+from app.services.password_reset_service import password_reset_service
 from app.middleware.auth import get_current_active_user
 from app.utils.response import success_response, error_response
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -186,6 +193,40 @@ async def change_password(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Password change failed: {str(e)}"
         )
+
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    payload: ResetPasswordRequest,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Send password reset email to the user if the account exists.
+    Always returns success to avoid revealing account existence.
+    """
+    email = payload.email.lower().strip()
+    user = await db["users"].find_one({"email": email})
+
+    if user:
+        try:
+            await password_reset_service.send_password_reset_email(user)
+        except Exception as exc:
+            logger.error("Failed to send password reset email to %s: %s", email, exc)
+
+    return success_response(
+        message="If an account exists for this email, instructions have been sent."
+    )
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(payload: ResetPasswordConfirm):
+    """
+    Confirm password reset by providing the reset token and a new password.
+    """
+    await password_reset_service.reset_password_with_token(
+        payload.token, payload.newPassword
+    )
+    return success_response(message="Password reset successfully")
 
 
 @router.post("/logout")
