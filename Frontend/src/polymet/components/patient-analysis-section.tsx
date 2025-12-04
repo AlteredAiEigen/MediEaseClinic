@@ -32,6 +32,7 @@ interface AppointmentOverviewData {
   chartData: {
     dates: string[];
     counts: number[];
+    timeLabels?: string[];
   };
   period: string;
   startDate: string;
@@ -71,7 +72,7 @@ export function PatientAnalysisSection() {
   const formatChartData = () => {
     if (!overviewData?.chartData) return [];
 
-    const { dates, counts } = overviewData.chartData;
+    const { dates, counts, timeLabels } = overviewData.chartData;
     
     if (timeFilter === "week") {
       // Format dates as day abbreviations (Mon, Tue, etc.)
@@ -84,14 +85,19 @@ export function PatientAnalysisSection() {
         return { time: dayName, appointments: counts[index] || 0 };
       });
     } else if (timeFilter === "day") {
-      // Format as hours
-      return dates.map((dateStr, index) => {
-        const [year, month, day] = dateStr.split("-").map(Number);
-        const date = new Date(year, month - 1, day);
-        const hour = date.getHours();
-        const period = hour >= 12 ? "PM" : "AM";
-        const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-        return { time: `${displayHour} ${period}`, appointments: counts[index] || 0 };
+      // Day view: backend returns hourly buckets from 08:00–22:00 with
+      // `dates` like "14:00" and `timeLabels` containing the exact
+      // appointment times within that hour (e.g. "14:20, 14:25").
+      return dates.map((label, index) => {
+        const [hourStr] = String(label).split(":");
+        const hour = Number(hourStr);
+        const fallbackLabel = `${String(isNaN(hour) ? 0 : hour).padStart(2, "0")}:00`;
+        return {
+          time: label,
+          hour,
+          timeLabel: timeLabels?.[index] ?? fallbackLabel,
+          appointments: counts[index] || 0,
+        };
       });
     } else if (timeFilter === "month") {
       // Format as week numbers
@@ -184,14 +190,57 @@ export function PatientAnalysisSection() {
                     />
 
                     <XAxis
-                      dataKey="time"
+                      dataKey={timeFilter === "day" ? "time" : "time"}
                       stroke="hsl(var(--muted-foreground))"
                       fontSize={10}
                       tickLine={false}
                       axisLine={false}
+                      tickFormatter={(value: any) => {
+                        if (timeFilter !== "day") {
+                          return String(value);
+                        }
+                        const [hourStr] = String(value).split(":");
+                        const hour = Number(hourStr);
+                        if (Number.isNaN(hour)) return "";
+                        // Show only even hours between 08:00 and 22:00
+                        if (hour < 8 || hour > 22 || hour % 2 !== 0) return "";
+                        return `${String(hour).padStart(2, "0")}:00`;
+                      }}
                     />
 
-                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          // Custom formatter so day view shows all appointment
+                          // times within that hour in the tooltip.
+                          formatter={(value, name, item, index, payload) => {
+                            if (timeFilter !== "day") {
+                              return (
+                                <span className="font-mono font-medium tabular-nums text-foreground">
+                                  {Number(value).toLocaleString()}
+                                </span>
+                              );
+                            }
+
+                            const p: any = payload;
+                            const label: string =
+                              p?.timeLabel ||
+                              `${String(p?.hour ?? "").padStart(2, "0")}:00`;
+
+                            return (
+                              <span className="flex w-full justify-between gap-3">
+                                <span className="text-muted-foreground">
+                                  {label}
+                                </span>
+                                <span className="font-mono font-medium tabular-nums text-foreground">
+                                  {Number(value).toLocaleString()}
+                                </span>
+                              </span>
+                            );
+                          }}
+                        />
+                      }
+                    />
 
                     <Line
                       type="monotone"

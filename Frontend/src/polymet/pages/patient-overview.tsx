@@ -30,7 +30,6 @@ import {
   Wallet2Icon,
   IndianRupeeIcon,
   HospitalIcon,
-  ClockIcon,
   UsersIcon,
   EditIcon,
   SparklesIcon,
@@ -4612,6 +4611,13 @@ export function PatientOverview() {
                                 year: "numeric",
                               })
                             : null;
+                          const endDate = med.endDate
+                            ? new Date(med.endDate).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })
+                            : null;
                           const durationLabel = med.duration?.trim();
                           const frequencyLabel = med.frequency?.trim();
 
@@ -4636,24 +4642,35 @@ export function PatientOverview() {
                                 </div>
                               </div>
 
-                              <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
-                                {frequencyLabel && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                    <ClockIcon className="h-3.5 w-3.5" />
-                                    {frequencyLabel}
-                                  </span>
-                                )}
-                                {startDate && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                    <CalendarIcon className="h-3.5 w-3.5" />
-                                    {`Since ${startDate}`}
-                                  </span>
-                                )}
-                                {durationLabel && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                    <ClipboardListIcon className="h-3.5 w-3.5" />
-                                    {durationLabel}
-                                  </span>
+                              <div className="mt-4 space-y-1 text-xs font-medium">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {startDate && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
+                                      <CalendarIcon className="h-3.5 w-3.5" />
+                                      {`Since ${startDate}`}
+                                    </span>
+                                  )}
+                                  {endDate && (
+                                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
+                                      <CalendarIcon className="h-3.5 w-3.5" />
+                                      {`Till ${endDate}`}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {(frequencyLabel || durationLabel) && (
+                                  <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground">
+                                    {frequencyLabel && (
+                                      <span className="truncate">
+                                        Frequency: {frequencyLabel}
+                                      </span>
+                                    )}
+                                    {durationLabel && (
+                                      <span className="ml-auto truncate text-right">
+                                        Duration: {durationLabel}
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
 
@@ -4719,30 +4736,35 @@ export function PatientOverview() {
                                 </div>
                               </div>
 
-                              <div className="mt-4 flex flex-wrap gap-2 text-xs font-medium">
-                                {frequencyLabel && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
-                                    <ClockIcon className="h-3.5 w-3.5" />
-                                    {frequencyLabel}
-                                  </span>
-                                )}
-                                {startDate && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
-                                    <CalendarIcon className="h-3.5 w-3.5" />
-                                    {`From ${startDate}`}
-                                  </span>
-                                )}
-                                {endDate && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
-                                    <CalendarIcon className="h-3.5 w-3.5" />
-                                    {`Until ${endDate}`}
-                                  </span>
-                                )}
-                                {durationLabel && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
-                                    <ClipboardListIcon className="h-3.5 w-3.5" />
-                                    {durationLabel}
-                                  </span>
+                              <div className="mt-4 space-y-1 text-xs font-medium">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {startDate && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
+                                      <CalendarIcon className="h-3.5 w-3.5" />
+                                      {`From ${startDate}`}
+                                    </span>
+                                  )}
+                                  {endDate && (
+                                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
+                                      <CalendarIcon className="h-3.5 w-3.5" />
+                                      {`Until ${endDate}`}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {(frequencyLabel || durationLabel) && (
+                                  <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground">
+                                    {frequencyLabel && (
+                                      <span className="truncate">
+                                        Frequency: {frequencyLabel}
+                                      </span>
+                                    )}
+                                    {durationLabel && (
+                                      <span className="ml-auto truncate text-right">
+                                        Duration: {durationLabel}
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
 

@@ -293,7 +293,10 @@ class RecordingService:
         if structured_notes.get("medications"):
             medications = structured_notes["medications"]
             if isinstance(medications, list) and len(medications) > 0:
-                patient_updates["currentMedication"] = ", ".join(medications)
+                # Medications are handled via prescriptions / currentMedications;
+                # we no longer maintain the legacy `currentMedication` summary
+                # field on the patient document.
+                pass
         
         # Extract allergies
         if structured_notes.get("allergies"):
@@ -453,8 +456,10 @@ class RecordingService:
                 if structured_notes.get("medications"):
                     medications = structured_notes["medications"]
                     if isinstance(medications, list) and len(medications) > 0:
-                        # Join medications into a string for currentMedication field
-                        patient_updates["currentMedication"] = ", ".join(medications)
+                        # Medications are handled via prescriptions / currentMedications;
+                        # we no longer maintain the legacy `currentMedication` summary
+                        # field on the patient document.
+                        pass
                 
                 # Extract allergies from transcript or structured notes
                 # Check if allergies are mentioned in the transcript

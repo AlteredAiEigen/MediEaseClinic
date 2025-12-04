@@ -30,17 +30,6 @@ class PyObjectId(ObjectId):
         return ObjectId(v)
 
 
-class Vitals(BaseModel):
-    """Patient vitals sub-document."""
-    bloodPressure: Optional[str] = None
-    heartRate: Optional[str] = None
-    temperature: Optional[str] = None
-    oxygenSaturation: Optional[str] = None
-    weight: Optional[str] = None
-    height: Optional[str] = None
-    bmi: Optional[str] = None
-
-
 class Lifestyle(BaseModel):
     """Patient lifestyle information."""
     smoking: Optional[str] = None
@@ -86,13 +75,10 @@ class PatientBase(BaseModel):
     address: str
     
     # Medical information
-    vitals: Optional[Vitals] = Vitals()
-    medicalHistory: Optional[Union[str, List[Union[str, MedicalHistoryEntry]]]] = None
+    # Note: Vitals and detailed medical history are stored in dedicated
+    # collections (patient_vitals, patient_medical_history) rather than
+    # directly on the patient document.
     allergies: Optional[str] = ""
-    currentMedication: Optional[str] = ""
-    medicationDosage: Optional[str] = None
-    medicationFrequency: Optional[str] = None
-    lastMedicationReview: Optional[str] = None
     lifestyle: Optional[Lifestyle] = Lifestyle()
     currentMedications: Optional[List[Dict[str, str]]] = Field(default_factory=list)
     
@@ -153,13 +139,7 @@ class PatientResponse(BaseModel):
     email: str
     phone: str
     address: str
-    vitals: Optional[Vitals] = None
-    medicalHistory: Optional[List[MedicalHistoryEntry]] = None
     allergies: Optional[str] = None
-    currentMedication: Optional[str] = None
-    medicationDosage: Optional[str] = None
-    medicationFrequency: Optional[str] = None
-    lastMedicationReview: Optional[str] = None
     lifestyle: Optional[Lifestyle] = None
     chiefComplaint: Optional[str] = None
     currentSymptoms: Optional[str] = None
@@ -193,13 +173,7 @@ class PatientUpdate(BaseModel):
     dateOfBirth: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
-    vitals: Optional[Vitals] = None
-    medicalHistory: Optional[Union[str, List[Union[str, MedicalHistoryEntry]]]] = None
     allergies: Optional[str] = None
-    currentMedication: Optional[str] = None
-    medicationDosage: Optional[str] = None
-    medicationFrequency: Optional[str] = None
-    lastMedicationReview: Optional[str] = None
     currentMedications: Optional[List[Dict[str, str]]] = None
     lifestyle: Optional[Lifestyle] = None
     chiefComplaint: Optional[str] = None
@@ -246,35 +220,6 @@ async def patient_helper(patient: dict) -> dict:
     # encrypted_fields = ["insuranceNumber"]  # Add other fields as needed
     # patient = field_encryption.decrypt_dict_fields(patient, encrypted_fields)
     
-    medical_history_raw = patient.get("medicalHistory")
-
-    def normalize_history_entry(entry) -> Optional[Dict[str, str]]:
-        if isinstance(entry, MedicalHistoryEntry):
-            data = {k: v for k, v in entry.model_dump().items() if v}
-            return data or None
-        if isinstance(entry, dict):
-            data = {}
-            for key in ["title", "diagnosis", "treatedBy", "recordedOn", "notes"]:
-                value = entry.get(key)
-                if isinstance(value, str) and value.strip():
-                    data[key] = value.strip()
-            return data or None
-        if isinstance(entry, str):
-            title = entry.strip()
-            return {"title": title} if title else None
-        return None
-
-    medical_history_value: List[Dict[str, str]] = []
-    if isinstance(medical_history_raw, list):
-        for item in medical_history_raw:
-            normalized = normalize_history_entry(item)
-            if normalized:
-                medical_history_value.append(normalized)
-    else:
-        normalized = normalize_history_entry(medical_history_raw)
-        if normalized:
-            medical_history_value.append(normalized)
-
     allergies = patient.get("allergies")
     if isinstance(allergies, str):
         allergy_value = [allergies] if allergies.strip() else []
@@ -315,13 +260,7 @@ async def patient_helper(patient: dict) -> dict:
         "email": patient.get("email", ""),
         "phone": patient.get("phone", ""),
         "address": patient.get("address", ""),
-        "vitals": patient.get("vitals", {}),
-        "medicalHistory": medical_history_value,
         "allergies": allergy_value,
-        "currentMedication": patient.get("currentMedication", ""),
-        "medicationDosage": patient.get("medicationDosage"),
-        "medicationFrequency": patient.get("medicationFrequency"),
-        "lastMedicationReview": patient.get("lastMedicationReview"),
         "lifestyle": patient.get("lifestyle", {}),
         "chiefComplaint": patient.get("chiefComplaint"),
         "currentSymptoms": patient.get("currentSymptoms"),

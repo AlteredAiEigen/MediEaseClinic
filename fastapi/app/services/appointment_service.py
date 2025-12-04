@@ -128,60 +128,66 @@ class AppointmentService:
                 detail="Patient not found"
             )
         
-        # Validate doctor exists and is a doctor
-        doctor = await self.users_collection.find_one({"_id": ObjectId(appointment_data.doctorId)})
-        if not doctor:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Doctor not found"
-            )
-        
-        if doctor.get("role") != "doctor":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Selected user is not a doctor"
-            )
+        # Validate doctor only when a doctorId is provided. Lab-test appointments
+        # are allowed to be created without a doctor.
+        effective_clinic: Optional[str] = clinic_id
+        doctor_clinic: Optional[str] = None
 
-        # Patients are universal - not restricted to clinics
-        # Only appointments and doctors are clinic-specific
-        doctor_clinic = doctor.get("clinicId")
-
-        # Infer clinic scope from appointment context or doctor
-        effective_clinic = clinic_id or doctor_clinic
-
-        # Validate doctor clinic alignment (doctors are clinic-specific)
-        if clinic_id:
-            if doctor_clinic and doctor_clinic != clinic_id:
+        if appointment_data.doctorId:
+            # Validate doctor exists and is a doctor
+            doctor = await self.users_collection.find_one({"_id": ObjectId(appointment_data.doctorId)})
+            if not doctor:
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Selected doctor does not belong to your clinic"
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Doctor not found"
                 )
 
-        # Normalize doctor clinic if missing but determinable
-        if not doctor_clinic and effective_clinic:
-            update_fields: Dict[str, object] = {"clinicId": effective_clinic}
-            if clinic_name:
-                update_fields["clinicName"] = clinic_name
-            await self.users_collection.update_one(
-                {"_id": doctor["_id"]},
-                {"$set": update_fields}
+            if doctor.get("role") != "doctor":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Selected user is not a doctor"
+                )
+
+            # Patients are universal - not restricted to clinics
+            # Only appointments and doctors are clinic-specific
+            doctor_clinic = doctor.get("clinicId")
+
+            # Infer clinic scope from appointment context or doctor
+            effective_clinic = clinic_id or doctor_clinic
+
+            # Validate doctor clinic alignment (doctors are clinic-specific)
+            if clinic_id:
+                if doctor_clinic and doctor_clinic != clinic_id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Selected doctor does not belong to your clinic"
+                    )
+
+            # Normalize doctor clinic if missing but determinable
+            if not doctor_clinic and effective_clinic:
+                update_fields: Dict[str, object] = {"clinicId": effective_clinic}
+                if clinic_name:
+                    update_fields["clinicName"] = clinic_name
+                await self.users_collection.update_one(
+                    {"_id": doctor["_id"]},
+                    {"$set": update_fields}
+                )
+                doctor_clinic = effective_clinic
+
+            # Check for time slot conflicts only for doctor-based appointments
+            has_conflict = await self.check_time_slot_conflict(
+                appointment_data.doctorId,
+                appointment_data.date,
+                appointment_data.time,
+                appointment_data.duration,
+                patient_id=appointment_data.patientId
             )
-            doctor_clinic = effective_clinic
-        
-        # Check for time slot conflicts
-        has_conflict = await self.check_time_slot_conflict(
-            appointment_data.doctorId,
-            appointment_data.date,
-            appointment_data.time,
-            appointment_data.duration,
-            patient_id=appointment_data.patientId
-        )
-        
-        if has_conflict:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Time slot is already booked for this doctor"
-            )
+
+            if has_conflict:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Time slot is already booked for this doctor"
+                )
         
         # Generate appointment ID
         appointment_id = await self.generate_appointment_id()

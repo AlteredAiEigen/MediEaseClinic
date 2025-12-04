@@ -104,16 +104,6 @@ async def seed_prakash():
         patient_id_str = str(patient_oid)
 
         now = datetime.utcnow()
-        vitals = {
-            "bloodPressure": "128/82",
-            "heartRate": "76",
-            "temperature": "98.2",
-            "oxygenSaturation": "98",
-            "weight": "78",
-            "height": "173",
-            "bmi": "26.1",
-        }
-
         patient_doc = {
             "firstName": "Prakash",
             "lastName": "Sahu",
@@ -124,15 +114,8 @@ async def seed_prakash():
             "email": patient_email,
             "phone": "+91-98765-22334",
             "address": "Row House 14, Shanti Residency, Bhopal, India",
-            "vitals": vitals,
-            "medicalHistory": [
-                "Essential hypertension diagnosed in 2018",
-                "Type 2 diabetes mellitus since 2020 (HbA1c target <7%)",
-                "Elevated LDL cholesterol noted in 2023",
-            ],
             "allergies": ["Penicillin (rash)"],
             "familyHistory": "Father with CAD at 54, mother with T2DM",
-            "currentMedication": "Amlodipine 5 mg OD, Metformin XR 500 mg BD, Atorvastatin 20 mg HS",
             "currentSymptoms": "Recently reported mild fatigue towards evenings",
             "chiefComplaint": "3-month chronic disease review",
             "carePlanSummary": "Maintain BP <130/80, HbA1c <7%, encourage 30 min brisk walk 5x/week",

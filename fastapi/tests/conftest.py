@@ -136,7 +136,6 @@ def patient_data():
             "country": "USA"
         },
         "allergies": ["Penicillin"],
-        "currentMedication": "None"
     }
 
 

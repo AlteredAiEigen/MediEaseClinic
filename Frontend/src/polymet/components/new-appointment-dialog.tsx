@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SearchIcon, CalendarIcon, ClockIcon, AlertCircleIcon, Loader2 } from "lucide-react";
-import { post, get } from "@/lib/api-client";
+import { post, get, put } from "@/lib/api-client";
+import type { BillingItem } from "@/polymet/pages/admin-billing";
 import { useToast } from "@/hooks/use-toast";
 import { MediEaseLoader } from "@/polymet/components/mediease-loader";
 
@@ -42,22 +43,28 @@ interface Doctor {
 interface NewAppointmentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  editingAppointment?: any;
+  onAppointmentUpdated?: () => void;
 }
 
 export function NewAppointmentDialog({
   open,
   onOpenChange,
+  editingAppointment,
+  onAppointmentUpdated,
 }: NewAppointmentDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
   const [selectedDoctorId, setSelectedDoctorId] = useState("");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
+  const [bookingKind, setBookingKind] = useState<"doctor" | "lab-test">("doctor");
   const [appointmentType, setAppointmentType] = useState("");
   const [notes, setNotes] = useState("");
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,6 +117,12 @@ export function NewAppointmentDialog({
               )
             );
           }
+
+          // Fetch billing items
+          const billingResponse = await get<{ items: BillingItem[] }>("/api/admin/billing-items");
+          if (billingResponse.success && billingResponse.data?.items) {
+            setBillingItems(billingResponse.data.items);
+          }
         } catch (err) {
           const message = err instanceof Error ? err.message : "Failed to load data";
           setError(message);
@@ -125,12 +138,36 @@ export function NewAppointmentDialog({
       setSelectedDoctorId("");
       setAppointmentDate("");
       setAppointmentTime("");
+      setBookingKind("doctor");
       setAppointmentType("");
       setNotes("");
       setSearchQuery("");
       setError(null);
     }
   }, [open]);
+
+  // Populate form when editing
+  useEffect(() => {
+    if (editingAppointment && open) {
+      setSelectedPatientId(editingAppointment.patientId || "");
+      setSelectedDoctorId(editingAppointment.doctorId || "");
+      setAppointmentDate(editingAppointment.date || "");
+      setAppointmentTime(editingAppointment.time || "");
+      setBookingKind(editingAppointment.doctorId ? "doctor" : "lab-test");
+      setAppointmentType(editingAppointment.type || "");
+      setNotes(editingAppointment.notes || editingAppointment.reason || "");
+    }
+  }, [editingAppointment, open]);
+
+  const appointmentPricingItems = useMemo(
+    () => billingItems.filter((item) => item.category === "appointmentType" && item.isActive),
+    [billingItems]
+  );
+
+  const labTestPricingItems = useMemo(
+    () => billingItems.filter((item) => item.category === "test" && item.isActive),
+    [billingItems]
+  );
 
   const filteredPatients = useMemo(() => {
     if (!searchQuery.trim()) return patients.slice(0, 10); // Show first 10 if no search
@@ -145,8 +182,13 @@ export function NewAppointmentDialog({
   }, [patients, searchQuery]);
 
   const handleSubmit = async () => {
-    if (!selectedPatientId || !selectedDoctorId || !appointmentDate || !appointmentTime) {
+    if (!selectedPatientId || !appointmentDate || !appointmentTime) {
       setError("Please fill in all required fields");
+      return;
+    }
+
+    if (bookingKind === "doctor" && !selectedDoctorId) {
+      setError("Please select a doctor for this appointment");
       return;
     }
 
@@ -154,23 +196,47 @@ export function NewAppointmentDialog({
     setError(null);
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         patientId: selectedPatientId,
-        doctorId: selectedDoctorId,
         date: appointmentDate,
         time: appointmentTime,
         type: appointmentType,
-        reason: notes || "General appointment",
+        reason:
+          bookingKind === "doctor"
+            ? appointmentPricingItems.find((i) => i.key === appointmentType)?.label ||
+              "Doctor appointment"
+            : labTestPricingItems.find((i) => i.key === appointmentType)?.label ||
+              "Lab test appointment",
+        notes: notes || "",
+        bookingKind: bookingKind,
       };
 
-      const response = await post<{ appointment: unknown }>(
-        "/api/appointments",
-        payload
-      );
+      // Only send doctorId when booking a doctor appointment
+      if (bookingKind === "doctor" && selectedDoctorId) {
+        payload.doctorId = selectedDoctorId;
+      }
+
+      let response;
+      if (editingAppointment) {
+        // Update existing appointment
+        response = await put<{ appointment: unknown }>(
+          `/api/appointments/${editingAppointment._id || editingAppointment.id}`,
+          payload
+        );
+      } else {
+        // Create new appointment
+        response = await post<{ appointment: unknown }>(
+          "/api/appointments",
+          payload
+        );
+      }
 
       if (response.success && response.data?.appointment) {
         setError(null);
         onOpenChange(false);
+        if (onAppointmentUpdated) {
+          onAppointmentUpdated();
+        }
       } else {
         setError(response.message ?? "Failed to create appointment");
       }
@@ -187,7 +253,7 @@ export function NewAppointmentDialog({
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">
-            New Appointment
+            {editingAppointment ? "Edit Appointment" : "New Appointment"}
           </DialogTitle>
         </DialogHeader>
 
@@ -303,24 +369,48 @@ export function NewAppointmentDialog({
 
               <div>
                 <Label className="text-sm font-medium mb-2 block">
-                  Select Doctor
+                  Booking For
                 </Label>
                 <Select
-                  value={selectedDoctorId}
-                  onValueChange={(value) => setSelectedDoctorId(value)}
+                  value={bookingKind}
+                  onValueChange={(value: "doctor" | "lab-test") => {
+                    setBookingKind(value);
+                    setSelectedDoctorId("");
+                    setAppointmentType("");
+                  }}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select doctor" />
+                    <SelectValue placeholder="Select booking type" />
                   </SelectTrigger>
                   <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem key={doctor._id} value={doctor._id}>
-                        {doctor.firstName} {doctor.lastName} - {doctor.speciality || "General Medicine"}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="doctor">Doctor Appointment</SelectItem>
+                    <SelectItem value="lab-test">Lab Test Appointment</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {bookingKind === "doctor" && (
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">
+                    Select Doctor
+                  </Label>
+                  <Select
+                    value={selectedDoctorId}
+                    onValueChange={(value) => setSelectedDoctorId(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors.map((doctor) => (
+                        <SelectItem key={doctor._id} value={doctor._id}>
+                          {doctor.firstName} {doctor.lastName} - {doctor.speciality || "General Medicine"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               <div>
                 <Label className="text-sm font-medium mb-2 block">
@@ -356,20 +446,27 @@ export function NewAppointmentDialog({
 
               <div>
                 <Label className="text-sm font-medium mb-2 block">
-                  Appointment Type
+                  {bookingKind === "doctor" ? "Appointment Type" : "Lab Test Type"}
                 </Label>
                 <Select
                   value={appointmentType}
                   onValueChange={setAppointmentType}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
+                    <SelectValue placeholder={`Select ${bookingKind === "doctor" ? "appointment type" : "lab test"}`} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="consultation">Consultation</SelectItem>
-                    <SelectItem value="follow-up">Follow-up</SelectItem>
-                    <SelectItem value="checkup">Routine Checkup</SelectItem>
-                    <SelectItem value="emergency">Emergency</SelectItem>
+                    {bookingKind === "doctor"
+                      ? appointmentPricingItems.map((item) => (
+                          <SelectItem key={item._id} value={item.key}>
+                            {item.label}
+                          </SelectItem>
+                        ))
+                      : labTestPricingItems.map((item) => (
+                          <SelectItem key={item._id} value={item.key}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -399,17 +496,22 @@ export function NewAppointmentDialog({
               <Button
                 onClick={handleSubmit}
                 disabled={
-                  !selectedPatientId || !selectedDoctorId || !appointmentDate || !appointmentTime || isSubmitting
+                  !selectedPatientId ||
+                  (bookingKind === "doctor" && !selectedDoctorId) ||
+                  !appointmentDate ||
+                  !appointmentTime ||
+                  !appointmentType ||
+                  isSubmitting
                 }
                 className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
+                    {editingAppointment ? "Updating..." : "Creating..."}
                   </>
                 ) : (
-                  "Create Appointment"
+                  editingAppointment ? "Update Appointment" : "Create Appointment"
                 )}
               </Button>
             </div>

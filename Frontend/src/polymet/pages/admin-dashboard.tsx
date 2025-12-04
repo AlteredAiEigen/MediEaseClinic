@@ -18,6 +18,7 @@ import {
   ArrowRightIcon,
   ClockIcon,
   AlertCircleIcon,
+  FlaskConicalIcon,
 } from "lucide-react";
 import {
   LineChart,
@@ -51,6 +52,7 @@ interface DashboardStats {
     emergency: number;
     checkup: number;
   };
+  labTestCount?: number;
   recentActivity: Array<{
     type: string;
     description: string;
@@ -294,9 +296,8 @@ export function AdminDashboard() {
           // Use 24-hour format on the X-axis (no AM/PM)
           const hour = parseInt(dateOrHour.split(":")[0] || "0", 10);
           const baseLabel = `${hour.toString().padStart(2, "0")}:00`;
-          const count = revenueOverview.chartData.appointmentCounts?.[index ?? 0] ?? 0;
-          // Optionally append appointment count, e.g. "13:00 (2)"
-          return count > 0 ? `${baseLabel} (${count})` : baseLabel;
+          // Keep labels clean – appointment counts are shown in the tooltip
+          return baseLabel;
         }
         // Fallback (shouldn't normally hit): show time portion in 24h format
         const hours = dateOrHour.getHours();
@@ -355,11 +356,12 @@ export function AdminDashboard() {
       buckets.set(bucketKey, current + (source[index] || 0));
     });
 
-    // For day view, ensure all hours 8-20 are present (even with zero revenue)
+    // For day view, ensure hours 8-20 are present (even with zero revenue),
+    // but only show ALTERNATE hours (08, 10, 12, ..., 20) to avoid clutter.
     if (revenuePeriod === "day") {
       const dayViewHours: string[] = [];
-      // Start from 8:00 (not 09:00)
-      for (let hour = 8; hour <= 20; hour++) {
+      // Start from 08:00 and step by 2 hours: 08, 10, 12, ..., 20
+      for (let hour = 8; hour <= 20; hour += 2) {
         dayViewHours.push(`${hour.toString().padStart(2, "0")}:00`);
       }
       
@@ -377,13 +379,45 @@ export function AdminDashboard() {
       });
     }
 
+    // For month view, ensure all 4 weeks are present (even with zero revenue)
+    if (revenuePeriod === "month") {
+      // Use startDate from revenueOverview to determine which month we're viewing
+      const startDate = revenueOverview.startDate 
+        ? new Date(revenueOverview.startDate) 
+        : new Date();
+      const viewYear = startDate.getFullYear();
+      const viewMonth = startDate.getMonth() + 1; // 1-12
+      const monthViewWeeks: string[] = [];
+      // Generate all 4 weeks for the viewed month
+      for (let week = 1; week <= 4; week++) {
+        monthViewWeeks.push(`${viewYear}-${viewMonth}-W${week}`);
+      }
+      
+      return monthViewWeeks.map((weekKey) => {
+        const [yStr, mStr] = weekKey.split("-W")[0].split("-");
+        const year = Number(yStr);
+        const month = Number(mStr);
+        const weekNum = Number(weekKey.split("-W")[1]);
+        const day = (weekNum - 1) * 7 + 1;
+        const dateForLabel = new Date(year, month - 1, day);
+        return {
+          label: formatLabel(dateForLabel),
+          value: buckets.get(weekKey) ?? 0,
+        };
+      });
+    }
+
     // For year view, ensure all 12 months are present (even with zero revenue)
     if (revenuePeriod === "year") {
-      const currentYear = new Date().getFullYear();
+      // Use startDate from revenueOverview to determine which year we're viewing
+      const startDate = revenueOverview.startDate 
+        ? new Date(revenueOverview.startDate) 
+        : new Date();
+      const viewYear = startDate.getFullYear();
       const yearViewMonths: string[] = [];
-      // Generate all 12 months for current year
+      // Generate all 12 months for the viewed year
       for (let month = 1; month <= 12; month++) {
-        yearViewMonths.push(`${currentYear}-${month}`);
+        yearViewMonths.push(`${viewYear}-${month}`);
       }
       
       return yearViewMonths.map((yearMonthKey) => {
@@ -396,51 +430,13 @@ export function AdminDashboard() {
       });
     }
 
-    // Sort keys properly based on period
-    let sortedKeys: string[];
-    if (revenuePeriod === "month") {
-      // For month view, sort by date within the month
-      sortedKeys = Array.from(buckets.keys()).sort((a, b) => {
-        if (a.includes("-W") && b.includes("-W")) {
-          const [yStrA, mStrA] = a.split("-W")[0].split("-");
-          const [yStrB, mStrB] = b.split("-W")[0].split("-");
-          const yearA = Number(yStrA);
-          const monthA = Number(mStrA);
-          const weekA = Number(a.split("-W")[1]);
-          const yearB = Number(yStrB);
-          const monthB = Number(mStrB);
-          const weekB = Number(b.split("-W")[1]);
-          if (yearA !== yearB) return yearA - yearB;
-          if (monthA !== monthB) return monthA - monthB;
-          return weekA - weekB;
-        }
-        // Fallback to string sort
-        return a.localeCompare(b);
-      });
-    } else {
-      // For week view, sort by date (already in YYYY-MM-DD format, so string sort works)
-      sortedKeys = Array.from(buckets.keys()).sort();
-    }
+    // For week view, sort by date (already in YYYY-MM-DD format, so string sort works)
+    const sortedKeys = Array.from(buckets.keys()).sort();
 
-    return sortedKeys.map((key, idx) => {
-      // For other periods, parse as date
-      let dateForLabel: Date;
-      if (revenuePeriod === "month" && key.includes("-W")) {
-        const [yStr, mStr] = key.split("-W")[0].split("-");
-        const year = Number(yStr);
-        const month = Number(mStr);
-        const weekNum = Number(key.split("-W")[1]);
-        const day = (weekNum - 1) * 7 + 1;
-        dateForLabel = new Date(year, month - 1, day);
-      } else if (revenuePeriod === "year" && key.includes("-")) {
-        const [yStr, mStr] = key.split("-");
-        const year = Number(yStr);
-        const month = Number(mStr);
-        dateForLabel = new Date(year, month - 1, 1);
-      } else {
-        const [year, month, day] = key.split("-").map(Number);
-        dateForLabel = new Date(year, month - 1, day);
-      }
+    return sortedKeys.map((key) => {
+      // Parse date for label
+      const [year, month, day] = key.split("-").map(Number);
+      const dateForLabel = new Date(year, month - 1, day);
 
       return {
         label: formatLabel(dateForLabel),
@@ -823,6 +819,15 @@ export function AdminDashboard() {
                     <span className="text-muted-foreground">Checkup</span>
                     <span className="font-semibold text-foreground">
                       {checkup}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border/50 pt-3">
+                    <div className="flex items-center gap-2">
+                      <FlaskConicalIcon className="w-4 h-4 text-[#00C4B3]" />
+                      <span className="text-muted-foreground">Lab Test</span>
+                    </div>
+                    <span className="font-semibold text-foreground">
+                      {dashboardStats?.labTestCount ?? 0}
                     </span>
                   </div>
                 </>

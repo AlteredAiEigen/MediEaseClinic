@@ -31,7 +31,7 @@ class PyObjectId(ObjectId):
 class AppointmentBase(BaseModel):
     """Base appointment fields."""
     patientId: str
-    doctorId: str
+    doctorId: Optional[str] = None
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
     duration: int = Field(30, ge=15, le=480)
@@ -96,7 +96,7 @@ class AppointmentResponse(BaseModel):
     id: str = Field(alias="_id")
     appointmentId: str
     patientId: str
-    doctorId: str
+    doctorId: Optional[str] = None
     scheduledBy: str
     patientName: Optional[str] = None
     doctorName: Optional[str] = None
@@ -180,7 +180,7 @@ async def appointment_helper(appointment: dict) -> dict:
         "_id": str(appointment["_id"]),
         "appointmentId": appointment.get("appointmentId", ""),
         "patientId": str(appointment["patientId"]),
-        "doctorId": str(appointment["doctorId"]),
+        "doctorId": str(appointment["doctorId"]) if appointment.get("doctorId") else None,
         "scheduledBy": str(appointment["scheduledBy"]),
         "patientName": appointment.get("patientName"),
         "doctorName": appointment.get("doctorName"),

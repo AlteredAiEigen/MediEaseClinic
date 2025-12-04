@@ -27,8 +27,9 @@ class AppointmentOverviewService:
         # Set default date range based on period
         now = datetime.utcnow()
         if period == "day":
+            # For day view, restrict to today's date (local concept handled in frontend)
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-            end = now
+            end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
         elif period == "week":
             # Calculate start of week (Monday)
             days_since_monday = now.weekday()  # Monday is 0
@@ -90,37 +91,114 @@ class AppointmentOverviewService:
             (len(no_shows) / len(scheduled) * 100) if scheduled else 0
         )
 
-        # Group by date for chart data
-        daily_counts: Dict[str, int] = {}
-        for appointment in appointments:
-            date_str = appointment.get("date")
-            if date_str:
-                daily_counts[date_str] = daily_counts.get(date_str, 0) + 1
+        # Group for chart data
+        if period == "day":
+            # For day view we:
+            # - Use HOURLY buckets for statistics (peak/average)
+            # - But plot INDIVIDUAL appointment points along a continuous
+            #   24-hour axis so the curve reflects exact appointment times.
+            #
+            # We expect a `time` field like "14:20" or "2:10 pm".
+            def _parse_time(time_str: str) -> Optional[tuple[int, int]]:
+                if not time_str:
+                    return None
+                text = time_str.strip().lower()
+                period_suffix = None
+                if text.endswith("am") or text.endswith("pm"):
+                    period_suffix = text[-2:]
+                    text = text[:-2].strip()
+                parts = text.split(":")
+                try:
+                    hour = int(parts[0])
+                    minute = int(parts[1]) if len(parts) > 1 else 0
+                except (ValueError, IndexError):
+                    return None
+                if period_suffix == "pm" and hour != 12:
+                    hour += 12
+                if period_suffix == "am" and hour == 12:
+                    hour = 0
+                if 0 <= hour <= 23 and 0 <= minute <= 59:
+                    return hour, minute
+                return None
 
-        # For week period, ensure all 7 days are included (even if 0)
-        if period == "week":
-            from datetime import datetime as dt
-            week_start = dt.strptime(start.strftime("%Y-%m-%d"), "%Y-%m-%d")
-            for i in range(7):
-                day_date = week_start + timedelta(days=i)
-                day_str = day_date.strftime("%Y-%m-%d")
-                if day_str not in daily_counts:
-                    daily_counts[day_str] = 0
+            # Hourly buckets for stats
+            hourly_counts: Dict[int, int] = {}
+            hour_examples: Dict[int, List[str]] = {}
+            # Per-appointment points for the chart (decimal hour + label)
+            point_hours: List[float] = []
+            point_labels: List[str] = []
+            for appointment in appointments:
+                time_str = appointment.get("time") or ""
+                parsed = _parse_time(time_str)
+                if parsed is None:
+                    continue
+                hour_val, minute_val = parsed
 
-        # Sort dates and get values
-        sorted_dates = sorted(daily_counts.keys())
-        chart_data = {
-            "dates": sorted_dates,
-            "counts": [daily_counts[d] for d in sorted_dates]
-        }
+                # Stats: bucket by whole hour
+                hourly_counts[hour_val] = hourly_counts.get(hour_val, 0) + 1
+                if time_str:
+                    hour_examples.setdefault(hour_val, []).append(time_str)
 
-        # Calculate peak and average
-        peak_count = max(daily_counts.values()) if daily_counts else 0
-        average_count = (
-            sum(daily_counts.values()) / len(daily_counts)
-            if daily_counts
-            else 0
-        )
+                # Chart point: use decimal hour (e.g., 14.33 for 14:20)
+                decimal_hour = hour_val + (minute_val / 60.0)
+                point_hours.append(decimal_hour)
+                point_labels.append(time_str or f"{hour_val:02d}:{minute_val:02d}")
+
+            # Build fixed clinic-hour window from 08:00–22:00 (inclusive)
+            hours_range = list(range(8, 23))
+
+            def _hour_label(hour_val: int) -> str:
+                return f"{hour_val:02d}:00"
+
+            chart_data = {
+                # `dates` carries each hour label within the clinic window
+                "dates": [_hour_label(h) for h in hours_range],
+                # `timeLabels` carries comma-separated appointment times per hour
+                "timeLabels": [
+                    ", ".join(hour_examples.get(h, [])) or _hour_label(h)
+                    for h in hours_range
+                ],
+                "counts": [hourly_counts.get(h, 0) for h in hours_range],
+            }
+
+            peak_count = max(hourly_counts.values()) if hourly_counts else 0
+            average_count = (
+                sum(hourly_counts.values()) / len(hours_range)
+                if hours_range
+                else 0
+            )
+        else:
+            # Group by date string (YYYY-MM-DD)
+            daily_counts: Dict[str, int] = {}
+            for appointment in appointments:
+                date_str = appointment.get("date")
+                if date_str:
+                    daily_counts[date_str] = daily_counts.get(date_str, 0) + 1
+
+            # For week period, ensure all 7 days are included (even if 0)
+            if period == "week":
+                from datetime import datetime as dt
+                week_start = dt.strptime(start.strftime("%Y-%m-%d"), "%Y-%m-%d")
+                for i in range(7):
+                    day_date = week_start + timedelta(days=i)
+                    day_str = day_date.strftime("%Y-%m-%d")
+                    if day_str not in daily_counts:
+                        daily_counts[day_str] = 0
+
+            # Sort dates and get values
+            sorted_dates = sorted(daily_counts.keys())
+            chart_data = {
+                "dates": sorted_dates,
+                "counts": [daily_counts[d] for d in sorted_dates]
+            }
+
+            # Calculate peak and average
+            peak_count = max(daily_counts.values()) if daily_counts else 0
+            average_count = (
+                sum(daily_counts.values()) / len(daily_counts)
+                if daily_counts
+                else 0
+            )
 
         return {
             "total": total_appointments,

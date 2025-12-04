@@ -121,6 +121,11 @@ class Database:
             await cls.database.patient_vitals.create_index("patientId")
             await cls.database.patient_vitals.create_index("recordedBy")
             await cls.database.patient_vitals.create_index([("recordedAt", -1)])  # For chronological queries
+
+            # Patient history collection indexes
+            await cls.database.patient_history.create_index("patientMongoId")
+            await cls.database.patient_history.create_index("patientId")
+            await cls.database.patient_history.create_index([("validFrom", -1)])
             
             # Users collection additional indexes
             await cls.database.users.create_index("clinicId")  # For clinic-based user queries

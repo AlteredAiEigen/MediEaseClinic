@@ -101,7 +101,7 @@ def normalize_appointment_type(raw_type: str) -> str:
 @router.get("/billing-items", response_model=dict)
 async def list_billing_items(
     category: Optional[str] = Query(None),
-    current_user: dict = Depends(require_roles(["admin"])),
+    current_user: dict = Depends(require_roles(["admin", "doctor", "receptionist"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """List all billing/pricing items (optionally filtered by category)."""
@@ -423,7 +423,7 @@ async def get_dashboard_stats(
 
         week_appointments = await (
             get_appointments_collection(db)
-            .find(week_appointments_query, {"type": 1})
+            .find(week_appointments_query, {"type": 1, "doctorId": 1, "bookingKind": 1})
             .to_list(length=None)
         )
 
@@ -433,7 +433,20 @@ async def get_dashboard_stats(
             "emergency": 0,
             "checkup": 0,
         }
+        lab_test_count = 0
         for apt in week_appointments:
+            # Check if this is a lab test (no doctorId or bookingKind is "lab-test")
+            is_lab_test = (
+                not apt.get("doctorId") or 
+                apt.get("bookingKind") == "lab-test" or
+                str(apt.get("bookingKind", "")).lower() == "lab-test"
+            )
+            
+            if is_lab_test:
+                lab_test_count += 1
+                continue
+            
+            # Otherwise, categorize by appointment type
             raw_type = (apt.get("type") or "").strip().lower()
             if raw_type in ["consultation", "consultations"]:
                 type_stats["consultation"] += 1
@@ -461,6 +474,7 @@ async def get_dashboard_stats(
                 "patientMessagesThisWeek": patient_messages_this_week,
                 "pendingFollowUps": pending_follow_ups,
                 "appointmentTypeStats": type_stats,
+                "labTestCount": lab_test_count,
                 "recentActivity": recent_activity
             },
             message="Dashboard statistics retrieved successfully"

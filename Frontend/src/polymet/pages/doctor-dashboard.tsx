@@ -212,7 +212,7 @@ export function DoctorDashboard() {
           performanceResponse,
         ] = await Promise.all([
           get<{ queue: QueueEntry[] }>(`/api/queue/doctor/${user._id}`),
-          get(`/api/appointments?date=${today}&limit=100`),
+          get(`/api/appointments?doctorId=${user._id}&date=${today}&limit=100`),
           get<{
             totalPatients: number;
             todayAppointments: number;
@@ -276,8 +276,11 @@ export function DoctorDashboard() {
             const status = (apt.status || "").toLowerCase();
             const isToday = aptDate === today;
             const isScheduled = status === "scheduled";
+            const isNotCancelled = status !== "cancelled";
+            // Only show appointments for this doctor (exclude lab tests which don't have doctorId)
+            const isForThisDoctor = apt.doctorId === user._id;
 
-            return isToday && isScheduled;
+            return isToday && isScheduled && isNotCancelled && isForThisDoctor;
           });
 
           activeAppointments.sort((a, b) => {

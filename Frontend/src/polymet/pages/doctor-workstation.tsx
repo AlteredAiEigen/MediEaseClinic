@@ -297,10 +297,12 @@ export function DoctorWorkstation() {
               // Exclude if:
               // 1. Not today's date
               // 2. Status is not "scheduled" (e.g., checked-in, completed, cancelled, in-progress)
-              // 3. Appointment is already in the queue (by appointment ID - primary check)
-              // 4. Patient is already in the queue (by patient ID - fallback check)
+              // 3. Appointment is cancelled
+              // 4. Appointment is already in the queue (by appointment ID - primary check)
+              // 5. Patient is already in the queue (by patient ID - fallback check)
               const isToday = aptDate === today;
               const isScheduled = status === "scheduled";
+              const isNotCancelled = status !== "cancelled";
               const notInQueueByAppointmentId = !queueAppointmentIds.has(appointmentId);
               const notInQueueByPatientId = !queuePatientIds.has(patientId);
               const notCheckedIn = status !== "checked-in" && status !== "in-progress";
@@ -309,6 +311,7 @@ export function DoctorWorkstation() {
               return (
                 isToday &&
                 isScheduled &&
+                isNotCancelled &&
                 notCheckedIn &&
                 notInQueueByAppointmentId &&
                 notInQueueByPatientId

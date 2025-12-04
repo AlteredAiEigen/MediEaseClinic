@@ -34,7 +34,6 @@ export function RegisterPatient() {
     emergencyPhone: "",
     bloodGroup: "",
     allergies: "",
-    medicalHistory: "",
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -68,7 +67,6 @@ export function RegisterPatient() {
         address: formData.address,
         bloodGroup: formData.bloodGroup || "A+", // Default to A+ if not selected
         allergies: formData.allergies || "",
-        medicalHistory: formData.medicalHistory || "",
         emergencyContact: formData.emergencyContact,
         emergencyContactPhone: formData.emergencyPhone
       };
@@ -93,7 +91,6 @@ export function RegisterPatient() {
         emergencyPhone: "",
         bloodGroup: "",
         allergies: "",
-        medicalHistory: "",
       });
 
       // Show success message

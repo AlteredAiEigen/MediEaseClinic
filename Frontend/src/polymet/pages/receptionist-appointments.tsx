@@ -34,7 +34,8 @@ import {
   AlertCircleIcon,
   CheckCircleIcon,
 } from "lucide-react";
-import { get, post, put, del } from "@/lib/api-client";
+import { get, post, put, patch } from "@/lib/api-client";
+import type { BillingItem } from "@/polymet/pages/admin-billing";
 
 // Custom hook for debounced search
 const useDebounce = (value: string, delay: number) => {
@@ -57,7 +58,7 @@ interface Appointment {
   _id: string;
   appointmentId: string;
   patientId: string;
-  doctorId: string;
+  doctorId?: string;
   date: string;
   time: string;
   type: string;
@@ -106,21 +107,26 @@ const extractList = <T,>(rawData: any): T[] => {
   return [];
 };
 
-const formatAppointmentTime = (date?: string, time?: string) => {
-  if (!time) return "—";
+const formatAppointmentTime = (time?: string) => {
+  if (!time) return "-- --";
+
   const trimmed = time.trim();
-  if (/[AP]M$/i.test(trimmed)) {
-    return trimmed.toUpperCase();
+  if (/am|pm/i.test(trimmed)) {
+    const [timePart, period] = trimmed.split(/\s+/);
+    return `${timePart ?? trimmed}${period ? ` ${period.toUpperCase()}` : ""}`.trim();
   }
-  if (!date) return trimmed;
-  const parsed = new Date(`${date}T${trimmed}`);
-  if (Number.isNaN(parsed.getTime())) {
-    return trimmed;
-  }
-  return parsed.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+
+  const [rawHours, rawMinutes = "00"] = trimmed.split(":");
+  const hoursNum = Number(rawHours);
+
+  if (Number.isNaN(hoursNum)) return trimmed;
+
+  const period = hoursNum >= 12 ? "PM" : "AM";
+  const normalizedHours = hoursNum % 12 || 12;
+  const hoursText = normalizedHours.toString().padStart(2, "0");
+  const minutesText = rawMinutes.padStart(2, "0");
+
+  return `${hoursText}:${minutesText} ${period}`;
 };
 
 const normalizeDate = (value?: string) => {
@@ -166,6 +172,43 @@ const formatLabel = (value?: string) => {
     .join(" ");
 };
 
+// Helper function to check if appointment date is in the past
+const isPastAppointment = (appointmentDate: string): boolean => {
+  if (!appointmentDate || typeof appointmentDate !== 'string') return false;
+  try {
+    // Get today's date in YYYY-MM-DD format (local timezone)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to midnight for accurate comparison
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+    
+    // Normalize appointment date to YYYY-MM-DD format (in case it has time component)
+    let aptDateStr = appointmentDate.trim();
+    // Remove time component if present (handles both ISO format and space-separated)
+    aptDateStr = aptDateStr.split('T')[0].split(' ')[0];
+    
+    // Validate format (should be YYYY-MM-DD)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(aptDateStr)) {
+      // Try to parse as Date and reformat
+      const parsedDate = new Date(appointmentDate);
+      if (isNaN(parsedDate.getTime())) return false;
+      const aptYear = parsedDate.getFullYear();
+      const aptMonth = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const aptDay = String(parsedDate.getDate()).padStart(2, '0');
+      aptDateStr = `${aptYear}-${aptMonth}-${aptDay}`;
+    }
+    
+    // Compare as strings (YYYY-MM-DD format) to avoid timezone issues
+    const isPast = aptDateStr < todayStr;
+    return isPast;
+  } catch (error) {
+    console.warn('Error checking if appointment is past:', error, appointmentDate);
+    return false;
+  }
+};
+
 export function ReceptionistAppointments() {
   const [searchParams, setSearchParams] = useSearchParams();
   const patientIdFromUrl = searchParams.get("patientId");
@@ -180,8 +223,13 @@ export function ReceptionistAppointments() {
   const [selectedPatient, setSelectedPatient] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
+  const [bookingKind, setBookingKind] = useState<"doctor" | "lab-test">("doctor");
   const [appointmentType, setAppointmentType] = useState("consultation");
   const [appointmentReason, setAppointmentReason] = useState("");
+  const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
+  const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
@@ -264,10 +312,22 @@ export function ReceptionistAppointments() {
     [todayAppointments, activeStatuses]
   );
 
-  // Fetch patients and doctors on initial mount
+  // Derived billing-based options
+  const appointmentPricingItems = useMemo(
+    () => billingItems.filter((item) => item.category === "appointmentType" && item.isActive),
+    [billingItems]
+  );
+
+  const labTestPricingItems = useMemo(
+    () => billingItems.filter((item) => item.category === "test" && item.isActive),
+    [billingItems]
+  );
+
+  // Fetch patients, doctors, and billing items on initial mount
   useEffect(() => {
     fetchPatients();
     fetchDoctors();
+    fetchBillingItems();
   }, []);
 
   useEffect(() => {
@@ -284,7 +344,13 @@ export function ReceptionistAppointments() {
       setError(null);
       const response = await get(`/api/appointments?date=${selectedDate}&limit=100`);
       if (response.success) {
-        const appointmentsData = extractList<Appointment>(response.data);
+        const appointmentsData = extractList<Appointment>(response.data).map((apt) => {
+          if (apt.type) return apt;
+          return {
+            ...apt,
+            type: apt.doctorId ? "Doctor Appointment" : "Lab Test",
+          };
+        });
         setAppointments(appointmentsData);
       } else {
         setAppointments([]);
@@ -423,6 +489,17 @@ export function ReceptionistAppointments() {
     }
   };
 
+  const fetchBillingItems = async () => {
+    try {
+      const response = await get<{ items: BillingItem[] }>("/api/admin/billing-items");
+      if (response.success && response.data?.items) {
+        setBillingItems(response.data.items);
+      }
+    } catch (err) {
+      console.error("Failed to load billing items:", err);
+    }
+  };
+
   const filteredAppointments =
     statusFilter === "all"
       ? todayAppointments
@@ -475,51 +552,93 @@ export function ReceptionistAppointments() {
     hasAppointment: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-semibold",
   };
 
-  const getStatusColor = (status: string) => {
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case "scheduled":
-        return "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
+        return "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400";
+      case "checked-in":
+        return "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-400";
+      case "ongoing":
+        return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400";
       case "in-progress":
-        return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
+        return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400";
+      case "checkout":
+        return "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400";
       case "completed":
-        return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
+        return "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400";
       case "cancelled":
-        return "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+        return "bg-red-100 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400";
+      case "no-show":
+        return "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400";
       default:
-        return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
+        return "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400";
     }
   };
 
-  const handleCreateAppointment = async () => {
-    if (!selectedPatient || !selectedDoctor || !appointmentTime) {
+  const handleCreateOrUpdateAppointment = async () => {
+    if (!selectedPatient || !appointmentTime) {
+      setError("Please fill in all required fields");
+      return;
+    }
+
+    if (bookingKind === "doctor" && !selectedDoctor) {
+      setError("Please select a doctor for this appointment");
       return;
     }
 
     try {
       setIsCreating(true);
-      const response = await post("/api/appointments", {
+      setError(null);
+
+      const payload: Record<string, unknown> = {
         patientId: selectedPatient,
-        doctorId: selectedDoctor,
         date: selectedDate,
         time: appointmentTime,
         type: appointmentType,
-        reason: appointmentReason,
-        status: "scheduled",
-      });
+        reason:
+          bookingKind === "doctor"
+            ? appointmentPricingItems.find((i) => i.key === appointmentType)?.label ||
+              "Doctor appointment"
+            : labTestPricingItems.find((i) => i.key === appointmentType)?.label ||
+              "Lab test appointment",
+        notes: appointmentReason || "",
+        bookingKind: bookingKind,
+      };
+
+      // Only send doctorId when booking a doctor appointment
+      if (bookingKind === "doctor" && selectedDoctor) {
+        payload.doctorId = selectedDoctor;
+      }
+
+      let response;
+      if (editingAppointment) {
+        // Update existing appointment
+        response = await put(`/api/appointments/${editingAppointment._id}`, payload);
+      } else {
+        // Create new appointment
+        response = await post("/api/appointments", payload);
+      }
 
       if (response.success) {
         setIsNewAppointmentOpen(false);
+        setEditingAppointment(null);
         // Reset form
         setSelectedPatient("");
         setSelectedDoctor("");
         setAppointmentTime("");
+        setBookingKind("doctor");
         setAppointmentType("consultation");
         setAppointmentReason("");
         setSearchQuery("");
         // Refresh appointments
         fetchAppointments();
+        fetchAllAppointmentsForMonth();
+      } else {
+        setError(response.message ?? "Failed to create appointment");
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create appointment";
+      setError(message);
       console.error("Failed to create appointment:", err);
     } finally {
       setIsCreating(false);
@@ -542,27 +661,47 @@ export function ReceptionistAppointments() {
     }
   };
 
-  const handleCancelAppointment = async (appointmentId: string) => {
-    if (!confirm("Are you sure you want to cancel this appointment?")) {
-      return;
-    }
+  const handleCancelAppointment = async () => {
+    if (!appointmentToCancel) return;
 
     try {
-      const response = await del(`/api/appointments/${appointmentId}`);
-
-      if (response.success) {
-        alert("Appointment cancelled successfully");
+      const response = await patch<{ appointment: Appointment }>(
+        `/api/appointments/${appointmentToCancel._id}/status`,
+        { status: "cancelled" }
+      );
+      if (response.success && response.data?.appointment) {
+        setCancelDialogOpen(false);
+        setAppointmentToCancel(null);
         fetchAppointments();
         fetchAllAppointmentsForMonth();
       } else {
-        alert(response.message || "Failed to cancel appointment");
+        setError(response.message ?? "Failed to cancel appointment");
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to cancel appointment";
-      alert(message);
       console.error("Failed to cancel appointment:", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to cancel appointment"
+      );
     }
   };
+
+  const formatAppointmentDate = (dateStr?: string) => {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
 
   const handleRescheduleClick = (appointment: Appointment) => {
     setRescheduleAppointment(appointment);
@@ -727,19 +866,63 @@ export function ReceptionistAppointments() {
                   onOpenChange={setIsNewAppointmentOpen}
                 >
                   <DialogTrigger asChild>
-                    <Button className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-md">
+                    <Button 
+                      className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-md"
+                      onClick={() => {
+                        setEditingAppointment(null);
+                        setSelectedPatient("");
+                        setSelectedDoctor("");
+                        setAppointmentTime("");
+                        setBookingKind("doctor");
+                        setAppointmentType("");
+                        setAppointmentReason("");
+                        setSearchQuery("");
+                        setError(null);
+                      }}
+                    >
                       <PlusIcon className="w-4 h-4 mr-2" />
                       New Appointment
                     </Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                      <DialogTitle>Schedule New Appointment</DialogTitle>
+                      <DialogTitle>
+                        {editingAppointment ? "Edit Appointment" : "Schedule New Appointment"}
+                      </DialogTitle>
                       <DialogDescription>
-                        Search for a patient and schedule their appointment
+                        {editingAppointment 
+                          ? "Update appointment details"
+                          : "Search for a patient and schedule their appointment"}
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
+                      {error && (
+                        <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
+                          {error}
+                        </div>
+                      )}
+                      
+                      {/* Booking For */}
+                      <div className="space-y-2">
+                        <Label htmlFor="booking-for">Booking For</Label>
+                        <Select
+                          value={bookingKind}
+                          onValueChange={(value: "doctor" | "lab-test") => {
+                            setBookingKind(value);
+                            setSelectedDoctor("");
+                            setAppointmentType("");
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select booking type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="doctor">Doctor Appointment</SelectItem>
+                            <SelectItem value="lab-test">Lab Test Appointment</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
                       {/* Patient Search */}
                       <div className="space-y-2">
                         <Label htmlFor="patient-search">Search Patient</Label>
@@ -825,22 +1008,24 @@ export function ReceptionistAppointments() {
                         );
                       })()}
 
-                      {/* Doctor Selection */}
-                      <div className="space-y-2">
-                        <Label htmlFor="doctor-select">Select Doctor</Label>
-                        <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a doctor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {doctors.map((doctor) => (
-                              <SelectItem key={doctor._id} value={doctor._id}>
-                                {doctor.fullName || `${doctor.firstName} ${doctor.lastName}`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {/* Doctor Selection - Only for doctor appointments */}
+                      {bookingKind === "doctor" && (
+                        <div className="space-y-2">
+                          <Label htmlFor="doctor-select">Select Doctor</Label>
+                          <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a doctor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {doctors.map((doctor) => (
+                                <SelectItem key={doctor._id} value={doctor._id}>
+                                  {doctor.fullName || `${doctor.firstName} ${doctor.lastName}`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
                       {/* Appointment Details */}
                       <div className="space-y-2">
@@ -855,22 +1040,27 @@ export function ReceptionistAppointments() {
 
                       <div className="space-y-2">
                         <Label htmlFor="appointment-type">
-                          Appointment Type
+                          {bookingKind === "doctor" ? "Appointment Type" : "Lab Test Type"}
                         </Label>
                         <Select
                           value={appointmentType}
                           onValueChange={setAppointmentType}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select type" />
+                            <SelectValue placeholder={`Select ${bookingKind === "doctor" ? "appointment type" : "lab test"}`} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="consultation">
-                              Consultation
-                            </SelectItem>
-                            <SelectItem value="follow-up">Follow-up</SelectItem>
-                            <SelectItem value="checkup">Checkup</SelectItem>
-                            <SelectItem value="emergency">Emergency</SelectItem>
+                            {bookingKind === "doctor"
+                              ? appointmentPricingItems.map((item) => (
+                                  <SelectItem key={item._id} value={item.key}>
+                                    {item.label}
+                                  </SelectItem>
+                                ))
+                              : labTestPricingItems.map((item) => (
+                                  <SelectItem key={item._id} value={item.key}>
+                                    {item.label}
+                                  </SelectItem>
+                                ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -896,10 +1086,10 @@ export function ReceptionistAppointments() {
                         </Button>
                         <Button
                           className="flex-1 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white"
-                          onClick={handleCreateAppointment}
+                          onClick={handleCreateOrUpdateAppointment}
                           disabled={
                             !selectedPatient ||
-                            !selectedDoctor ||
+                            (bookingKind === "doctor" && !selectedDoctor) ||
                             !appointmentTime ||
                             !appointmentType ||
                             isCreating
@@ -908,10 +1098,10 @@ export function ReceptionistAppointments() {
                           {isCreating ? (
                             <>
                               <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
-                              Scheduling...
+                              {editingAppointment ? "Updating..." : "Scheduling..."}
                             </>
                           ) : (
-                            "Schedule Appointment"
+                            editingAppointment ? "Update Appointment" : "Schedule Appointment"
                           )}
                         </Button>
                       </div>
@@ -947,73 +1137,100 @@ export function ReceptionistAppointments() {
                     .join(" ")
                     .trim() ||
                   "Doctor not assigned";
-                const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
+                const formattedTime = formatAppointmentTime(appointment.time);
 
                 return (
                   <div
                     key={appointment.id}
-                    className="flex flex-col gap-4 rounded-2xl border border-border bg-white/80 p-4 shadow-sm transition-all duration-200 hover:shadow-md dark:bg-slate-900/80"
+                    className="flex items-center gap-4 p-4 rounded-xl border border-border hover:shadow-md transition-all duration-200 bg-card"
                   >
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                      <div className="flex items-start gap-4">
-                        <Avatar className="w-12 h-12 border border-border shadow-sm">
-                          <AvatarImage
-                            src={appointment.avatar}
-                            alt={appointment.patientName}
-                          />
-                          <AvatarFallback className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                            <UserIcon className="w-5 h-5" />
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="space-y-1">
+                    <Avatar className="w-12 h-12 border-2 border-[#00C4B3]/20">
+                      <AvatarImage
+                        src={appointment.avatar}
+                        alt={appointment.patientName}
+                      />
+                      <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
+                        {(appointment.patientName || "U")
+                          .split(" ")
+                          .map((n: string) => n[0])
+                          .join("")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div>
                           <h4 className="font-semibold text-foreground">
-                            {appointment.patientName}
+                            {appointment.patientName || "Unknown Patient"}
                           </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {appointment.reason || "General consultation"}
+                          <p className="text-sm text-muted-foreground truncate">
+                            ID: {appointment.appointmentId}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            Doctor: {doctorName}
-                            {appointment.type
-                              ? ` • ${formatLabel(appointment.type)}`
-                              : ""}
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge className={appointment.doctorId ? "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400" : "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-950/30 dark:text-teal-400"}>
+                              {appointment.doctorId ? "Doctor Appointment" : "Lab Test"}
+                            </Badge>
+                            <Badge className={getStatusBadge(appointment.status)}>
+                              {appointment.status?.replace("-", " ") || "scheduled"}
+                            </Badge>
+                          </div>
+                          {(appointment.reason || appointment.notes) && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Notes: {appointment.reason || appointment.notes}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-2 text-right">
+                          <p className="text-lg font-semibold text-foreground">
+                            {formattedTime}
                           </p>
+                          {appointment.doctorId && (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <UserIcon className="w-4 h-4" />
+                              <span>{doctorName}</span>
+                            </div>
+                          )}
+                          {!isPastAppointment(appointment.date) && (
+                            <div className="flex items-center gap-2 mt-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() => {
+                                  setEditingAppointment(appointment);
+                                  setSelectedPatient(appointment.patientId);
+                                  setSelectedDoctor(appointment.doctorId || "");
+                                  setAppointmentTime(appointment.time);
+                                  setBookingKind(appointment.doctorId ? "doctor" : "lab-test");
+                                  setAppointmentType(appointment.type);
+                                  setAppointmentReason(appointment.notes || appointment.reason || "");
+                                  setIsNewAppointmentOpen(true);
+                                }}
+                                disabled={
+                                  appointment.status === "cancelled" || appointment.status === "completed"
+                                }
+                              >
+                                Edit
+                              </Button>
+                              {appointment.status !== "cancelled" && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs text-red-600 border-red-200 hover:bg-red-50"
+                                  onClick={() => {
+                                    setAppointmentToCancel(appointment);
+                                    setCancelDialogOpen(true);
+                                  }}
+                                  disabled={
+                                    appointment.status === "cancelled" || appointment.status === "completed"
+                                  }
+                                >
+                                  Cancel
+                                </Button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex flex-col items-start gap-2 md:items-end">
-                        <span className="text-sm font-semibold text-foreground">
-                          {formattedTime}
-                        </span>
-                        <Badge className={`${getStatusColor(appointment.status)} capitalize`}>
-                          {appointment.status?.replace("-", " ") || "scheduled"}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-border hover:bg-teal-50 dark:hover:bg-teal-950/20"
-                        onClick={() => handleRescheduleClick(appointment)}
-                        disabled={
-                          appointment.status === "cancelled" || appointment.status === "completed"
-                        }
-                      >
-                        Reschedule
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/20"
-                        onClick={() =>
-                          handleCancelAppointment(appointment._id || appointment.appointmentId)
-                        }
-                        disabled={
-                          appointment.status === "cancelled" || appointment.status === "completed"
-                        }
-                      >
-                        Cancel
-                      </Button>
                     </div>
                   </div>
                 );
@@ -1092,6 +1309,78 @@ export function ReceptionistAppointments() {
               ) : (
                 "Reschedule Appointment"
               )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Appointment Confirmation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Cancel Appointment</DialogTitle>
+            <DialogDescription>
+              {appointmentToCancel && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Are you sure you want to cancel the appointment scheduled for{" "}
+                    <span className="font-semibold text-foreground">
+                      {formatAppointmentDate(appointmentToCancel.date)} at{" "}
+                      {formatAppointmentTime(appointmentToCancel.time)}
+                    </span>{" "}
+                    for patient{" "}
+                    <span className="font-semibold text-foreground">
+                      {appointmentToCancel.patientName || "Unknown Patient"}
+                    </span>
+                    ?
+                  </p>
+                  <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Patient:</span>
+                      <span className="font-medium">
+                        {appointmentToCancel.patientName || "Unknown Patient"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span className="font-medium">
+                        {formatAppointmentDate(appointmentToCancel.date)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Time:</span>
+                      <span className="font-medium">
+                        {formatAppointmentTime(appointmentToCancel.time)}
+                      </span>
+                    </div>
+                    {appointmentToCancel.type && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Type:</span>
+                        <span className="font-medium">{appointmentToCancel.type}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 pt-4">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setAppointmentToCancel(null);
+              }}
+            >
+              Keep Appointment
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelAppointment}
+              className="flex-1 bg-red-600 hover:bg-red-700"
+            >
+              Cancel Appointment
             </Button>
           </div>
         </DialogContent>

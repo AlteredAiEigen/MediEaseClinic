@@ -34,13 +34,9 @@ export interface PatientDetail extends PatientSummary {
   bloodGroup: string;
   dateOfBirth: string;
   address: string;
-  vitals?: Record<string, unknown>;
-  medicalHistory?: MedicalHistoryValue;
+  // Vitals and detailed medical history are handled via dedicated
+  // endpoints/collections rather than the core patient record.
   allergies?: string;
-  currentMedication?: string;
-  medicationDosage?: string;
-  medicationFrequency?: string;
-  lastMedicationReview?: string;
   lifestyle?: Record<string, unknown>;
   currentSymptoms?: string;
   painLevel?: string;
@@ -82,12 +78,7 @@ export interface PatientCreateInput {
   email: string;
   phone: string;
   address: string;
-  vitals?: Record<string, unknown>;
-  medicalHistory?: MedicalHistoryValue;
   allergies?: string;
-  currentMedication?: string;
-  medicationDosage?: string;
-  medicationFrequency?: string;
   lifestyle?: Record<string, unknown>;
   currentMedications?: MedicationEntry[];
   chiefComplaint?: string;

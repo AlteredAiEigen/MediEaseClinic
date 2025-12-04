@@ -44,7 +44,6 @@ export function AddPatientDialog({
     bloodGroup: "",
     emergencyContact: "",
     emergencyPhone: "",
-    medicalHistory: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -159,7 +158,6 @@ export function AddPatientDialog({
         email: formData.email.trim(),
         address: formData.address.trim(),
         bloodGroup: formData.bloodGroup,
-        medicalHistory: formData.medicalHistory.trim() || undefined,
         emergencyContact: formData.emergencyContact.trim() || undefined,
         emergencyContactPhone: formData.emergencyPhone.trim() || undefined,
       };
@@ -185,7 +183,6 @@ export function AddPatientDialog({
           bloodGroup: "",
           emergencyContact: "",
           emergencyPhone: "",
-          medicalHistory: "",
         });
         setErrors({});
 
@@ -231,7 +228,6 @@ export function AddPatientDialog({
         bloodGroup: "",
         emergencyContact: "",
         emergencyPhone: "",
-        medicalHistory: "",
       });
       setErrors({});
     }

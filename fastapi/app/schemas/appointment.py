@@ -10,7 +10,7 @@ from datetime import date, time
 class AppointmentCreateRequest(BaseModel):
     """Appointment creation request."""
     patientId: str
-    doctorId: str
+    doctorId: Optional[str] = None
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="Date in YYYY-MM-DD format")
     time: str = Field(..., pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", description="Time in HH:MM format")
     duration: int = Field(30, ge=15, le=480, description="Duration in minutes")

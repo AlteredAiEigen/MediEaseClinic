@@ -37,6 +37,7 @@ class PatientService:
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.patients_collection = db.patients
+        self.patient_history_collection = db.patient_history
     
     @staticmethod
     def _normalize_medical_history_payload(value) -> List[Dict[str, str]]:
@@ -505,6 +506,28 @@ class PatientService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Patient not found"
             )
+
+        # ------------------------------------------------------------------
+        # Record history: store the previous version in `patient_history`
+        # before applying any updates. This ensures `patients` only contains
+        # the latest active record, while older versions are queryable from
+        # the history table.
+        # ------------------------------------------------------------------
+        try:
+            valid_from = existing_patient.get("updatedAt") or existing_patient.get("createdAt") or datetime.utcnow()
+            history_doc = {
+                "patientMongoId": existing_patient["_id"],
+                "patientId": existing_patient.get("patientId"),
+                "snapshot": existing_patient,
+                "validFrom": valid_from,
+                "validTo": datetime.utcnow(),
+                "createdAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow(),
+            }
+            await self.patient_history_collection.insert_one(history_doc)
+        except Exception as history_err:
+            # Do not block the main update if history write fails, but log it.
+            logger.warning(f"Failed to write patient history for {patient_id}: {history_err}", exc_info=True)
 
         # Prepare update data
         update_dict = update_data.model_dump(exclude_unset=True)

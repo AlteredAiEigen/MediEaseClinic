@@ -23,7 +23,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { get } from "@/lib/api-client";
+import { get, put, patch } from "@/lib/api-client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/context/auth-context";
 import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
 import { MediEaseLoader } from "@/polymet/components/mediease-loader";
@@ -57,6 +65,56 @@ const formatDateLocal = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+// Helper to get ISO week number (1–53) for a given date
+const getISOWeekNumber = (date: Date): number => {
+  // Copy date so we don't mutate the original
+  const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  // ISO week starts on Monday (1) and ends on Sunday (7)
+  const dayNumber = tmp.getUTCDay() || 7;
+  // Set to the Thursday of this week to ensure week belongs to the correct year
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - dayNumber);
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const diffInDays = Math.floor((tmp.getTime() - yearStart.getTime()) / 86400000) + 1;
+  return Math.ceil(diffInDays / 7);
+};
+
+// Helper function to check if appointment date is in the past
+const isPastAppointment = (appointmentDate: string): boolean => {
+  if (!appointmentDate || typeof appointmentDate !== 'string') return false;
+  try {
+    // Get today's date in YYYY-MM-DD format (local timezone)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to midnight for accurate comparison
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+    
+    // Normalize appointment date to YYYY-MM-DD format (in case it has time component)
+    let aptDateStr = appointmentDate.trim();
+    // Remove time component if present (handles both ISO format and space-separated)
+    aptDateStr = aptDateStr.split('T')[0].split(' ')[0];
+    
+    // Validate format (should be YYYY-MM-DD)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(aptDateStr)) {
+      // Try to parse as Date and reformat
+      const parsedDate = new Date(appointmentDate);
+      if (isNaN(parsedDate.getTime())) return false;
+      const aptYear = parsedDate.getFullYear();
+      const aptMonth = String(parsedDate.getMonth() + 1).padStart(2, '0');
+      const aptDay = String(parsedDate.getDate()).padStart(2, '0');
+      aptDateStr = `${aptYear}-${aptMonth}-${aptDay}`;
+    }
+    
+    // Compare as strings (YYYY-MM-DD format) to avoid timezone issues
+    const isPast = aptDateStr < todayStr;
+    return isPast;
+  } catch (error) {
+    console.warn('Error checking if appointment is past:', error, appointmentDate);
+    return false;
+  }
+};
+
 export function DoctorAppointments() {
   const { user } = useAuth();
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -65,6 +123,10 @@ export function DoctorAppointments() {
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingAppointment, setEditingAppointment] = useState<any>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [appointmentToCancel, setAppointmentToCancel] = useState<any>(null);
+  const currentWeekNumber = useMemo(() => getISOWeekNumber(new Date()), []);
 
   // WebSocket for real-time appointment updates
   const { lastMessage, isConnected } = useDoctorQueueWebSocket(user?._id || "");
@@ -89,6 +151,7 @@ export function DoctorAppointments() {
               ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
               : undefined,
             reason: apt.reason || "General Consultation",
+            type: apt.type || (apt.doctorId ? "Doctor Appointment" : "Lab Test"),
           }));
           setAppointments(mappedAppointments);
         }
@@ -123,6 +186,7 @@ export function DoctorAppointments() {
                 ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
                 : undefined,
               reason: apt.reason || "General Consultation",
+              type: apt.type || (apt.doctorId ? "Doctor Appointment" : "Lab Test"),
             }));
             setAppointments(mappedAppointments);
           }
@@ -175,7 +239,10 @@ export function DoctorAppointments() {
   };
 
   const getTypeColor = (type: string) => {
-    switch (type) {
+    if (type?.toLowerCase().includes("lab test")) {
+      return "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400";
+    }
+    switch (type?.toLowerCase()) {
       case "consultation":
         return "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400";
       case "follow-up":
@@ -186,6 +253,57 @@ export function DoctorAppointments() {
         return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
       default:
         return "bg-gray-100 dark:bg-gray-900/30 text-gray-700 dark:text-gray-400";
+    }
+  };
+
+  const handleCancelAppointment = async () => {
+    if (!appointmentToCancel) return;
+
+    try {
+      const response = await patch<{ appointment: any }>(
+        `/api/appointments/${appointmentToCancel._id || appointmentToCancel.id}/status`,
+        { status: "cancelled" }
+      );
+      if (response.success && response.data?.appointment) {
+        setCancelDialogOpen(false);
+        setAppointmentToCancel(null);
+        // Refresh appointments
+        const selectedDate = date ? formatDateLocal(date) : formatDateLocal(new Date());
+        const url = `/api/appointments?doctorId=${user?._id}&date=${selectedDate}&limit=100`;
+        const refreshResponse = await get(url);
+        if (refreshResponse.success) {
+          const rawAppointments = extractList<any>(refreshResponse.data);
+          const mappedAppointments = rawAppointments.map((apt: any) => ({
+            ...apt,
+            id: apt._id || apt.appointmentId,
+            avatar: apt.patientName
+              ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
+              : undefined,
+            reason: apt.reason || "General Consultation",
+            type: apt.type || (apt.doctorId ? "Doctor Appointment" : "Lab Test"),
+          }));
+          setAppointments(mappedAppointments);
+        }
+      } else {
+        console.error("Failed to cancel appointment:", response.message);
+      }
+    } catch (err) {
+      console.error("Failed to cancel appointment:", err);
+    }
+  };
+
+  const formatAppointmentDate = (dateStr?: string) => {
+    if (!dateStr) return "";
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
     }
   };
 
@@ -209,10 +327,6 @@ export function DoctorAppointments() {
     const minutesText = rawMinutes.padStart(2, "0");
 
     return `${hoursText}:${minutesText} ${period}`;
-  };
-
-  const formatAppointmentDate = (date: Date | undefined) => {
-    return date?.toLocaleDateString() ?? "";
   };
 
   if (isLoading) {
@@ -290,8 +404,105 @@ export function DoctorAppointments() {
       {/* New Appointment Dialog */}
       <NewAppointmentDialog
         open={newAppointmentOpen}
-        onOpenChange={setNewAppointmentOpen}
+        onOpenChange={(open) => {
+          setNewAppointmentOpen(open);
+          if (!open) {
+            setEditingAppointment(null);
+          }
+        }}
+        editingAppointment={editingAppointment}
+        onAppointmentUpdated={() => {
+          // Refresh appointments
+          const selectedDate = date ? formatDateLocal(date) : formatDateLocal(new Date());
+          const url = `/api/appointments?doctorId=${user?._id}&date=${selectedDate}&limit=100`;
+          get(url).then((response) => {
+            if (response.success) {
+              const rawAppointments = extractList<any>(response.data);
+              const mappedAppointments = rawAppointments.map((apt: any) => ({
+                ...apt,
+                id: apt._id || apt.appointmentId,
+                avatar: apt.patientName
+                  ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
+                  : undefined,
+                reason: apt.reason || "General Consultation",
+                type: apt.type || (apt.doctorId ? "Doctor Appointment" : "Lab Test"),
+              }));
+              setAppointments(mappedAppointments);
+            }
+          });
+        }}
       />
+
+      {/* Cancel Appointment Confirmation Dialog */}
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Cancel Appointment</DialogTitle>
+            <DialogDescription>
+              {appointmentToCancel && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Are you sure you want to cancel the appointment scheduled for{" "}
+                    <span className="font-semibold text-foreground">
+                      {formatAppointmentDate(appointmentToCancel.date)} at{" "}
+                      {formatAppointmentTime(appointmentToCancel.time)}
+                    </span>{" "}
+                    for patient{" "}
+                    <span className="font-semibold text-foreground">
+                      {appointmentToCancel.patientName || "Unknown Patient"}
+                    </span>
+                    ?
+                  </p>
+                  <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Patient:</span>
+                      <span className="font-medium">
+                        {appointmentToCancel.patientName || "Unknown Patient"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span className="font-medium">
+                        {formatAppointmentDate(appointmentToCancel.date)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Time:</span>
+                      <span className="font-medium">
+                        {formatAppointmentTime(appointmentToCancel.time)}
+                      </span>
+                    </div>
+                    {appointmentToCancel.type && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Type:</span>
+                        <span className="font-medium">{appointmentToCancel.type}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelDialogOpen(false);
+                setAppointmentToCancel(null);
+              }}
+            >
+              Keep Appointment
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelAppointment}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Cancel Appointment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -366,7 +577,9 @@ export function DoctorAppointments() {
                 <p className="text-sm font-medium text-muted-foreground">
                   This Week
                 </p>
-                <h3 className="text-3xl font-bold text-foreground mt-2">42</h3>
+                <h3 className="text-3xl font-bold text-foreground mt-2">
+                  {currentWeekNumber}
+                </h3>
               </div>
               <div className="w-12 h-12 rounded-xl bg-purple-500 flex items-center justify-center">
                 <CalendarIcon className="w-6 h-6 text-white" />
@@ -458,7 +671,7 @@ export function DoctorAppointments() {
                             {appointment.patientName}
                           </h4>
                           <p className="text-sm text-muted-foreground truncate">
-                            {appointment.reason}
+                            ID: {appointment.appointmentId}
                           </p>
                           <div className="flex items-center gap-2 mt-2">
                             <Badge className={getTypeColor(appointment.type)}>
@@ -468,6 +681,11 @@ export function DoctorAppointments() {
                               {appointment.status}
                             </Badge>
                           </div>
+                          {(appointment.reason || appointment.notes) && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Notes: {appointment.reason || appointment.notes}
+                            </p>
+                          )}
                         </div>
 
                         <div className="text-right">
@@ -501,6 +719,32 @@ export function DoctorAppointments() {
                           <ArrowRightIcon className="w-4 h-4" />
                           Continue
                         </Button>
+                      )}
+
+                      {!isPastAppointment(appointment.date) && appointment.status !== "cancelled" && appointment.status !== "completed" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingAppointment(appointment);
+                              setNewAppointmentOpen(true);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => {
+                              setAppointmentToCancel(appointment);
+                              setCancelDialogOpen(true);
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                        </>
                       )}
 
                       <Button
