@@ -58,6 +58,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { LabReportViewerDialog, LabReportData } from "@/polymet/components/lab-report-viewer-dialog";
+import { S3ReportViewerDialog } from "@/polymet/components/s3-report-viewer-dialog";
 import { get } from "@/lib/api-client";
 import {
   updatePatient,
@@ -205,6 +206,19 @@ interface ClinicalNote {
   followUp?: string;
   createdAt: string;
   doctorName?: string;
+}
+
+interface S3Report {
+  _id: string;
+  patientId: string;
+  patientMongoId: string;
+  patientEmail: string;
+  documentName: string;
+  s3Key: string;
+  s3Url: string;
+  presignedUrl?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface Appointment {
@@ -367,6 +381,7 @@ export function PatientOverview() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [vitals, setVitals] = useState<PatientVitals[]>([]);
   const [labReports, setLabReports] = useState<LabReport[]>([]);
+  const [s3Reports, setS3Reports] = useState<S3Report[]>([]);
   const [clinicalNotes, setClinicalNotes] = useState<ClinicalNote[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -435,6 +450,9 @@ export function PatientOverview() {
   // Lab report viewer state
   const [labReportViewerOpen, setLabReportViewerOpen] = useState(false);
   const [selectedLabReport, setSelectedLabReport] = useState<LabReportData | null>(null);
+  // S3 report viewer state
+  const [s3ReportViewerOpen, setS3ReportViewerOpen] = useState(false);
+  const [selectedS3Report, setSelectedS3Report] = useState<S3Report | null>(null);
   const [insuranceRecords, setInsuranceRecords] = useState<PatientInsuranceRecord[]>([]);
   const [selectedInsuranceId, setSelectedInsuranceId] = useState<string | null>(null);
   const [isInsuranceDialogOpen, setIsInsuranceDialogOpen] = useState(false);
@@ -955,6 +973,34 @@ export function PatientOverview() {
           }
         } catch (labError) {
           console.warn('Failed to fetch lab reports:', labError);
+          // Continue execution
+        }
+
+        // Fetch S3 reports - wrapped in try-catch
+        try {
+          // Use patient MongoDB ObjectId if available, otherwise use patientId
+          const targetPatientId = patientData?._id || patientId;
+          if (targetPatientId) {
+            const s3ReportsResponse = await get<{ reports: S3Report[]; count: number }>(
+              `/api/s3-reports/patient/${targetPatientId}`
+            );
+            if (s3ReportsResponse.success && s3ReportsResponse.data?.reports) {
+              // Sort by date descending and take top 5
+              const sortedReports = s3ReportsResponse.data.reports
+                .sort((a, b) => {
+                  const dateA = new Date(a.createdAt).getTime();
+                  const dateB = new Date(b.createdAt).getTime();
+                  return dateB - dateA; // Descending order
+                })
+                .slice(0, 5); // Take only 5 most recent
+              setS3Reports(sortedReports);
+              if (sortedReports.length > 0) {
+                setHasAnyData(true);
+              }
+            }
+          }
+        } catch (s3Error) {
+          console.warn('Failed to fetch S3 reports:', s3Error);
           // Continue execution
         }
 
@@ -2160,6 +2206,11 @@ export function PatientOverview() {
     setLabReportViewerOpen(true);
   };
 
+  const handleViewS3Report = (report: S3Report) => {
+    setSelectedS3Report(report);
+    setS3ReportViewerOpen(true);
+  };
+
   const displayPatient: Patient = patient ?? {
     _id: patientId ?? "",
     patientId: patientId ?? "",
@@ -2861,6 +2912,14 @@ export function PatientOverview() {
         open={labReportViewerOpen}
         onOpenChange={setLabReportViewerOpen}
         reportData={selectedLabReport}
+      />
+
+      {/* S3 Report Viewer Dialog */}
+      <S3ReportViewerDialog
+        open={s3ReportViewerOpen}
+        onOpenChange={setS3ReportViewerOpen}
+        report={selectedS3Report}
+        patient={patient}
       />
 
 
@@ -4806,7 +4865,7 @@ export function PatientOverview() {
               </Button>
             </CardHeader>
             <CardContent>
-              {labReports.length === 0 ? (
+              {labReports.length === 0 && s3Reports.length === 0 ? (
                 <div className="text-center py-10">
                   <FlaskConicalIcon className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">
@@ -4814,83 +4873,122 @@ export function PatientOverview() {
                   </p>
                 </div>
               ) : (
-                <Accordion type="multiple" className="space-y-4">
-                  {groupedLabReports.map((group) => (
-                    <AccordionItem
-                      key={group.label}
-                      value={group.label}
-                      className="rounded-2xl border border-border bg-card/60 px-4"
-                    >
-                      <AccordionTrigger className="px-0 hover:no-underline">
-                        <div className="flex w-full items-center justify-between gap-4">
-                          <div className="flex items-center gap-4">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00C4B3]/10 text-[#00C4B3]">
-                              <FlaskConicalIcon className="w-5 h-5" />
-                            </div>
-                        <div>
-                          <p className="text-base font-semibold text-foreground">
-                            {group.label}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                                {group.reports.length}{" "}
-                                {group.reports.length === 1 ? "report" : "reports"} ·{" "}
-                                {group.totalTests} {group.totalTests === 1 ? "test" : "tests"}
-                          </p>
-                        </div>
+                <div className="space-y-4">
+                  {/* S3 Reports Section */}
+                  {s3Reports.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-semibold text-foreground mb-3">Uploaded Reports</h4>
+                      {s3Reports.map((report) => (
+                        <div
+                          key={report._id}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              {report.documentName}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {new Date(report.createdAt).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </p>
                           </div>
-                          <div className="flex items-center gap-2">
-                            {group.abnormalTests > 0 ? (
-                            <Badge className="bg-red-100 text-red-700 border-red-200">
-                              {group.abnormalTests} abnormal
-                            </Badge>
-                            ) : (
-                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">
-                                All normal
-                              </Badge>
-                          )}
-                        </div>
-                      </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-0">
-                        <div className="space-y-2">
-                        {group.reports.map((report) => (
-                          <div
-                            key={report._id}
-                              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                            onClick={() => handleViewS3Report(report)}
                           >
-                              <div>
-                                <p className="text-sm font-semibold text-foreground">
-                                  {report.reportType}
-                                </p>
-                                {report.notes && (
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    <span className="font-medium text-foreground">
-                                      {report.orderedBy || report.reviewedBy || report.doctorId || "Doctor"}:
-                                    </span>{" "}
-                                    {report.notes}
+                            <FileTextIcon className="w-4 h-4 mr-2" />
+                            View Report
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Regular Lab Reports Section */}
+                  {labReports.length > 0 && (
+                    <Accordion type="multiple" className="space-y-4">
+                      {groupedLabReports.map((group) => (
+                        <AccordionItem
+                          key={group.label}
+                          value={group.label}
+                          className="rounded-2xl border border-border bg-card/60 px-4"
+                        >
+                          <AccordionTrigger className="px-0 hover:no-underline">
+                            <div className="flex w-full items-center justify-between gap-4">
+                              <div className="flex items-center gap-4">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#00C4B3]/10 text-[#00C4B3]">
+                                  <FlaskConicalIcon className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <p className="text-base font-semibold text-foreground">
+                                    {group.label}
                                   </p>
-                                )}
-                                <p className="text-[11px] text-muted-foreground">
-                                  {formatDisplayDate(report.collectedDate)} ·{" "}
-                                  {formatDisplayDate(report.reportedDate)}
-                                </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {group.reports.length}{" "}
+                                    {group.reports.length === 1 ? "report" : "reports"} ·{" "}
+                                    {group.totalTests} {group.totalTests === 1 ? "test" : "tests"}
+                                  </p>
+                                </div>
                               </div>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-                                  onClick={() => handleViewLabReport(report)}
+                              <div className="flex items-center gap-2">
+                                {group.abnormalTests > 0 ? (
+                                  <Badge className="bg-red-100 text-red-700 border-red-200">
+                                    {group.abnormalTests} abnormal
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">
+                                    All normal
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="px-0">
+                            <div className="space-y-2">
+                              {group.reports.map((report) => (
+                                <div
+                                  key={report._id}
+                                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
                                 >
-                                  <FileTextIcon className="w-4 h-4 mr-2" />
-                                View Report
-                                </Button>
+                                  <div>
+                                    <p className="text-sm font-semibold text-foreground">
+                                      {report.reportType}
+                                    </p>
+                                    {report.notes && (
+                                      <p className="text-xs text-muted-foreground mt-0.5">
+                                        <span className="font-medium text-foreground">
+                                          {report.orderedBy || report.reviewedBy || report.doctorId || "Doctor"}:
+                                        </span>{" "}
+                                        {report.notes}
+                                      </p>
+                                    )}
+                                    <p className="text-[11px] text-muted-foreground">
+                                      {formatDisplayDate(report.collectedDate)} ·{" "}
+                                      {formatDisplayDate(report.reportedDate)}
+                                    </p>
+                                  </div>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                                    onClick={() => handleViewLabReport(report)}
+                                  >
+                                    <FileTextIcon className="w-4 h-4 mr-2" />
+                                    View Report
+                                  </Button>
                                 </div>
                               ))}
                             </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                        ))}
-                </Accordion>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>

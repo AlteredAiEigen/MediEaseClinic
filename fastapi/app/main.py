@@ -181,6 +181,7 @@ from app.routers import (
     patient_reviews,
     patient_medical_history,
     mailgun,
+    s3_reports,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -220,6 +221,7 @@ app.include_router(
     tags=["Patient Medical History"],
 )
 app.include_router(mailgun.router, tags=["Mailgun"])
+app.include_router(s3_reports.router, prefix="/api/s3-reports", tags=["S3 Reports"])
 
 
 if __name__ == "__main__":
