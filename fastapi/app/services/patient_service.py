@@ -458,25 +458,42 @@ class PatientService:
         
         # Note: clinic_id is NOT used for filtering - patients are universal
         
-        # Calculate skip
-        skip = (page - 1) * limit
-        
+        # Calculate skip (defensive)
+        skip = max((page - 1) * limit, 0)
+
+        # Use a lightweight projection to speed up list queries
+        projection = {
+            "patientId": 1,
+            "firstName": 1,
+            "lastName": 1,
+            "gender": 1,
+            "age": 1,
+            "phone": 1,
+            "email": 1,
+            "presentInClinic": 1,
+            "chiefComplaint": 1,
+            "carePlanSummary": 1,
+            "insights": 1,
+            "createdAt": 1,
+            "updatedAt": 1,
+        }
+
         # Get total count
         total = await self.patients_collection.count_documents(query)
-        
-        # Get patients
-        cursor = self.patients_collection.find(query).sort("createdAt", -1).skip(skip).limit(limit)
+
+        # Get patients with projection and pagination
+        cursor = (
+            self.patients_collection
+            .find(query, projection)
+            .sort("createdAt", -1)
+            .skip(skip)
+            .limit(limit)
+        )
         patients = await cursor.to_list(length=limit)
-        
-        # Decrypt and format patients
-        formatted_patients = []
-        for patient in patients:
-            patient = field_encryption.decrypt_dict_fields(
-                patient,
-                self.ENCRYPTED_FIELDS
-            )
-            formatted_patients.append(await patient_helper(patient))
-        
+
+        # Format patients without decrypting unused fields for speed
+        formatted_patients = [await patient_helper(patient) for patient in patients]
+
         return formatted_patients, total
     
     async def update_patient(self, patient_id: str, update_data: PatientUpdate, updated_by: Optional[dict] = None) -> Optional[dict]:

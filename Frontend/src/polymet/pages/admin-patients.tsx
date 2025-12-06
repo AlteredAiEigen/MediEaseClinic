@@ -139,6 +139,9 @@ export function AdminPatients() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalPages, setTotalPages] = useState(1);
   const [addPatientDialogOpen, setAddPatientDialogOpen] = useState(false);
   const [patientsList, setPatientsList] = useState<UiPatient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -178,46 +181,49 @@ export function AdminPatients() {
       setIsLoading(true);
       setFetchError(null);
 
-      // Add timeout to prevent infinite loading
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Request timeout - please try again")), 15000); // 15 second timeout
-      });
-
       try {
-        console.log("🔍 AdminPatients: Making API call to /api/patients...");
-        // Fetch patients with reduced limit for faster loading
-        const apiPromise = get<any>("/api/patients?limit=30&page=1");
-        const response = await Promise.race([apiPromise, timeoutPromise]);
+        const queryParams = new URLSearchParams({
+          limit: String(pageSize),
+          page: String(page),
+        });
+
+        if (debouncedSearchQuery.trim()) {
+          queryParams.set("search", debouncedSearchQuery.trim());
+        }
+
+        console.log("🔍 AdminPatients: Making API call to /api/patients...", queryParams.toString());
+
+        const response = await get<any>(`/api/patients?${queryParams.toString()}`);
 
         if (ignore) return;
 
         console.log("🔍 AdminPatients: API response received:", {
           success: response.success,
           message: response.message,
-          dataLength: Array.isArray(response.data) ? response.data.length : 'not array',
-          hasPagination: !!(response as any).pagination
+          dataLength: Array.isArray(response.data) ? response.data.length : "not array",
+          pagination: (response as any).pagination,
         });
 
         if (response.success) {
-          // Response structure: {success, message, data: [...], pagination: {total, page, limit, ...}}
           const patientsData = Array.isArray(response.data) ? response.data : [];
           const pagination = (response as any).pagination || {};
           const total = pagination.total ?? patientsData.length;
+          const currentPage = pagination.page ?? page;
+          const limitFromApi = pagination.limit ?? pageSize;
+          const totalPagesCalc = limitFromApi > 0 ? Math.max(1, Math.ceil(total / limitFromApi)) : 1;
 
-          console.log("🔍 AdminPatients: Processing", patientsData.length, "patients, total:", total);
-
-          // Always set stats, even if 0
           setTotalPatients(total);
+          setTotalPages(totalPagesCalc);
+          if (currentPage !== page) {
+            setPage(currentPage);
+          }
 
-          // For display, we'll use first 50 patients
-          const mappedPatients = patientsData.slice(0, 50).map(mapApiPatientToUi);
+          const mappedPatients = patientsData.map(mapApiPatientToUi);
           setPatientsList(mappedPatients);
 
-          console.log("🔍 AdminPatients: Set", mappedPatients.length, "patients for display");
+          console.log("🔍 AdminPatients: Set", mappedPatients.length, "patients for display on page", currentPage);
 
-          // Note: In Clinic Today will be calculated from queue entries, not from presentInClinic flag
-
-          // Calculate new patients this week
+          // Calculate new patients this week from returned page (best-effort)
           const now = new Date();
           const weekAgo = new Date(now);
           weekAgo.setDate(now.getDate() - 7);
@@ -240,8 +246,7 @@ export function AdminPatients() {
         }
       } catch (error) {
         if (ignore) return;
-        const message =
-          error instanceof Error ? error.message : "Unable to load patients.";
+        const message = error instanceof Error ? error.message : "Unable to load patients.";
         setFetchError(message);
         console.error("Error fetching patients:", error);
       } finally {
@@ -256,7 +261,7 @@ export function AdminPatients() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [debouncedSearchQuery, page, pageSize]);
 
 
   // Fetch queue entries for "In Clinic Today" and appointments for stats
@@ -861,6 +866,31 @@ const statusLabels: Record<PatientStatus, string> = {
                     </CardContent>
                   </div>
                 ))}
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-6">
+                <p className="text-sm text-muted-foreground">
+                  Page {page} of {totalPages}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1 || isLoading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Prev
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages || isLoading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
 
               {filteredPatients.length === 0 && !fetchError && (
