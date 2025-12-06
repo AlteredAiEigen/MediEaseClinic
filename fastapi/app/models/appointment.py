@@ -227,5 +227,7 @@ async def appointment_helper(appointment: dict) -> dict:
         "followUpInstructions": appointment.get("followUpInstructions"),
         "detailedNotes": appointment.get("detailedNotes"),
         "aiRecommendations": appointment.get("aiRecommendations"),
+        # Patient profile updates tracking from this appointment's transcription
+        "patientProfileUpdates": appointment.get("patientProfileUpdates"),
     }
 

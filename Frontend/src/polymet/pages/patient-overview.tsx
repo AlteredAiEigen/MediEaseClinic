@@ -280,6 +280,19 @@ interface Appointment {
     recommendations?: string[];
   };
   clinicalNotes?: ClinicalNote[];
+  // Patient profile updates tracking from this appointment
+  patientProfileUpdates?: {
+    fieldsUpdated?: string[];
+    medicationsAdded?: Array<{name: string; dosage?: string; duration?: string}>;
+    allergiesAdded?: string[];
+    chiefComplaintAdded?: string;
+    assessmentAdded?: string;
+    planAdded?: string;
+    followUpAdded?: string;
+    historyOfPresentIllnessAdded?: string;
+    lastVisitUpdated?: string;
+    timestamp?: string;
+  };
 }
 
 type EditableMedicationEntry = MedicationEntry & {
@@ -1176,6 +1189,8 @@ export function PatientOverview() {
                     consultationSummary: apt.consultationSummary,
                     consultationNotes: apt.consultationNotes,
                     transcription: apt.transcription,
+                    // Patient profile updates tracking
+                    patientProfileUpdates: apt.patientProfileUpdates,
                   })
                 );
 
@@ -5089,9 +5104,8 @@ export function PatientOverview() {
                           {appointment.status}
                         </Badge>
                         <Button
-                          variant="outline"
                           size="sm"
-                          className="text-xs h-7 px-2 hover:bg-[#00C4B3]/10 hover:text-[#00C4B3] hover:border-[#00C4B3]"
+                          className="text-sm h-9 px-5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md font-medium"
                           onClick={() => {
                             setSelectedAppointment(appointment);
                             setAppointmentDialogOpen(true);
@@ -5189,7 +5203,7 @@ export function PatientOverview() {
                     >
                       <AccordionItem value={appointmentValue} className="border rounded-xl">
                         <div className="px-4 py-3">
-                          <AccordionTrigger className="hover:no-underline">
+                          <AccordionTrigger className="hover:no-underline [&>svg]:hidden">
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full mr-4">
                               <div className="text-left flex-1">
                                 <p className="text-sm font-semibold text-foreground mb-1">
@@ -5280,18 +5294,6 @@ export function PatientOverview() {
                                     Profile Updated
                                   </Badge>
                                 )}
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="text-xs h-7 px-2 hover:bg-[#00C4B3]/10 hover:text-[#00C4B3] hover:border-[#00C4B3]"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedAppointment(appointment);
-                                    setAppointmentDialogOpen(true);
-                                  }}
-                                >
-                                  View Details
-                                </Button>
                               </div>
                             </div>
                           </AccordionTrigger>
@@ -5507,19 +5509,19 @@ export function PatientOverview() {
                             ) : null}
 
                             {/* No details message */}
-                            {!appointment.prescription && 
-                             !appointment.tests && 
-                             !appointment.prescribedTest &&
-                             !appointment.diagnosis &&
-                             !appointment.treatmentPlan &&
-                             !appointment.followUpInstructions &&
-                             !appointment.detailedNotes &&
-                             !appointment.aiRecommendations &&
-                             (!appointment.clinicalNotes || appointment.clinicalNotes.length === 0) && (
-                              <p className="text-xs text-muted-foreground text-center py-2">
-                                No additional details available for this appointment
-                              </p>
-                            )}
+                            {/* View Details Button - Always show */}
+                            <div className="flex justify-center py-3">
+                              <Button
+                                size="lg"
+                                className="text-sm h-10 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md font-medium"
+                                onClick={() => {
+                                  setSelectedAppointment(appointment);
+                                  setAppointmentDialogOpen(true);
+                                }}
+                              >
+                                View Details
+                              </Button>
+                            </div>
                           </div>
                         </AccordionContent>
                       </AccordionItem>

@@ -32,6 +32,11 @@ class AppointmentUpdateRequest(BaseModel):
     status: Optional[str] = Field(None, pattern="^(scheduled|checked-in|in-progress|ongoing|checkout|completed|cancelled|no-show)$")
     followUpRequired: Optional[bool] = None
     followUpNotes: Optional[str] = None
+    # Allow updating doctor and type
+    doctorId: Optional[str] = None
+    type: Optional[str] = None
+    notes: Optional[str] = None
+    bookingKind: Optional[str] = None
     # Fields for recording service updates
     s3Url: Optional[str] = None
     recordingId: Optional[str] = None

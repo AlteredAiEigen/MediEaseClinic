@@ -283,7 +283,12 @@ class RecordingService:
                     )
 
                 # Update patient with medications, allergies, and summary fields
-                await self.update_patient_from_notes(recording["patientId"], structured_notes)
+                appointment_id_str = str(recording.get("appointmentId", "")) if recording.get("appointmentId") else None
+                await self.update_patient_from_notes(
+                    recording["patientId"], 
+                    structured_notes,
+                    appointment_id=appointment_id_str
+                )
 
                 # Optionally update structured medical history collection
                 try:
@@ -322,17 +327,32 @@ class RecordingService:
                 {"$set": update_data}
             )
 
-    async def update_patient_from_notes(self, patient_id: str, structured_notes: dict) -> None:
-        """Update patient record with information from structured notes."""
+    async def update_patient_from_notes(
+        self, 
+        patient_id: str, 
+        structured_notes: dict,
+        appointment_id: str = None
+    ) -> Dict[str, Any]:
+        """
+        Update patient record with information from structured notes.
+        Returns a dictionary of what was updated for tracking purposes.
+        """
+        updates_applied = {
+            "fieldsUpdated": [],
+            "medicationsAdded": [],
+            "allergiesAdded": [],
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        
         if not patient_id or not structured_notes:
-            return
+            return updates_applied
 
         if not ObjectId.is_valid(patient_id):
-            return
+            return updates_applied
 
         patient = await self.patients_collection.find_one({"_id": ObjectId(patient_id)})
         if not patient:
-            return
+            return updates_applied
         
         patient_updates: Dict[str, any] = {}
         now_iso = datetime.utcnow().isoformat()
@@ -419,6 +439,11 @@ class RecordingService:
 
                 if new_entries:
                     patient_updates["currentMedications"] = existing_meds + new_entries
+                    updates_applied["fieldsUpdated"].append("currentMedications")
+                    updates_applied["medicationsAdded"] = [
+                        {"name": e["name"], "dosage": e.get("dosage", ""), "duration": e.get("duration", "")}
+                        for e in new_entries
+                    ]
         
         # Extract allergies
         if structured_notes.get("allergies"):
@@ -427,21 +452,39 @@ class RecordingService:
                 existing_allergies = patient.get("allergies", [])
                 if isinstance(existing_allergies, str):
                     existing_allergies = [existing_allergies] if existing_allergies else []
-                combined_allergies = list(set(existing_allergies + found_allergies))
-                patient_updates["allergies"] = combined_allergies
+                # Find new allergies that weren't already present
+                existing_set = set(a.lower() for a in existing_allergies)
+                new_allergies = [a for a in found_allergies if a.lower() not in existing_set]
+                if new_allergies:
+                    combined_allergies = list(set(existing_allergies + found_allergies))
+                    patient_updates["allergies"] = combined_allergies
+                    updates_applied["fieldsUpdated"].append("allergies")
+                    updates_applied["allergiesAdded"] = new_allergies
 
         if structured_notes.get("assessment"):
             patient_updates["condition"] = structured_notes["assessment"]
+            updates_applied["fieldsUpdated"].append("condition")
+            updates_applied["assessmentAdded"] = structured_notes["assessment"]
         if structured_notes.get("plan"):
             patient_updates["carePlanSummary"] = structured_notes["plan"]
+            updates_applied["fieldsUpdated"].append("carePlanSummary")
+            updates_applied["planAdded"] = structured_notes["plan"]
         if structured_notes.get("followUpInstructions"):
             patient_updates["followUpPlan"] = structured_notes["followUpInstructions"]
+            updates_applied["fieldsUpdated"].append("followUpPlan")
+            updates_applied["followUpAdded"] = structured_notes["followUpInstructions"]
         if structured_notes.get("chiefComplaint"):
             patient_updates["chiefComplaint"] = structured_notes["chiefComplaint"]
+            updates_applied["fieldsUpdated"].append("chiefComplaint")
+            updates_applied["chiefComplaintAdded"] = structured_notes["chiefComplaint"]
         if structured_notes.get("historyOfPresentIllness"):
             patient_updates["currentSymptoms"] = structured_notes["historyOfPresentIllness"]
+            updates_applied["fieldsUpdated"].append("currentSymptoms")
+            updates_applied["historyOfPresentIllnessAdded"] = structured_notes["historyOfPresentIllness"]
 
         patient_updates["lastVisit"] = now_iso.split("T")[0]
+        updates_applied["fieldsUpdated"].append("lastVisit")
+        updates_applied["lastVisitUpdated"] = now_iso.split("T")[0]
 
         # NOTE: Do NOT overwrite patient.insights here.
         # Longitudinal AI insights are generated separately by PatientInsightsService.
@@ -452,6 +495,15 @@ class RecordingService:
                 {"_id": ObjectId(patient_id)},
                 {"$set": patient_updates}
             )
+            
+            # Store the updates applied in the appointment for tracking
+            if appointment_id and ObjectId.is_valid(appointment_id):
+                await self.db.appointments.update_one(
+                    {"_id": ObjectId(appointment_id)},
+                    {"$set": {"patientProfileUpdates": updates_applied}}
+                )
+        
+        return updates_applied
 
     async def process_transcription_result(self, recording_id: str) -> dict:
         """Process completed transcription and extract structured notes."""
@@ -588,9 +640,11 @@ class RecordingService:
 
         # Extract and update patient data from structured notes using shared helper
         if notes_result.get("structured_notes") and recording.get("patientId"):
+            appointment_id_str = str(recording.get("appointmentId", "")) if recording.get("appointmentId") else None
             await self.update_patient_from_notes(
                 str(recording["patientId"]),
                 notes_result["structured_notes"],
+                appointment_id=appointment_id_str
             )
 
             # Instead of querying the database again, update the recording object in memory

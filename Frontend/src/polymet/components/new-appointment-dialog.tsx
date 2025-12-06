@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,23 @@ import { post, get, put } from "@/lib/api-client";
 import type { BillingItem } from "@/polymet/pages/admin-billing";
 import { useToast } from "@/hooks/use-toast";
 import { MediEaseLoader } from "@/polymet/components/mediease-loader";
+
+// Debounce hook for search
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
 
 interface Patient {
   _id: string;
@@ -63,11 +80,16 @@ export function NewAppointmentDialog({
   const [notes, setNotes] = useState("");
 
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [searchResults, setSearchResults] = useState<Patient[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Debounce search query for API calls
+  const debouncedSearchQuery = useDebounce(searchQuery, 200);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient._id === selectedPatientId) ?? null,
@@ -169,17 +191,62 @@ export function NewAppointmentDialog({
     [billingItems]
   );
 
-  const filteredPatients = useMemo(() => {
-    if (!searchQuery.trim()) return patients.slice(0, 10); // Show first 10 if no search
+  // Search patients from API when query changes
+  useEffect(() => {
+    if (!debouncedSearchQuery || debouncedSearchQuery.length < 1) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
 
-    const query = searchQuery.toLowerCase();
-    return patients.filter(
-      (patient) =>
-        patient.fullName.toLowerCase().includes(query) ||
-        patient.patientId.toLowerCase().includes(query) ||
-        patient.email?.toLowerCase().includes(query)
-    );
-  }, [patients, searchQuery]);
+    let cancelled = false;
+    
+    const searchPatients = async () => {
+      setIsSearching(true);
+      try {
+        const response = await get<{ patients: Patient[] }>(
+          `/api/patients/search?q=${encodeURIComponent(debouncedSearchQuery)}`
+        );
+        if (!cancelled && response.success && response.data?.patients) {
+          const normalizedResults = response.data.patients.map((patient: any) => ({
+            ...patient,
+            _id: String(patient._id ?? patient.id ?? patient.patientId ?? ""),
+            patientId: patient.patientId ?? String(patient._id ?? patient.id ?? ""),
+            fullName: patient.fullName || `${patient.firstName || ""} ${patient.lastName || ""}`.trim(),
+            age: patient.age || "",
+            gender: patient.gender || "",
+            phone: patient.phone || "",
+            email: patient.email || "",
+          }));
+          setSearchResults(normalizedResults);
+        }
+      } catch (err) {
+        console.error("Patient search error:", err);
+        if (!cancelled) {
+          setSearchResults([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    };
+
+    searchPatients();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearchQuery]);
+
+  const filteredPatients = useMemo(() => {
+    // If there's a search query, use search results
+    if (searchQuery.trim()) {
+      return searchResults;
+    }
+    // Otherwise show first 10 patients from initial load
+    return patients.slice(0, 10);
+  }, [patients, searchQuery, searchResults]);
 
   const handleSubmit = async () => {
     if (!selectedPatientId || !appointmentDate || !appointmentTime) {
@@ -211,9 +278,12 @@ export function NewAppointmentDialog({
         bookingKind: bookingKind,
       };
 
-      // Only send doctorId when booking a doctor appointment
+      // Handle doctorId based on booking kind
       if (bookingKind === "doctor" && selectedDoctorId) {
         payload.doctorId = selectedDoctorId;
+      } else if (bookingKind === "lab-test") {
+        // Explicitly clear doctorId when switching to lab test
+        payload.doctorId = null;
       }
 
       let response;
@@ -303,15 +373,22 @@ export function NewAppointmentDialog({
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
-              {isLoading ? (
+              {isLoading || isSearching ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                  <span className="ml-2 text-sm text-muted-foreground">Loading patients...</span>
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    {isSearching ? "Searching..." : "Loading patients..."}
+                  </span>
                 </div>
               ) : filteredPatients.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <SearchIcon className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                  <p className="text-sm">No patients found</p>
+                  <p className="text-sm">
+                    {searchQuery ? "No patients found matching your search" : "No patients found"}
+                  </p>
+                  {searchQuery && (
+                    <p className="text-xs mt-1">Try searching by name, ID, or email</p>
+                  )}
                 </div>
               ) : (
                 filteredPatients.map((patient) => (

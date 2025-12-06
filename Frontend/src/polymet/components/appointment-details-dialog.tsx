@@ -50,6 +50,19 @@ interface PatientUpdate {
   colorClass: string;
 }
 
+interface PatientProfileUpdates {
+  fieldsUpdated?: string[];
+  medicationsAdded?: Array<{name: string; dosage?: string; duration?: string}>;
+  allergiesAdded?: string[];
+  chiefComplaintAdded?: string;
+  assessmentAdded?: string;
+  planAdded?: string;
+  followUpAdded?: string;
+  historyOfPresentIllnessAdded?: string;
+  lastVisitUpdated?: string;
+  timestamp?: string;
+}
+
 interface AppointmentDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -73,6 +86,7 @@ interface AppointmentDetailsDialogProps {
       assessment?: string;
       plan?: string;
     };
+    patientProfileUpdates?: PatientProfileUpdates;
   } | null;
 }
 
@@ -85,78 +99,165 @@ export function AppointmentDetailsDialog({
 
   const structuredNotes = appointment.structuredNotes;
   const consultationSummary = appointment.consultationSummary;
+  const profileUpdates = appointment.patientProfileUpdates;
 
   // Determine what was updated in patient profile from this appointment
+  // Prefer stored patientProfileUpdates (from MongoDB) over deriving from structuredNotes
   const patientUpdates: PatientUpdate[] = [];
 
-  // Check for medications added
-  if (structuredNotes?.medications && structuredNotes.medications.length > 0) {
-    structuredNotes.medications.forEach((med) => {
-      patientUpdates.push({
-        field: "medication",
-        label: "Medication Added",
-        value: `${med.name}${med.dosage ? ` - ${med.dosage}` : ""}${med.frequency ? ` (${med.frequency})` : ""}`,
-        icon: <PillIcon className="w-3.5 h-3.5" />,
-        colorClass: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700",
+  // Use stored patientProfileUpdates if available (accurate tracking from backend)
+  if (profileUpdates && profileUpdates.fieldsUpdated && profileUpdates.fieldsUpdated.length > 0) {
+    // Medications added (from stored tracking)
+    if (profileUpdates.medicationsAdded && profileUpdates.medicationsAdded.length > 0) {
+      profileUpdates.medicationsAdded.forEach((med) => {
+        patientUpdates.push({
+          field: "medication",
+          label: "Medication Added",
+          value: `${med.name}${med.dosage ? ` - ${med.dosage}` : ""}${med.duration ? ` (${med.duration})` : ""}`,
+          icon: <PillIcon className="w-3.5 h-3.5" />,
+          colorClass: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700",
+        });
       });
-    });
-  }
+    }
 
-  // Check for allergies
-  if (structuredNotes?.allergies && structuredNotes.allergies.length > 0) {
-    structuredNotes.allergies.forEach((allergy) => {
-      patientUpdates.push({
-        field: "allergy",
-        label: "Allergy Recorded",
-        value: allergy,
-        icon: <AlertCircleIcon className="w-3.5 h-3.5" />,
-        colorClass: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700",
+    // Allergies added (from stored tracking)
+    if (profileUpdates.allergiesAdded && profileUpdates.allergiesAdded.length > 0) {
+      profileUpdates.allergiesAdded.forEach((allergy) => {
+        patientUpdates.push({
+          field: "allergy",
+          label: "Allergy Added",
+          value: allergy,
+          icon: <AlertCircleIcon className="w-3.5 h-3.5" />,
+          colorClass: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700",
+        });
       });
-    });
-  }
+    }
 
-  // Chief complaint update
-  if (structuredNotes?.chiefComplaint || consultationSummary?.chiefComplaint) {
-    patientUpdates.push({
-      field: "chiefComplaint",
-      label: "Chief Complaint",
-      value: structuredNotes?.chiefComplaint || consultationSummary?.chiefComplaint || "",
-      icon: <StethoscopeIcon className="w-3.5 h-3.5" />,
-      colorClass: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700",
-    });
-  }
+    // Chief complaint (from stored tracking)
+    if (profileUpdates.chiefComplaintAdded) {
+      patientUpdates.push({
+        field: "chiefComplaint",
+        label: "Chief Complaint Updated",
+        value: profileUpdates.chiefComplaintAdded,
+        icon: <StethoscopeIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700",
+      });
+    }
 
-  // Diagnosis
-  if (appointment.diagnosis || structuredNotes?.assessment) {
-    patientUpdates.push({
-      field: "diagnosis",
-      label: "Diagnosis/Assessment",
-      value: appointment.diagnosis || structuredNotes?.assessment || "",
-      icon: <FileTextIcon className="w-3.5 h-3.5" />,
-      colorClass: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700",
-    });
-  }
+    // Assessment/Condition (from stored tracking)
+    if (profileUpdates.assessmentAdded) {
+      patientUpdates.push({
+        field: "condition",
+        label: "Condition Updated",
+        value: profileUpdates.assessmentAdded,
+        icon: <FileTextIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700",
+      });
+    }
 
-  // Treatment plan
-  if (appointment.treatmentPlan || structuredNotes?.plan) {
-    patientUpdates.push({
-      field: "treatmentPlan",
-      label: "Treatment Plan",
-      value: appointment.treatmentPlan || structuredNotes?.plan || "",
-      icon: <ClipboardListIcon className="w-3.5 h-3.5" />,
-      colorClass: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700",
-    });
-  }
+    // Care Plan (from stored tracking)
+    if (profileUpdates.planAdded) {
+      patientUpdates.push({
+        field: "carePlanSummary",
+        label: "Care Plan Updated",
+        value: profileUpdates.planAdded,
+        icon: <ClipboardListIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700",
+      });
+    }
 
-  // Follow-up instructions
-  if (appointment.followUpInstructions || structuredNotes?.followUpInstructions) {
-    patientUpdates.push({
-      field: "followUp",
-      label: "Follow-up Instructions",
-      value: appointment.followUpInstructions || structuredNotes?.followUpInstructions || "",
-      icon: <CalendarIcon className="w-3.5 h-3.5" />,
-      colorClass: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700",
-    });
+    // Follow-up instructions (from stored tracking)
+    if (profileUpdates.followUpAdded) {
+      patientUpdates.push({
+        field: "followUpPlan",
+        label: "Follow-up Plan Updated",
+        value: profileUpdates.followUpAdded,
+        icon: <CalendarIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700",
+      });
+    }
+
+    // History of present illness / current symptoms (from stored tracking)
+    if (profileUpdates.historyOfPresentIllnessAdded) {
+      patientUpdates.push({
+        field: "currentSymptoms",
+        label: "Current Symptoms Updated",
+        value: profileUpdates.historyOfPresentIllnessAdded,
+        icon: <HeartPulseIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-700",
+      });
+    }
+  } else {
+    // Fallback: derive from structuredNotes if patientProfileUpdates not available
+    // Check for medications added
+    if (structuredNotes?.medications && structuredNotes.medications.length > 0) {
+      structuredNotes.medications.forEach((med) => {
+        patientUpdates.push({
+          field: "medication",
+          label: "Medication Added",
+          value: `${med.name}${med.dosage ? ` - ${med.dosage}` : ""}${med.frequency ? ` (${med.frequency})` : ""}`,
+          icon: <PillIcon className="w-3.5 h-3.5" />,
+          colorClass: "bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700",
+        });
+      });
+    }
+
+    // Check for allergies
+    if (structuredNotes?.allergies && structuredNotes.allergies.length > 0) {
+      structuredNotes.allergies.forEach((allergy) => {
+        patientUpdates.push({
+          field: "allergy",
+          label: "Allergy Recorded",
+          value: allergy,
+          icon: <AlertCircleIcon className="w-3.5 h-3.5" />,
+          colorClass: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700",
+        });
+      });
+    }
+
+    // Chief complaint update
+    if (structuredNotes?.chiefComplaint || consultationSummary?.chiefComplaint) {
+      patientUpdates.push({
+        field: "chiefComplaint",
+        label: "Chief Complaint",
+        value: structuredNotes?.chiefComplaint || consultationSummary?.chiefComplaint || "",
+        icon: <StethoscopeIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700",
+      });
+    }
+
+    // Diagnosis
+    if (appointment.diagnosis || structuredNotes?.assessment) {
+      patientUpdates.push({
+        field: "diagnosis",
+        label: "Diagnosis/Assessment",
+        value: appointment.diagnosis || structuredNotes?.assessment || "",
+        icon: <FileTextIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700",
+      });
+    }
+
+    // Treatment plan
+    if (appointment.treatmentPlan || structuredNotes?.plan) {
+      patientUpdates.push({
+        field: "treatmentPlan",
+        label: "Treatment Plan",
+        value: appointment.treatmentPlan || structuredNotes?.plan || "",
+        icon: <ClipboardListIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-700",
+      });
+    }
+
+    // Follow-up instructions (fallback path)
+    if (appointment.followUpInstructions || structuredNotes?.followUpInstructions) {
+      patientUpdates.push({
+        field: "followUp",
+        label: "Follow-up Instructions",
+        value: appointment.followUpInstructions || structuredNotes?.followUpInstructions || "",
+        icon: <CalendarIcon className="w-3.5 h-3.5" />,
+        colorClass: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-700",
+      });
+    }
   }
 
   const formatDate = (dateStr?: string) => {
@@ -190,8 +291,8 @@ export function AppointmentDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="pb-4 border-b">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b flex-shrink-0">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <CalendarIcon className="w-5 h-5 text-[#00C4B3]" />
@@ -203,8 +304,8 @@ export function AppointmentDetailsDialog({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
-          <div className="space-y-6 py-4">
+        <ScrollArea className="flex-1 overflow-auto px-6">
+          <div className="space-y-6 py-4 pb-6">
             {/* Basic Info Grid */}
             <div className="grid grid-cols-2 gap-4">
               <Card className="border-border/50">
@@ -362,6 +463,9 @@ export function AppointmentDetailsDialog({
                 </CardContent>
               </Card>
             )}
+            
+            {/* Bottom spacing to ensure scrollability */}
+            <div className="h-4" />
           </div>
         </ScrollArea>
       </DialogContent>

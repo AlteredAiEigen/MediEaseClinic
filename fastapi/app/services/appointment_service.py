@@ -310,8 +310,12 @@ class AppointmentService:
                 detail="Appointment not found"
             )
         
-        # Prepare update data
+        # Prepare update data - use exclude_none=False to allow setting fields to null
         update_dict = update_data.model_dump(exclude_unset=True)
+        
+        # Handle doctorId explicitly - allow setting to None when switching to lab test
+        if hasattr(update_data, 'doctorId') and update_data.doctorId is None and update_data.bookingKind == "lab-test":
+            update_dict["doctorId"] = None
         
         if not update_dict:
             raise HTTPException(

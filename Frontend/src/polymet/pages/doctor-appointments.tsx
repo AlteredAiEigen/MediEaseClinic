@@ -292,6 +292,51 @@ export function DoctorAppointments() {
     }
   };
 
+  // Handle starting an appointment - navigates to workstation
+  const handleStartAppointment = async (appointment: any) => {
+    try {
+      // Update status to in-progress if it's scheduled or checked-in
+      if (appointment.status === "scheduled" || appointment.status === "checked-in") {
+        await patch(`/api/appointments/${appointment._id || appointment.id}/status`, {
+          status: "in-progress"
+        });
+      }
+      // Navigate to workstation with the appointment
+      window.location.href = `/doctor-workstation?appointmentId=${appointment._id || appointment.id}&patientId=${appointment.patientId}`;
+    } catch (error) {
+      console.error("Failed to start appointment:", error);
+    }
+  };
+
+  // Handle viewing appointment details - opens patient overview with appointment details
+  const handleViewDetails = (appointment: any) => {
+    // Navigate to patient overview page with the patient ID
+    const patientId = appointment.patientId;
+    if (patientId) {
+      window.location.href = `/patient-overview/${patientId}`;
+    }
+  };
+
+  // Refresh appointments after edit
+  const refreshAppointments = async () => {
+    const selectedDate = date ? formatDateLocal(date) : formatDateLocal(new Date());
+    const url = `/api/appointments?doctorId=${user?._id}&date=${selectedDate}&limit=100`;
+    const response = await get(url);
+    if (response.success) {
+      const rawAppointments = extractList<any>(response.data);
+      const mappedAppointments = rawAppointments.map((apt: any) => ({
+        ...apt,
+        id: apt._id || apt.appointmentId,
+        avatar: apt.patientName
+          ? `https://ui-avatars.com/api/?name=${encodeURIComponent(apt.patientName)}&background=random`
+          : undefined,
+        reason: apt.reason || "General Consultation",
+        type: apt.type || (apt.doctorId ? "Doctor Appointment" : "Lab Test"),
+      }));
+      setAppointments(mappedAppointments);
+    }
+  };
+
   const formatAppointmentDate = (dateStr?: string) => {
     if (!dateStr) return "";
     try {
