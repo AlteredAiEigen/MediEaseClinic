@@ -1,3 +1,4 @@
+import ReactMarkdown from "react-markdown";
 import {
   Dialog,
   DialogContent,
@@ -374,9 +375,11 @@ export function AppointmentDetailsDialog({
                     <FileTextIcon className="w-4 h-4 text-blue-500" />
                     <span className="text-sm font-semibold">History of Present Illness</span>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    {structuredNotes.historyOfPresentIllness}
-                  </p>
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground">
+                    <ReactMarkdown>
+                      {structuredNotes.historyOfPresentIllness}
+                    </ReactMarkdown>
+                  </div>
                 </CardContent>
               </Card>
             )}
@@ -391,9 +394,11 @@ export function AppointmentDetailsDialog({
                         <ActivityIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                         <span className="text-sm font-semibold text-amber-700 dark:text-amber-300">Assessment</span>
                       </div>
-                      <p className="text-sm text-amber-900 dark:text-amber-100">
-                        {structuredNotes.assessment}
-                      </p>
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-amber-900 dark:text-amber-100">
+                        <ReactMarkdown>
+                          {structuredNotes.assessment}
+                        </ReactMarkdown>
+                      </div>
                     </CardContent>
                   </Card>
                 )}
@@ -404,9 +409,11 @@ export function AppointmentDetailsDialog({
                         <ClipboardListIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
                         <span className="text-sm font-semibold text-green-700 dark:text-green-300">Plan</span>
                       </div>
-                      <p className="text-sm text-green-900 dark:text-green-100">
-                        {structuredNotes.plan}
-                      </p>
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-green-900 dark:text-green-100">
+                        <ReactMarkdown>
+                          {structuredNotes.plan}
+                        </ReactMarkdown>
+                      </div>
                     </CardContent>
                   </Card>
                 )}

@@ -37,12 +37,42 @@ async def create_lab_report(
     report_data: LabReportCreateRequest,
     current_user: dict = Depends(require_doctor_or_admin),
     service: LabReportService = Depends(get_service),
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """Create a new lab report."""
     report = await service.create_report(
         LabReportCreate(**report_data.model_dump()),
         created_by=str(current_user["_id"]),
     )
+    
+    # Send notification to doctor if assigned
+    if report_data.doctorId:
+        try:
+            from app.services.notification_service import NotificationService
+            notification_service = NotificationService(db)
+            
+            # Get patient name
+            patient_name = "Patient"
+            if report_data.patientId:
+                patient = await db.patients.find_one({"patientId": report_data.patientId})
+                if patient:
+                    patient_name = f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip() or "Patient"
+            
+            report_type = report_data.category or "Lab"
+            
+            await notification_service.notify_doctor_report_received(
+                doctor_id=report_data.doctorId,
+                patient_id=report_data.patientId,
+                patient_name=patient_name,
+                report_type=report_type,
+                report_id=report.get("_id", ""),
+                clinic_id=report_data.clinicId if hasattr(report_data, 'clinicId') else None
+            )
+        except Exception as e:
+            # Don't fail the report creation if notification fails
+            import logging
+            logging.getLogger(__name__).error(f"Failed to send lab report notification: {e}")
+    
     return success_response(
         message="Lab report created successfully",
         data=report,

@@ -350,6 +350,11 @@ class AppointmentService:
             elif new_status == "ongoing" and not existing_appointment.get("startedAt"):
                 update_dict["startedAt"] = now
         
+        # Track if date/time is being changed for notification
+        is_rescheduled = any(k in update_dict for k in ["date", "time"])
+        old_date = existing_appointment.get("date")
+        old_time = existing_appointment.get("time")
+        
         # Check for time slot conflicts if date/time/duration changed
         if any(k in update_dict for k in ["date", "time", "duration"]):
             new_date = update_dict.get("date", existing_appointment["date"])
@@ -382,6 +387,42 @@ class AppointmentService:
         
         # Retrieve updated appointment
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
+        
+        # Send notification to doctor if appointment was rescheduled
+        if is_rescheduled and existing_appointment.get("doctorId"):
+            try:
+                from app.services.notification_service import NotificationService
+                notification_service = NotificationService(self.db)
+                
+                # Get patient name
+                patient_name = "Patient"
+                patient_id = existing_appointment.get("patientId")
+                if patient_id:
+                    if ObjectId.is_valid(patient_id):
+                        patient = await self.patients_collection.find_one({"_id": ObjectId(patient_id)})
+                    else:
+                        patient = await self.patients_collection.find_one({"patientId": patient_id})
+                    if patient:
+                        patient_name = f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip() or "Patient"
+                
+                new_date = update_dict.get("date", old_date)
+                new_time = update_dict.get("time", old_time)
+                
+                await notification_service.notify_doctor_appointment_rescheduled(
+                    doctor_id=str(existing_appointment["doctorId"]),
+                    appointment_id=appointment_id,
+                    patient_name=patient_name,
+                    old_date=old_date,
+                    old_time=old_time,
+                    new_date=new_date,
+                    new_time=new_time,
+                    rescheduled_by="Staff",
+                    clinic_id=str(existing_appointment.get("clinicId")) if existing_appointment.get("clinicId") else None
+                )
+            except Exception as e:
+                # Don't fail the update if notification fails
+                import logging
+                logging.getLogger(__name__).error(f"Failed to send reschedule notification: {e}")
         
         return await appointment_helper(updated_appointment)
     

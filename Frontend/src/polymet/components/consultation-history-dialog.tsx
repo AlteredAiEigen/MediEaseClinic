@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -787,9 +788,11 @@ export function ConsultationHistoryDialog({
                     </CardHeader>
                     <CardContent>
                       <ScrollArea className="h-64 border rounded-lg p-4 bg-muted/30">
-                        <pre className="text-sm whitespace-pre-wrap leading-relaxed">
-                          {selectedRecording.appointment.consultationNotes}
-                        </pre>
+                        <div className="prose prose-sm dark:prose-invert max-w-none">
+                          <ReactMarkdown>
+                            {selectedRecording.appointment.consultationNotes}
+                          </ReactMarkdown>
+                        </div>
                       </ScrollArea>
                     </CardContent>
                   </Card>

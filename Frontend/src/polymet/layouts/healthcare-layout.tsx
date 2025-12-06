@@ -1,6 +1,7 @@
 import { ReactNode, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { MediEaseLogo } from "@/polymet/components/mediease-logo";
+import { NotificationDropdown } from "@/polymet/components/notification-dropdown";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,17 +20,12 @@ import {
   CalendarIcon,
   SettingsIcon,
   LogOutIcon,
-  BellIcon,
   MenuIcon,
   XIcon,
   UserIcon,
   EditIcon,
   MailIcon,
   PhoneIcon,
-  ClockIcon,
-  AlertCircleIcon,
-  CheckCircleIcon,
-  InfoIcon,
   ActivityIcon,
   DollarSignIcon,
 } from "lucide-react";
@@ -86,62 +82,6 @@ export function HealthcareLayout({
   const effectiveAvatar = user?.profileImage ?? userAvatar;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-
-  const notifications = [
-    {
-      id: 1,
-      type: "appointment",
-      title: "New Appointment Scheduled",
-      message: "Sarah Johnson scheduled for 2:00 PM today",
-      time: "5 min ago",
-      read: false,
-      icon: CalendarIcon,
-      color: "text-blue-500",
-    },
-    {
-      id: 2,
-      type: "alert",
-      title: "Lab Results Available",
-      message: "Critical lab results for Michael Chen",
-      time: "15 min ago",
-      read: false,
-      icon: AlertCircleIcon,
-      color: "text-red-500",
-    },
-    {
-      id: 3,
-      type: "info",
-      title: "Patient Check-in",
-      message: "Emily Rodriguez has checked in",
-      time: "30 min ago",
-      read: false,
-      icon: InfoIcon,
-      color: "text-emerald-500",
-    },
-    {
-      id: 4,
-      type: "success",
-      title: "Prescription Sent",
-      message: "Prescription for James Wilson sent successfully",
-      time: "1 hour ago",
-      read: true,
-      icon: CheckCircleIcon,
-      color: "text-emerald-500",
-    },
-    {
-      id: 5,
-      type: "appointment",
-      title: "Appointment Reminder",
-      message: "You have 3 appointments tomorrow",
-      time: "2 hours ago",
-      read: true,
-      icon: ClockIcon,
-      color: "text-blue-500",
-    },
-  ];
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const navigationItems = {
     admin: [
@@ -552,102 +492,7 @@ export function HealthcareLayout({
           </div>
 
           <div className="flex items-center gap-3 flex-shrink-0">
-            <DropdownMenu
-              open={notificationsOpen}
-              onOpenChange={setNotificationsOpen}
-            >
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative hover:bg-blue-50 dark:hover:bg-blue-950/20"
-                >
-                  <BellIcon className="w-5 h-5" />
-
-                  {unreadCount > 0 && (
-                    <>
-                      <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-
-                      <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 bg-red-500 text-white text-xs">
-                        {unreadCount}
-                      </Badge>
-                    </>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[380px] p-0">
-                <DropdownMenuLabel className="p-4 pb-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-base font-semibold">Notifications</h3>
-                    {unreadCount > 0 && (
-                      <Badge variant="secondary" className="text-xs">
-                        {unreadCount} new
-                      </Badge>
-                    )}
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator className="m-0" />
-
-                <ScrollArea className="h-[400px]">
-                  <div className="p-2">
-                    {notifications.map((notification) => {
-                      const Icon = notification.icon;
-                      return (
-                        <div
-                          key={notification.id}
-                          className={cn(
-                            "p-3 rounded-lg mb-2 cursor-pointer transition-colors",
-                            notification.read
-                              ? "hover:bg-muted/50"
-                              : "bg-blue-50 dark:bg-blue-950/20 hover:bg-blue-100 dark:hover:bg-blue-950/30"
-                          )}
-                        >
-                          <div className="flex gap-3">
-                            <div className={cn("mt-0.5", notification.color)}>
-                              <Icon className="w-5 h-5" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2">
-                                <h4 className="text-sm font-semibold text-foreground">
-                                  {notification.title}
-                                </h4>
-                                {!notification.read && (
-                                  <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1" />
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground mt-1">
-                                {notification.message}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                                <ClockIcon className="w-3 h-3" />
-
-                                {notification.time}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-                <DropdownMenuSeparator className="m-0" />
-
-                <div className="p-2">
-                  <Button
-                    variant="ghost"
-                    className="w-full text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/20"
-                    onClick={() => {
-                      setNotificationsOpen(false);
-                      // In a real app, this would navigate to a notifications page
-                      // For now, just close the dropdown
-                      console.log("View all notifications clicked");
-                    }}
-                  >
-                    View All Notifications
-                  </Button>
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <NotificationDropdown />
           </div>
         </header>
 

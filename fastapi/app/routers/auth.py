@@ -192,11 +192,30 @@ async def change_password(
     """
     try:
         from app.services.auth_service import auth_service
+        from app.services.notification_service import NotificationService
+        
         await auth_service.change_password(
             current_user["_id"],
             request.currentPassword,
             request.newPassword
         )
+        
+        # Send notification to admin if user is doctor or receptionist
+        user_role = current_user.get("role", "")
+        if user_role in ["doctor", "receptionist"]:
+            notification_service = NotificationService(db)
+            user_name = f"{current_user.get('firstName', '')} {current_user.get('lastName', '')}".strip()
+            if not user_name:
+                user_name = current_user.get("email", "User")
+            
+            clinic_id = current_user.get("clinicId")
+            if clinic_id:
+                await notification_service.notify_admin_password_change(
+                    user_id=str(current_user["_id"]),
+                    user_name=user_name,
+                    user_role=user_role,
+                    clinic_id=str(clinic_id) if clinic_id else None
+                )
         
         return success_response(
             message="Password changed successfully"
