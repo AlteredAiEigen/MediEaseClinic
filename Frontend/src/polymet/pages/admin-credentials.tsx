@@ -55,6 +55,7 @@ import {
 } from "lucide-react";
 import { get, post, del, put } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 // Custom hook for debounced search
 const useDebounce = (value: string, delay: number) => {
@@ -623,11 +624,8 @@ export function AdminCredentials() {
               <TableBody>
                 {isLoading && (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
-                      <div className="flex items-center justify-center">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                        <span className="ml-2 text-sm text-muted-foreground">Loading users...</span>
-                      </div>
+                    <TableCell colSpan={7} className="py-8">
+                      <MediEaseLoader message="Loading users..." />
                     </TableCell>
                   </TableRow>
                 )}

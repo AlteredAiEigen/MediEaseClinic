@@ -19,8 +19,10 @@ from app.models.appointment import AppointmentCreate
 from app.services.appointment_service import AppointmentService
 from app.services.recording_service import RecordingService
 from app.services.queue_service import QueueService
+from app.services.patient_insights_service import patient_insights_service
 from app.middleware.auth import get_current_active_user, require_any_role, require_roles
 from app.utils.response import success_response, paginated_response
+from app.utils.cache import cache
 
 router = APIRouter()
 
@@ -81,8 +83,6 @@ async def list_appointments(
     Filter by patient, doctor, date, or status.
     """
     try:
-        appointment_service = AppointmentService(db)
-
         clinic_id = current_user.get("clinicId")
         user_role = current_user.get("role")
 
@@ -93,6 +93,14 @@ async def list_appointments(
             doctor_filter = str(doctor_filter)
 
         patient_filter = str(patient_id) if patient_id else None
+        
+        # Generate cache key (20 second TTL for appointments)
+        cache_key = f"appointments:{clinic_id}:{page}:{limit}:{patient_filter}:{doctor_filter}:{date}:{status}"
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        appointment_service = AppointmentService(db)
 
         appointments, total = await appointment_service.list_appointments(
             page=page,
@@ -104,13 +112,18 @@ async def list_appointments(
             clinic_id=clinic_id
         )
         
-        return paginated_response(
+        result = paginated_response(
             message="Appointments retrieved successfully",
             data=appointments,
             total=total,
             page=page,
             limit=limit
         )
+        
+        # Cache result for 20 seconds
+        await cache.set(cache_key, result, ttl_seconds=20)
+        
+        return result
     
     except Exception as e:
         raise HTTPException(
@@ -259,22 +272,36 @@ async def upload_prescription(
 @router.patch("/{appointment_id}/check-in")
 async def check_in_appointment(
     appointment_id: str,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_any_role),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Check in patient for appointment."""
+    """Check in patient for appointment.
+
+    In addition to updating the appointment status, this endpoint triggers
+    asynchronous AI insights generation for the patient so that the
+    consultation page has fresh recommendations.
+    """
     try:
         appointment_service = AppointmentService(db)
         appointment = await appointment_service.update_status(
             appointment_id,
-            "checked-in"
+            "checked-in",
         )
-        
+
+        # Fire-and-forget task to refresh patient insights using AI
+        patient_id = appointment.get("patientId")
+        if patient_id:
+            background_tasks.add_task(
+                patient_insights_service.generate_patient_insights_on_checkin,
+                patient_id,
+            )
+
         return success_response(
             message="Patient checked in successfully",
-            data={"appointment": appointment}
+            data={"appointment": appointment},
         )
-    
+
     except HTTPException as e:
         raise e
     except Exception as e:

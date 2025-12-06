@@ -4,6 +4,7 @@ Authentication service with user management and JWT handling.
 
 from datetime import datetime
 from typing import Optional, Dict
+
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -14,7 +15,7 @@ from app.utils.security import (
     verify_password,
     create_access_token,
     create_refresh_token,
-    decode_token
+    decode_token,
 )
 from app.utils.validators import validate_password_strength
 
@@ -61,18 +62,28 @@ class AuthService:
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=error_message
+                detail=error_message,
             )
-        
+
+        # Enforce Gmail-only signup for admin registrations
+        if user_data.role == "admin":
+            email_lower = user_data.email.lower().strip()
+            if not email_lower.endswith("@gmail.com"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Admin registration requires a Gmail address (ending in @gmail.com).",
+                )
+
         # Validate clinic information
         if user_data.role == "admin":
             if not user_data.clinicName:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Clinic name is required for admin registration"
+                    detail="Clinic name is required for admin registration",
                 )
             # Generate unique clinic ID for admin
             import uuid
+
             clinic_id = str(uuid.uuid4())[:8].upper()
             clinic_name = user_data.clinicName
         else:
@@ -82,12 +93,12 @@ class AuthService:
             try:
                 # Try to get from model_dump first (works for both Pydantic models)
                 user_dict_temp = user_data.model_dump()
-                clinic_id = user_dict_temp.get('clinicId')
-                clinic_name = user_dict_temp.get('clinicName')
+                clinic_id = user_dict_temp.get("clinicId")
+                clinic_name = user_dict_temp.get("clinicName")
             except (AttributeError, TypeError):
                 # Fallback to direct attribute access
-                clinic_id = getattr(user_data, 'clinicId', None)
-                clinic_name = getattr(user_data, 'clinicName', None)
+                clinic_id = getattr(user_data, "clinicId", None)
+                clinic_name = getattr(user_data, "clinicName", None)
 
         # Validate doctor-specific fields
         if user_data.role == "doctor":
@@ -107,7 +118,14 @@ class AuthService:
         user_dict["createdAt"] = datetime.utcnow()
         user_dict["updatedAt"] = datetime.utcnow()
         user_dict["lastLogin"] = None
-        user_dict["isActive"] = True
+
+        # New accounts are active by default, except admins which must verify email first
+        if user_data.role == "admin":
+            user_dict["isActive"] = False
+            user_dict["accountStatus"] = "pending_verification"
+        else:
+            user_dict["isActive"] = True
+            user_dict["accountStatus"] = "active"
 
         # Handle clinic information
         if user_data.role == "admin":
@@ -152,11 +170,19 @@ class AuthService:
             # User not found - return None to indicate invalid credentials
             return None
         
-        # Check if user is active
+        # Check if user is active / verified
         if not user.get("isActive", True):
+            account_status = user.get("accountStatus")
+            # Provide a clearer message for accounts pending email verification
+            if account_status == "pending_verification":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Your account is pending email verification. Please click the activation link sent to your Gmail address.",
+                )
+
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="User account is deactivated. Please contact your administrator."
+                detail="User account is deactivated. Please contact your administrator.",
             )
         
         # Check if password field exists

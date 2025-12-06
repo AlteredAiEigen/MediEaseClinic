@@ -127,25 +127,44 @@ export function ConsultationSession() {
   } | null>(null);
   const [autoRecordingActive, setAutoRecordingActive] = useState(false);
 
-const defaultAiAnalysis = {
-  similarCases: 120,
-  riskLevel: "Medium",
-  successRate: "94%",
-  keyFindings: [
-    "Patient shows stable vitals with mild hypertension indicators.",
-    "Recent lab results indicate improved glycemic control.",
-    "No acute distress signals present during initial assessment.",
-  ],
-  recommendations: [
-    "Maintain current medication plan with minor dosage adjustments.",
-    "Schedule follow-up lab work in 2 weeks to monitor progress.",
-    "Encourage daily 20-minute moderate exercise with hydration tracking.",
-  ],
-};
+  const defaultAiAnalysis = {
+    similarCases: 0,
+    riskLevel: "medium",
+    successRate: "N/A",
+    keyFindings: [
+      "AI insights will appear here once the patient's profile has been analyzed.",
+    ],
+    recommendations: [
+      "Use available clinical information to guide initial assessment.",
+    ],
+  };
 
-const aiAnalysis = defaultAiAnalysis;
+  const aiAnalysis = useMemo(() => {
+    const insights = (patient as any)?.insights;
+    if (insights) {
+      const keyFindings =
+        Array.isArray(insights.keyFindings) && insights.keyFindings.length > 0
+          ? insights.keyFindings
+          : defaultAiAnalysis.keyFindings;
 
-const defaultAppointmentTimeline = [
+      const recommendations =
+        Array.isArray(insights.recommendations) && insights.recommendations.length > 0
+          ? insights.recommendations
+          : defaultAiAnalysis.recommendations;
+
+      return {
+        similarCases: defaultAiAnalysis.similarCases,
+        riskLevel: insights.riskLevel || defaultAiAnalysis.riskLevel,
+        successRate: insights.successRate || defaultAiAnalysis.successRate,
+        keyFindings,
+        recommendations,
+      };
+    }
+
+    return defaultAiAnalysis;
+  }, [patient]);
+
+  const defaultAppointmentTimeline = [
   {
     title: "Initial Consultation",
     date: "2024-11-04",
@@ -1084,9 +1103,14 @@ const appointmentTimeline = defaultAppointmentTimeline;
         ? patient.allergies.split(",").map((entry) => entry.trim())
         : [],
     medications:
-      Array.isArray(patient.currentMedication)
-        ? patient.currentMedication
-        : (patient.currentMedication || "").split(",").map((entry) => entry.trim()).filter(Boolean)
+      Array.isArray((patient as any).currentMedications)
+        ? (patient as any).currentMedications
+        : Array.isArray((patient as any).currentMedication)
+        ? (patient as any).currentMedication
+        : ((patient as any).currentMedication || "")
+            .split(",")
+            .map((entry: string) => entry.trim())
+            .filter(Boolean)
   };
 
   return (

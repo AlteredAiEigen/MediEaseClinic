@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
 import { useAuth, UserRole } from "@/context/auth-context";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 type RoleRequirement = UserRole | UserRole[];
 
@@ -21,14 +22,7 @@ export function RequireAuth({ children, role }: RequireAuthProps) {
   const allowedRoles = Array.isArray(role) ? role : role ? [role] : null;
 
   if (!initialized || loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-teal-50 dark:from-background dark:via-background dark:to-teal-950/30">
-        <div className="flex flex-col items-center gap-3 text-center">
-          <span className="h-12 w-12 rounded-full border-4 border-transparent border-t-[#00C4B3] animate-spin" />
-          <p className="text-muted-foreground text-sm">Loading your workspace…</p>
-        </div>
-      </div>
-    );
+    return <MediEaseLoader message="Loading your workspace..." fullScreen />;
   }
 
   if (!user) {

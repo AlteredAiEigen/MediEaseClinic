@@ -56,6 +56,7 @@ async def create_or_reset_admin(email: str = None, password: str = None):
                     "$set": {
                         "password": hashed_password,
                         "isActive": True,
+                        "accountStatus": "active",
                         "updatedAt": datetime.utcnow()
                     }
                 }
@@ -79,6 +80,7 @@ async def create_or_reset_admin(email: str = None, password: str = None):
                 "role": "admin",
                 "phone": "+1-555-0000",
                 "isActive": True,
+                "accountStatus": "active",
                 "clinicName": "MediEase Clinic",
                 "clinicId": clinic_id,
                 "createdAt": datetime.utcnow(),

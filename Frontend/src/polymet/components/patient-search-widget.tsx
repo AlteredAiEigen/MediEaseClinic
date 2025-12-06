@@ -27,7 +27,7 @@ export function PatientSearchWidget({
     const controller = new AbortController();
 
     async function runSearch() {
-      if (!searchQuery || searchQuery.length < 2) {
+      if (!searchQuery || searchQuery.length < 1) {
         setResults([]);
         setIsSearching(false);
         setError(null);
@@ -55,7 +55,7 @@ export function PatientSearchWidget({
       }
     }
 
-    const timeout = setTimeout(runSearch, 250);
+    const timeout = setTimeout(runSearch, 150);
 
     return () => {
       ignore = true;
@@ -65,7 +65,7 @@ export function PatientSearchWidget({
   }, [searchQuery]);
 
   const filteredPatients = useMemo(() => {
-    if (!searchQuery || searchQuery.length < 2) {
+    if (!searchQuery || searchQuery.length < 1) {
       return [];
     }
     return results.slice(0, 10);
@@ -74,7 +74,7 @@ export function PatientSearchWidget({
   const getPatientDetailsPath = (patientId: string) => {
     return userRole === "admin"
       ? `/admin/patient-details/${patientId}`
-      : `/patient-details/${patientId}`;
+      : `/patient-overview/${patientId}`;
   };
 
   return (

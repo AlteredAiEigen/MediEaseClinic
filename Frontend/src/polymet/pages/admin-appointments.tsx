@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { get, post, put, patch } from "@/lib/api-client";
 import type { BillingItem } from "@/polymet/pages/admin-billing";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 interface Appointment {
   _id: string;
@@ -169,10 +170,10 @@ export function AdminAppointments() {
         setIsLoading(true);
         setError(null);
 
-        // Fetch patients, doctors and billing items for dropdowns
+        // Fetch patients, doctors and billing items for dropdowns (reduced limits for speed)
         const [patientsResponse, doctorsResponse, billingResponse] = await Promise.all([
-          get<Patient[]>("/api/patients?limit=100"),
-          get<Doctor[]>("/api/doctors?limit=50"),
+          get<Patient[]>("/api/patients?limit=30"),
+          get<Doctor[]>("/api/doctors?limit=20"),
           get<{ items: BillingItem[] }>("/api/admin/billing-items"),
         ]);
 
@@ -474,31 +475,7 @@ export function AdminAppointments() {
   };
 
   if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="border-none shadow-lg">
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-4">
-                  <div className="w-12 h-12 bg-muted rounded-xl" />
-                  <div className="space-y-2">
-                    <div className="w-16 h-4 bg-muted rounded" />
-                    <div className="w-12 h-6 bg-muted rounded" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <Card className="border-border shadow-sm">
-          <CardContent className="p-6 text-center">
-            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading appointments...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <MediEaseLoader message="Loading appointments..." fullScreen />;
   }
 
   if (error && appointmentsList.length === 0) {

@@ -200,6 +200,7 @@ interface ClinicalNote {
   _id: string;
   patientId: string;
   doctorId: string;
+  appointmentId?: string;
   note: string;
   diagnosis?: string;
   treatment?: string;
@@ -386,8 +387,8 @@ export function PatientOverview() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const enrichmentRef = useRef<Set<string>>(new Set()); // Track which appointments have been enriched
   const [hasAnyData, setHasAnyData] = useState(false);
+  const [pastAppointmentsPage, setPastAppointmentsPage] = useState(1);
   const [activeEditSection, setActiveEditSection] = useState<EditableSection | null>(null);
   const [isSavingSection, setIsSavingSection] = useState<EditableSection | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -915,6 +916,16 @@ export function PatientOverview() {
           return response.data.patient;
         }
       } catch (err) {
+        // ignore and try alternative endpoint
+      }
+
+      // Second attempt: /api/patients/patient-id/{id} (works for patient IDs like P001)
+      try {
+        const response = await get<{ patient: Patient }>(`/api/patients/patient-id/${id}`);
+        if (response.success && response.data?.patient) {
+          return response.data.patient;
+        }
+      } catch (err) {
         // ignore
       }
 
@@ -939,158 +950,235 @@ export function PatientOverview() {
         if (patientData) {
           setPatient(patientData);
           setHasAnyData(true);
+          // Set loading to false immediately after patient data is loaded
+          setIsLoading(false);
         } else {
           setError("Patient not found");
+          setIsLoading(false);
+          return;
         }
 
-        // Fetch patient vitals - wrapped in try-catch
-        try {
-          const vitalsResponse = await get<PatientVitals[]>(`/api/patient-vitals/${patientId}?limit=50`);
-          if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
-            setVitals(vitalsResponse.data);
-            if (vitalsResponse.data.length > 0) {
-              setHasAnyData(true);
-            }
-          }
-        } catch (vitalsError) {
-          console.warn('Failed to fetch vitals:', vitalsError);
-          // Continue execution
-        }
+        // Use MongoDB ObjectId for S3 reports when available
+        const targetPatientId = patientData?._id || patientId;
 
-        // Fetch lab reports - wrapped in try-catch
-        try {
-          const labReportsResponse = await get<LabReport[] | { data: LabReport[] }>(`/api/lab-reports?patientId=${patientId}&limit=50`);
-          if (labReportsResponse.success) {
-            const reports = Array.isArray(labReportsResponse.data)
-              ? labReportsResponse.data
-              : Array.isArray((labReportsResponse.data as { data?: LabReport[] })?.data)
-              ? (labReportsResponse.data as { data: LabReport[] }).data
-              : [];
-            setLabReports(reports);
-            if (reports.length > 0) {
-              setHasAnyData(true);
-            }
-          }
-        } catch (labError) {
-          console.warn('Failed to fetch lab reports:', labError);
-          // Continue execution
-        }
+        // Fetch related data in background (non-blocking)
+        const fetchRelatedData = async () => {
+          const tasks: Promise<void>[] = [];
 
-        // Fetch S3 reports - wrapped in try-catch
-        try {
-          // Use patient MongoDB ObjectId if available, otherwise use patientId
-          const targetPatientId = patientData?._id || patientId;
-          if (targetPatientId) {
-            const s3ReportsResponse = await get<{ reports: S3Report[]; count: number }>(
-              `/api/s3-reports/patient/${targetPatientId}`
-            );
-            if (s3ReportsResponse.success && s3ReportsResponse.data?.reports) {
-              // Sort by date descending and take top 5
-              const sortedReports = s3ReportsResponse.data.reports
-                .sort((a, b) => {
-                  const dateA = new Date(a.createdAt).getTime();
-                  const dateB = new Date(b.createdAt).getTime();
-                  return dateB - dateA; // Descending order
-                })
-                .slice(0, 5); // Take only 5 most recent
-              setS3Reports(sortedReports);
-              if (sortedReports.length > 0) {
-                setHasAnyData(true);
+        // Patient vitals
+        tasks.push(
+          (async () => {
+            try {
+              const vitalsResponse = await get<PatientVitals[]>(
+                `/api/patient-vitals/${patientId}?limit=20`
+              );
+              if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
+                setVitals(vitalsResponse.data);
+                if (vitalsResponse.data.length > 0) {
+                  setHasAnyData(true);
+                }
               }
+            } catch (vitalsError) {
+              console.warn("Failed to fetch vitals:", vitalsError);
             }
-          }
-        } catch (s3Error) {
-          console.warn('Failed to fetch S3 reports:', s3Error);
-          // Continue execution
-        }
+          })()
+        );
 
-        // Fetch clinical notes - wrapped in try-catch (THIS IS THE PROBLEMATIC ONE)
-        try {
-          const notesResponse = await get<any>(`/api/clinical-notes?patient=${patientId}&limit=25`);
-          if (notesResponse.success) {
-            const rawNotes = Array.isArray(notesResponse.data)
-              ? notesResponse.data
-              : Array.isArray((notesResponse.data as any)?.data)
-              ? (notesResponse.data as any).data
-              : [];
-            const transformedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
-              _id: note._id ?? note.id ?? generateTempId(),
-              patientId: note.patient ?? note.patientId ?? patientId,
-              doctorId: note.doctor ?? note.doctorId ?? "",
-              note: note.content ?? note.note ?? "",
-              diagnosis: note.title ?? note.diagnosis,
-              treatment: note.prescription?.instructions ?? note.treatment,
-              followUp: note.follow_up?.notes ?? note.followUp,
-              createdAt: note.created_at ?? note.createdAt ?? note.timestamp ?? new Date().toISOString(),
-              doctorName: note.doctor_name ?? note.doctorName ?? note.orderedBy ?? "Doctor",
-            }));
-            setClinicalNotes(transformedNotes);
-            if (transformedNotes.length > 0) {
-              setHasAnyData(true);
+        // Lab reports
+        tasks.push(
+          (async () => {
+            try {
+              const labReportsResponse = await get<LabReport[] | { data: LabReport[] }>(
+                `/api/lab-reports?patientId=${patientId}&limit=20`
+              );
+              if (labReportsResponse.success) {
+                const reports = Array.isArray(labReportsResponse.data)
+                  ? labReportsResponse.data
+                  : Array.isArray((labReportsResponse.data as { data?: LabReport[] })?.data)
+                  ? (labReportsResponse.data as { data: LabReport[] }).data
+                  : [];
+                setLabReports(reports);
+                if (reports.length > 0) {
+                  setHasAnyData(true);
+                }
+              }
+            } catch (labError) {
+              console.warn("Failed to fetch lab reports:", labError);
             }
-          }
-        } catch (notesError) {
-          console.warn('Failed to fetch clinical notes (non-blocking):', notesError);
-          // Continue execution - don't let this block other data
-        }
+          })()
+        );
 
-        // Fetch appointment history - wrapped in try-catch (THIS IS THE CRITICAL ONE)
-        try {
-          const appointmentsResponse = await get<any>(`/api/appointments?patient_id=${patientId}&limit=50`);
-          console.log('🔍 Appointments API Response:', {
-            success: appointmentsResponse.success,
-            data: appointmentsResponse.data,
-            dataType: typeof appointmentsResponse.data,
-            isArray: Array.isArray(appointmentsResponse.data),
-            pagination: appointmentsResponse.pagination
+        // S3 reports (latest 5)
+        tasks.push(
+          (async () => {
+            try {
+              if (!targetPatientId) return;
+              const s3ReportsResponse = await get<{ reports: S3Report[]; count: number }>(
+                `/api/s3-reports/patient/${targetPatientId}`
+              );
+              if (s3ReportsResponse.success && s3ReportsResponse.data?.reports) {
+                const sortedReports = s3ReportsResponse.data.reports
+                  .sort((a, b) => {
+                    const dateA = new Date(a.createdAt).getTime();
+                    const dateB = new Date(b.createdAt).getTime();
+                    return dateB - dateA;
+                  })
+                  .slice(0, 5);
+                setS3Reports(sortedReports);
+                if (sortedReports.length > 0) {
+                  setHasAnyData(true);
+                }
+              }
+            } catch (s3Error) {
+              console.warn("Failed to fetch S3 reports:", s3Error);
+            }
+          })()
+        );
+
+        // Clinical notes for this patient
+        tasks.push(
+          (async () => {
+            try {
+              const notesResponse = await get<any>(
+                `/api/clinical-notes?patient=${patientId}&limit=25`
+              );
+              if (notesResponse.success) {
+                const rawNotes = Array.isArray(notesResponse.data)
+                  ? notesResponse.data
+                  : Array.isArray((notesResponse.data as any)?.data)
+                  ? (notesResponse.data as any).data
+                  : [];
+                const transformedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
+                  _id: note._id ?? note.id ?? generateTempId(),
+                  patientId: note.patient ?? note.patientId ?? patientId,
+                  doctorId: note.doctor ?? note.doctorId ?? "",
+                  appointmentId:
+                    note.appointment ??
+                    note.appointmentId ??
+                    note.appointment_id ??
+                    undefined,
+                  note: note.content ?? note.note ?? "",
+                  diagnosis: note.title ?? note.diagnosis,
+                  treatment: note.prescription?.instructions ?? note.treatment,
+                  followUp: note.follow_up?.notes ?? note.followUp,
+                  createdAt:
+                    note.created_at ??
+                    note.createdAt ??
+                    note.timestamp ??
+                    new Date().toISOString(),
+                  doctorName:
+                    note.doctor_name ??
+                    note.doctorName ??
+                    note.orderedBy ??
+                    "Doctor",
+                }));
+                setClinicalNotes(transformedNotes);
+                if (transformedNotes.length > 0) {
+                  setHasAnyData(true);
+                }
+              }
+            } catch (notesError) {
+              console.warn(
+                "Failed to fetch clinical notes (non-blocking):",
+                notesError
+              );
+            }
+          })()
+        );
+
+        // Appointment history (limit to recent set)
+        tasks.push(
+          (async () => {
+            try {
+              const appointmentsResponse = await get<any>(
+                `/api/appointments?patient_id=${patientId}&limit=25`
+              );
+              console.log("🔍 Appointments API Response:", {
+                success: appointmentsResponse.success,
+                data: appointmentsResponse.data,
+                dataType: typeof appointmentsResponse.data,
+                isArray: Array.isArray(appointmentsResponse.data),
+                pagination: (appointmentsResponse as any).pagination,
+              });
+              if (appointmentsResponse.success) {
+                const rawAppointments = extractList<any>(appointmentsResponse.data);
+                console.log(
+                  "🔍 Raw appointments after extractList:",
+                  rawAppointments
+                );
+                console.log(
+                  "🔍 Raw appointments count:",
+                  rawAppointments.length
+                );
+
+                const fetchedAppointments: Appointment[] = rawAppointments.map(
+                  (apt: any) => ({
+                    _id: apt._id || apt.id || apt.appointmentId,
+                    appointmentId: apt.appointmentId || apt._id || apt.id,
+                    patientId: apt.patientId || patientId,
+                    doctorId: apt.doctorId || apt.doctor?._id || apt.doctor?.id,
+                    date: apt.date,
+                    time: apt.time || "",
+                    type: apt.type || "Consultation",
+                    reason: apt.reason || "",
+                    status: apt.status || "scheduled",
+                    doctorName:
+                      apt.doctorName ||
+                      apt.doctor?.fullName ||
+                      (apt.doctor?.firstName
+                        ? `${apt.doctor?.firstName || ""} ${
+                            apt.doctor?.lastName || ""
+                          }`.trim()
+                        : "Doctor"),
+                    createdAt: apt.createdAt || apt.created_at,
+                    created_at: apt.created_at || apt.createdAt,
+                    prescription: apt.prescription,
+                    tests: apt.tests,
+                    prescribedTest: apt.prescribedTest,
+                    diagnosis: apt.diagnosis,
+                    treatmentPlan: apt.treatmentPlan,
+                    followUpInstructions: apt.followUpInstructions,
+                    detailedNotes: apt.detailedNotes,
+                    aiRecommendations: apt.aiRecommendations,
+                  })
+                );
+
+                console.log(
+                  "🔍 Final fetched appointments:",
+                  fetchedAppointments
+                );
+                console.log(
+                  "🔍 Final fetched appointments count:",
+                  fetchedAppointments.length
+                );
+
+                setAppointments(fetchedAppointments);
+                if (fetchedAppointments.length > 0) {
+                  setHasAnyData(true);
+                }
+              } else {
+                console.error(
+                  "❌ Failed to fetch appointments:",
+                  (appointmentsResponse as any).message || "Unknown error"
+                );
+              }
+            } catch (appointmentsError) {
+              console.error(
+                "❌ Error fetching appointments:",
+                appointmentsError
+              );
+            }
+          })()
+        );
+
+          // Run all background tasks without blocking
+          Promise.allSettled(tasks).catch((err) => {
+            console.warn("Some background data fetching failed:", err);
           });
-          let fetchedAppointments: Appointment[] = [];
-          if (appointmentsResponse.success) {
-            // Use extractList helper to handle different response formats
-            const rawAppointments = extractList<any>(appointmentsResponse.data);
-            console.log('🔍 Raw appointments after extractList:', rawAppointments);
-            console.log('🔍 Raw appointments count:', rawAppointments.length);
-            
-            // Ensure all appointments have required fields
-            fetchedAppointments = rawAppointments.map((apt: any) => ({
-              _id: apt._id || apt.id || apt.appointmentId,
-              appointmentId: apt.appointmentId || apt._id || apt.id,
-              patientId: apt.patientId || patientId,
-              doctorId: apt.doctorId || apt.doctor?._id || apt.doctor?.id,
-              date: apt.date,
-              time: apt.time || "",
-              type: apt.type || "Consultation",
-              reason: apt.reason || "",
-              status: apt.status || "scheduled",
-              doctorName: apt.doctorName || apt.doctor?.fullName || (apt.doctor?.firstName 
-                ? `${apt.doctor?.firstName || ""} ${apt.doctor?.lastName || ""}`.trim() 
-                : "Doctor"),
-              createdAt: apt.createdAt || apt.created_at,
-              created_at: apt.created_at || apt.createdAt,
-              prescription: apt.prescription,
-              tests: apt.tests,
-              prescribedTest: apt.prescribedTest,
-              diagnosis: apt.diagnosis,
-              treatmentPlan: apt.treatmentPlan,
-              followUpInstructions: apt.followUpInstructions,
-              detailedNotes: apt.detailedNotes,
-              aiRecommendations: apt.aiRecommendations,
-            }));
-            
-            console.log('🔍 Final fetched appointments:', fetchedAppointments);
-            console.log('🔍 Final fetched appointments count:', fetchedAppointments.length);
-            
-            setAppointments(fetchedAppointments);
-            if (fetchedAppointments.length > 0) {
-              setHasAnyData(true);
-            }
-          } else {
-            console.error('❌ Failed to fetch appointments:', appointmentsResponse.message || 'Unknown error');
-          }
-        } catch (appointmentsError) {
-          console.error('❌ Error fetching appointments:', appointmentsError);
-          // Don't fail the entire page load if appointments fail
-        }
+        };
+
+        // Start background data fetching
+        fetchRelatedData();
 
       } catch (err) {
         const message =
@@ -1105,163 +1193,6 @@ export function PatientOverview() {
     };
 
     fetchPatientData();
-  }, [patientId]);
-
-  // Enrich past appointments with queue entry data (prescription, tests) and clinical notes
-  useEffect(() => {
-    const enrichPastAppointments = async () => {
-      if (!appointments.length || !patientId) return;
-
-      // Separate past appointments using same logic as appointmentBuckets
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const pastAppts = appointments.filter((appointment) => {
-        if (!appointment || !appointment.date) return true;
-        
-        try {
-          const appointmentDate = new Date(appointment.date);
-          if (isNaN(appointmentDate.getTime())) return true;
-          
-          appointmentDate.setHours(0, 0, 0, 0);
-          const dateInFuture = appointmentDate.getTime() > today.getTime();
-          const dateIsToday = appointmentDate.getTime() === today.getTime();
-          const activeStatuses = ["scheduled", "checked-in", "in-progress"];
-          const isActiveStatus = activeStatuses.includes(appointment.status?.toLowerCase() || "");
-          const isUpcoming = dateInFuture || (dateIsToday && isActiveStatus);
-          return !isUpcoming;
-        } catch {
-          return true; // If error, treat as past
-        }
-      });
-
-      if (pastAppts.length === 0) return;
-
-      // Filter out already enriched appointments
-      const appointmentsToEnrich = pastAppts.filter((apt) => {
-        const aptId = apt._id || apt.appointmentId;
-        return aptId && !enrichmentRef.current.has(aptId);
-      });
-
-      if (appointmentsToEnrich.length === 0) return;
-
-      // Fetch enrichment data for each past appointment
-      // Use Promise.allSettled to ensure all appointments are processed even if some fail
-      const enrichmentResults = await Promise.allSettled(
-        appointmentsToEnrich.map(async (appointment) => {
-          const appointmentId = appointment._id || appointment.appointmentId;
-          if (!appointmentId) return appointment;
-
-          // Mark as being enriched
-          enrichmentRef.current.add(appointmentId);
-
-          let prescription: string | undefined;
-          let tests: string | undefined;
-          let clinicalNotes: ClinicalNote[] | undefined;
-
-          // Extract prescription and tests directly from appointment (now stored in appointment table)
-          // Check appointment object first, then fallback to queue for backward compatibility
-          prescription = (appointment.prescription && appointment.prescription.trim()) || undefined;
-          tests = (appointment.tests && appointment.tests.trim()) || undefined;
-
-          // If not found in appointment, try fetching from queue (for backward compatibility with old data)
-          if (!prescription || !tests) {
-            try {
-              const queueResponse = await get<any>(`/api/queue/by-appointment/${appointmentId}`);
-              if (queueResponse.success && queueResponse.data) {
-                const queueData = queueResponse.data;
-                // Only use queue data if appointment doesn't have it
-                if (!prescription) {
-                  prescription = (queueData.prescription && queueData.prescription.trim()) 
-                    || (queueData.consultation?.prescription && queueData.consultation.prescription.trim())
-                    || undefined;
-                }
-                if (!tests) {
-                  tests = (queueData.tests && queueData.tests.trim())
-                    || (queueData.consultation?.tests && queueData.consultation.tests.trim())
-                    || undefined;
-                }
-              }
-            } catch (queueError) {
-              // Silently ignore - appointment should have the data now
-            }
-          }
-
-          // Fetch clinical notes for this appointment - wrapped in try-catch
-          try {
-            // Ensure URL doesn't have trailing slash to avoid redirect issues
-            const notesUrl = `/api/clinical-notes?appointment=${appointmentId}&patient=${patientId}&limit=25`;
-            const notesResponse = await get<any>(notesUrl);
-
-            if (notesResponse.success) {
-              const rawNotes = Array.isArray(notesResponse.data)
-                ? notesResponse.data
-                : Array.isArray((notesResponse.data as any)?.data)
-                ? (notesResponse.data as any).data
-                : [];
-              const mappedNotes: ClinicalNote[] = rawNotes.map((note: any) => ({
-                _id: note._id ?? note.id ?? `temp-${Date.now()}`,
-                patientId: note.patient ?? note.patientId ?? patientId,
-                doctorId: note.doctor ?? note.doctorId ?? "",
-                note: note.content ?? note.note ?? "",
-                diagnosis: note.title ?? note.diagnosis,
-                treatment: note.prescription?.instructions ?? note.treatment,
-                followUp: note.follow_up?.notes ?? note.followUp,
-                createdAt: note.created_at ?? note.createdAt ?? note.timestamp ?? new Date().toISOString(),
-                doctorName: note.doctor_name ?? note.doctorName ?? note.orderedBy ?? "Doctor",
-              }));
-              clinicalNotes = mappedNotes.length > 0 ? mappedNotes : undefined;
-            }
-          } catch (notesError) {
-            console.warn(`Failed to fetch clinical notes for appointment ${appointmentId}:`, notesError);
-            // Continue - don't block enrichment, just skip clinical notes
-          }
-
-          // Return enriched appointment (even if some data failed to load)
-          return {
-            ...appointment,
-            prescription,
-            tests,
-            clinicalNotes,
-          };
-        })
-      );
-
-      // Extract successful results and handle failures
-      const enrichedAppointments = enrichmentResults.map((result, index) => {
-        if (result.status === 'fulfilled') {
-          return result.value;
-        } else {
-          // If enrichment failed, return the original appointment
-          console.error(`Failed to enrich appointment ${appointmentsToEnrich[index]._id}:`, result.reason);
-          const appointmentId = appointmentsToEnrich[index]._id || appointmentsToEnrich[index].appointmentId;
-          if (appointmentId) {
-            enrichmentRef.current.delete(appointmentId); // Remove from set on error
-          }
-          return appointmentsToEnrich[index];
-        }
-      });
-
-      // Update appointments state with enriched data
-      if (enrichedAppointments.length > 0) {
-        const enrichedMap = new Map(
-          enrichedAppointments.map((apt) => [apt._id || apt.appointmentId, apt])
-        );
-        setAppointments((current) =>
-          current.map((apt) => {
-            const enriched = enrichedMap.get(apt._id || apt.appointmentId);
-            return enriched || apt;
-          })
-        );
-      }
-    };
-
-    enrichPastAppointments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointments.length, patientId]); // Only run when appointments array length changes or patientId changes
-
-  // Reset enrichment tracking when patient changes
-  useEffect(() => {
-    enrichmentRef.current.clear();
   }, [patientId]);
 
   // Extract consultation notes from appointments and merge with clinical notes
@@ -1299,6 +1230,7 @@ export function PatientOverview() {
           _id: `consultation-${appointment._id}`,
           patientId: patientId,
           doctorId: doctorId,
+          appointmentId: appointment._id || appointment.appointmentId,
           note: noteContent || appointment.detailedNotes || "Consultation note",
           diagnosis: appointment.diagnosis,
           treatment: appointment.treatmentPlan,
@@ -2472,6 +2404,28 @@ export function PatientOverview() {
 
   const upcomingAppointments = appointmentBuckets.upcoming;
   const pastAppointments = appointmentBuckets.past;
+  const PAST_APPOINTMENTS_PAGE_SIZE = 5;
+  const visiblePastAppointments = pastAppointments.slice(
+    0,
+    pastAppointmentsPage * PAST_APPOINTMENTS_PAGE_SIZE
+  );
+
+  // Group clinical notes by appointment for quick lookup in the UI
+  const clinicalNotesByAppointment = useMemo(() => {
+    const map = new Map<string, ClinicalNote[]>();
+    clinicalNotes.forEach((note) => {
+      const key =
+        note.appointmentId ||
+        (note as any).appointment ||
+        (note as any).appointmentId ||
+        (note as any).appointment_id;
+      if (!key) return;
+      const existing = map.get(key) || [];
+      existing.push(note);
+      map.set(key, existing);
+    });
+    return map;
+  }, [clinicalNotes]);
 
   // Helper function to check if appointment was created today
   const isAppointmentCreatedToday = (appointment: Appointment): boolean => {
@@ -2905,6 +2859,31 @@ export function PatientOverview() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircleIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Patient Not Found</h2>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <Button
+            onClick={() => navigate(-1)}
+            variant="outline"
+            className="mr-2"
+          >
+            Go Back
+          </Button>
+          <Button
+            onClick={() => window.location.reload()}
+            variant="default"
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Lab Report Viewer Dialog */}
@@ -3234,9 +3213,6 @@ export function PatientOverview() {
           </TabsTrigger>
           <TabsTrigger value="lab-results" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
             Lab Results
-          </TabsTrigger>
-          <TabsTrigger value="notes" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
-            Clinical Notes
           </TabsTrigger>
           <TabsTrigger value="appointments" className="flex-1 min-w-[140px] rounded-lg px-3 py-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground">
             Appointments
@@ -4994,70 +4970,6 @@ export function PatientOverview() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="notes" className="space-y-4 mt-6">
-          <Card className="border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileTextIcon className="w-5 h-5 text-[#00C4B3]" />
-                Clinical Notes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {clinicalNotes.length > 0 ? (
-                <div className="space-y-4">
-                  {clinicalNotes.map((note) => (
-                    <div
-                      key={note._id}
-                      className="p-4 rounded-lg border border-border bg-card hover:shadow-md transition-all"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-semibold text-foreground">
-                            {note.diagnosis || "Clinical Note"}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            {new Date(note.createdAt).toLocaleDateString()} • {note.doctorName || "Doctor"}
-                          </p>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className="bg-[#00C4B3]/10 text-[#00C4B3] border-[#00C4B3]/20"
-                        >
-                          Clinical Note
-                        </Badge>
-                      </div>
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm text-foreground leading-relaxed">
-                            {note.note}
-                          </p>
-                        </div>
-                        {note.treatment && (
-                          <div className="border-l-2 border-[#00C4B3]/30 pl-3">
-                            <p className="text-sm font-medium text-foreground mb-1">Treatment Plan:</p>
-                            <p className="text-sm text-muted-foreground">{note.treatment}</p>
-                          </div>
-                        )}
-                        {note.followUp && (
-                          <div className="border-l-2 border-[#F7B731]/30 pl-3">
-                            <p className="text-sm font-medium text-foreground mb-1">Follow-up:</p>
-                            <p className="text-sm text-muted-foreground">{note.followUp}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileTextIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>No clinical notes found</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
         <TabsContent value="appointments" className="space-y-6 mt-6">
           {/* Add Appointment Button - Appears First */}
           <Card className="border-border shadow-sm border-dashed">
@@ -5179,23 +5091,39 @@ export function PatientOverview() {
                 <HistoryIcon className="w-5 h-5 text-muted-foreground" />
                 Past Appointments
               </CardTitle>
-              <Badge variant="outline" className="text-xs">
-                {pastAppointments.length} recorded
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs">
+                  {pastAppointments.length} recorded
+                </Badge>
+                {pastAppointments.length > visiblePastAppointments.length && (
+                  <span className="text-[11px] text-muted-foreground">
+                    Showing {visiblePastAppointments.length} of {pastAppointments.length}
+                  </span>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {pastAppointments.length > 0 ? (
                 <div className="space-y-3">
-                  {pastAppointments.map((appointment) => {
-                    const hasDetails = appointment.prescription || 
-                                     appointment.tests || 
-                                     appointment.prescribedTest ||
-                                     appointment.diagnosis ||
-                                     appointment.treatmentPlan ||
-                                     appointment.followUpInstructions ||
-                                     appointment.detailedNotes ||
-                                     appointment.aiRecommendations ||
-                                     (appointment.clinicalNotes && appointment.clinicalNotes.length > 0);
+                  {visiblePastAppointments.map((appointment) => {
+                    const appointmentKey = appointment._id || appointment.appointmentId;
+                    const mergedClinicalNotes =
+                      appointment.clinicalNotes && appointment.clinicalNotes.length > 0
+                        ? appointment.clinicalNotes
+                        : appointmentKey
+                        ? clinicalNotesByAppointment.get(appointmentKey) || []
+                        : [];
+
+                    const hasDetails =
+                      appointment.prescription ||
+                      appointment.tests ||
+                      appointment.prescribedTest ||
+                      appointment.diagnosis ||
+                      appointment.treatmentPlan ||
+                      appointment.followUpInstructions ||
+                      appointment.detailedNotes ||
+                      appointment.aiRecommendations ||
+                      (mergedClinicalNotes && mergedClinicalNotes.length > 0);
                     const appointmentValue = `appointment-${appointment._id}`;
                     
                     return (
@@ -5261,11 +5189,12 @@ export function PatientOverview() {
                                         <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">AI Analysis</span>
                                       </div>
                                     )}
-                                    {appointment.clinicalNotes && appointment.clinicalNotes.length > 0 && (
+                                    {mergedClinicalNotes && mergedClinicalNotes.length > 0 && (
                                       <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
                                         <FileTextIcon className="w-3 h-3 text-blue-600 dark:text-blue-400" />
                                         <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
-                                          {appointment.clinicalNotes.length} Note{appointment.clinicalNotes.length > 1 ? 's' : ''}
+                                          {mergedClinicalNotes.length} Note
+                                          {mergedClinicalNotes.length > 1 ? "s" : ""}
                                         </span>
                                       </div>
                                     )}
@@ -5460,7 +5389,7 @@ export function PatientOverview() {
                             ) : null}
 
                             {/* Clinical Notes Section */}
-                            {appointment.clinicalNotes && appointment.clinicalNotes.length > 0 ? (
+                            {mergedClinicalNotes && mergedClinicalNotes.length > 0 ? (
                               <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3">
                                 <div className="flex items-center gap-2 mb-2">
                                   <FileTextIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
@@ -5469,7 +5398,7 @@ export function PatientOverview() {
                                   </p>
                                 </div>
                                 <div className="space-y-3">
-                                  {appointment.clinicalNotes.map((note) => (
+                                  {mergedClinicalNotes.map((note) => (
                                     <div key={note._id} className="border-l-2 border-blue-300 dark:border-blue-700 pl-3">
                                       {note.diagnosis && (
                                         <p className="text-xs font-medium text-foreground mb-1">

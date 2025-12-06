@@ -459,13 +459,10 @@ export function ReceptionistDashboardNew() {
 
     loadInitial();
 
+    // Lightweight periodic refresh as a safety net; most updates come from WebSocket
     const interval = setInterval(() => {
-      void Promise.all([
-        fetchQueueData(),
-        fetchQueueStats(),
-        fetchTodayAppointments(),
-      ]);
-    }, 20000);
+      void Promise.all([fetchQueueData(), fetchQueueStats()]);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [cleanupOldAppointments, fetchQueueData, fetchQueueStats, fetchPatients, fetchTodayAppointments]);
@@ -480,10 +477,9 @@ export function ReceptionistDashboardNew() {
             lastMessage.type === 'patient_status_updated' ||
             lastMessage.type === 'queue_reordered' ||
             lastMessage.type === 'appointment_status_updated') {
-          // Refresh appointments and queue data silently (no loading state)
+          // Refresh queue data and stats silently (no loading state)
           console.log('🔄 Refreshing queue data due to:', lastMessage.type);
           await Promise.all([
-            fetchTodayAppointments(),
             fetchQueueData(),
             fetchQueueStats()
           ]);
@@ -535,15 +531,20 @@ export function ReceptionistDashboardNew() {
 const formatAppointmentTime = (date?: string, time?: string) => {
   if (!time) return "—";
   const trimmed = time.trim();
+
+  // If already has AM/PM, just normalize casing
   if (/[AP]M$/i.test(trimmed)) {
     return trimmed.toUpperCase();
   }
-  if (!date) return trimmed;
-  const parsed = new Date(`${date}T${trimmed}`);
-  if (Number.isNaN(parsed.getTime())) {
-    return trimmed;
-  }
-  return parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+  // Interpret as HH:MM 24h without timezone conversion
+  const [hh, mm] = trimmed.split(":");
+  const hour = Number(hh);
+  if (Number.isNaN(hour)) return trimmed;
+
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const displayHour = ((hour + 11) % 12) + 1; // 0,12 -> 12; 13->1 etc.
+  return `${displayHour}:${mm ?? "00"} ${suffix}`;
 };
 
 const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -622,9 +623,7 @@ const patientSearchResults =
     ? patients.filter(matchesPatient)
     : [];
 
-const checkInEntries = queueList.filter(
-  (entry) => entry.status === "waiting" || entry.status === "checked-in"
-);
+const checkInEntries = queueList.filter((entry) => entry.status === "waiting");
 const consultationEntries = queueList.filter(
   (entry) => entry.status === "in-consultation"
 );
@@ -1287,40 +1286,53 @@ const confirmCheckoutWithoutPrescription = () => {
                 </p>
               </div>
                 ) : (
-                filteredCheckInEntries.map((entry) => {
-                  const appointment = appointmentByPatientId.get(entry.patient._id);
-                  return (
-                    <div
-                      key={entry.queue_id}
-                      className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                          <span className="font-semibold text-slate-800 dark:text-slate-100">
-                            {entry.patient.fullName}
-                          </span>
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                            {appointment?.time
-                              ? formatAppointmentTime(appointment.date, appointment.time)
-                              : "Walk-in"}
-                          </span>
+                  filteredCheckInEntries.map((entry) => {
+                    const appointment = appointmentByPatientId.get(entry.patient._id);
+                    const patientMongoId = entry.patient?._id;
+                    return (
+                      <div
+                        key={entry.queue_id}
+                        className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                            <span className="font-semibold text-slate-800 dark:text-slate-100">
+                              {entry.patient.fullName}
+                            </span>
+                            <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                              {appointment?.time
+                                ? formatAppointmentTime(appointment.date, appointment.time)
+                                : "Walk-in"}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                            <span>
+                              {entry.reason || "General consultation"},{" "}
+                              {appointment?.doctorName || "Any doctor"}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
+                            >
+                              Waiting
+                            </Badge>
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                          <span>
-                            {entry.reason || "General consultation"},{" "}
-                            {appointment?.doctorName || "Any doctor"}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
-                          >
-                            Waiting
-                          </Badge>
-                        </div>
+                        {patientMongoId && (
+                          <div className="mt-2 flex justify-end">
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="text-[11px] px-2 py-1 text-sky-700 hover:text-sky-900"
+                              onClick={() => navigate(`/patient-overview/${patientMongoId}`)}
+                            >
+                              View details
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  );
-                })
+                    );
+                  })
                 )
               ) : filteredConsultationEntries.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-200 bg-white/80 p-6 text-center dark:border-sky-800/60 dark:bg-slate-900/50">
@@ -1340,6 +1352,7 @@ const confirmCheckoutWithoutPrescription = () => {
                       .filter(Boolean)
                       .join(" ") ||
                     "Assigned doctor";
+                  const patientMongoId = entry.patient?._id;
                   return (
                     <div
                       key={entry.queue_id}
@@ -1352,8 +1365,8 @@ const confirmCheckoutWithoutPrescription = () => {
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {doctorName}
-                </p>
-              </div>
+                          </p>
+                        </div>
                         <Badge
                           variant="outline"
                           className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
@@ -1363,8 +1376,20 @@ const confirmCheckoutWithoutPrescription = () => {
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
                         {entry.reason || "Consultation in progress"}
-                </p>
-              </div>
+                      </p>
+                      {patientMongoId && (
+                        <div className="mt-2 flex justify-end">
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            className="text-[11px] px-2 py-1 text-sky-700 hover:text-sky-900"
+                            onClick={() => navigate(`/patient-overview/${patientMongoId}`)}
+                          >
+                            View details
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   );
                 })
               )}

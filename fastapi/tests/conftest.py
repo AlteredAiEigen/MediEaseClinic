@@ -81,7 +81,7 @@ def admin_user_data():
     return {
         "firstName": "Admin",
         "lastName": "User",
-        "email": "admin@test.com",
+        "email": "admin@gmail.com",
         "password": "Admin123!",
         "role": "admin",
         "phone": "+1234567890"

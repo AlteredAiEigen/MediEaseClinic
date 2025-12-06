@@ -12,6 +12,18 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+type MedicationLike =
+  | string
+  | {
+      name?: string;
+      dosage?: string;
+      frequency?: string;
+      duration?: string;
+      instructions?: string;
+      startDate?: string;
+      endDate?: string;
+    };
+
 interface ConsultationSidebarProps {
   notes: string;
   diagnosis: string;
@@ -21,7 +33,7 @@ interface ConsultationSidebarProps {
   transcriptionText?: string;
   structuredNotes?: any;
   allergies?: string[];
-  medications?: string[];
+  medications?: MedicationLike[];
   condition?: string;
   carePlanSummary?: string;
   followUpPlan?: string;
@@ -97,11 +109,37 @@ export function ConsultationSidebar({
             </p>
             <div className="space-y-1.5">
               {(medications.length ? medications : ["No medications recorded"]).map(
-                (med, idx) => (
-                  <div key={`${med}-${idx}`} className="text-xs text-foreground">
-                    • {med}
-                  </div>
-                )
+                (med, idx) => {
+                  let label: string;
+
+                  if (typeof med === "string") {
+                    label = med;
+                  } else if (med && typeof med === "object") {
+                    const parts: string[] = [];
+                    if (med.name) parts.push(med.name);
+                    if (med.dosage) parts.push(med.dosage);
+                    if (med.frequency) parts.push(`x${med.frequency}`);
+                    if (med.duration) parts.push(med.duration);
+                    if (!parts.length && med.instructions) {
+                      parts.push(med.instructions);
+                    }
+                    label = parts.join(" • ") || "Medication";
+                  } else {
+                    label = "Medication";
+                  }
+
+                  const keyBase =
+                    typeof med === "string" ? med : med?.name || "medication";
+
+                  return (
+                    <div
+                      key={`${keyBase}-${idx}`}
+                      className="text-xs text-foreground"
+                    >
+                      • {label}
+                    </div>
+                  );
+                }
               )}
             </div>
           </div>

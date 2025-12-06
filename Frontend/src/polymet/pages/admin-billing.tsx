@@ -25,6 +25,7 @@ import {
   PencilIcon,
   Trash2Icon,
 } from "lucide-react";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 interface BillingItem {
   _id: string;
@@ -179,7 +180,7 @@ export function AdminBilling() {
           </CardHeader>
           <CardContent className="space-y-2">
             {isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <MediEaseLoader message="Loading pricing..." size="sm" />
             ) : appointmentTypeItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No appointment pricing defined yet.
@@ -242,7 +243,7 @@ export function AdminBilling() {
           </CardHeader>
           <CardContent className="space-y-2">
             {isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading...</p>
+              <MediEaseLoader message="Loading tests..." size="sm" />
             ) : testItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No test pricing defined yet.

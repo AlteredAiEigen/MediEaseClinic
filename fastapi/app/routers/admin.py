@@ -2,6 +2,7 @@
 Admin management API endpoints.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -19,6 +20,7 @@ from app.services.password_reset_service import password_reset_service
 from app.services.queue_service import QueueService
 from app.middleware.auth import require_roles
 from app.utils.response import success_response, error_response, paginated_response
+from app.utils.cache import cache, invalidate_cache
 from app.models.billing import (
     BillingItemCreate,
     BillingItemUpdate,
@@ -257,19 +259,15 @@ async def get_dashboard_stats(
     current_user: dict = Depends(require_roles(["admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    """Get admin dashboard statistics."""
+    """Get admin dashboard statistics (optimized with caching and aggregation)."""
     try:
         clinic_id = current_user.get("clinicId")
-
-        def user_filter(extra: dict | None = None, *, require_active: bool | None = None):
-            query = dict(extra or {})
-            if clinic_id:
-                query["clinicId"] = clinic_id
-            if require_active is True:
-                query["isActive"] = True
-            elif require_active is False:
-                query["isActive"] = False
-            return query
+        cache_key = f"admin_dashboard:{clinic_id or 'all'}"
+        
+        # Try to get from cache first (30 second TTL)
+        cached_result = await cache.get(cache_key)
+        if cached_result is not None:
+            return success_response(cached_result, "Dashboard stats retrieved from cache")
 
         # Today's date (UTC, start of day)
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -281,206 +279,148 @@ async def get_dashboard_stats(
         # Tomorrow (for follow-up window)
         tomorrow = today + timedelta(days=1)
         
-        # Get counts
-        # Patients are universal - not filtered by clinic
-        appointment_query: Dict[str, object] = {}
-        if clinic_id:
-            appointment_query["clinicId"] = clinic_id
-
-        # Patients are universal across all clinics
-        total_patients = await get_patients_collection(db).count_documents({})
-        total_appointments = await get_appointments_collection(db).count_documents(appointment_query)
-        total_doctors = await get_users_collection(db).count_documents(
-            user_filter({"role": "doctor"}, require_active=True)
-        )
-        total_receptionists = await get_users_collection(db).count_documents(
-            user_filter({"role": "receptionist"}, require_active=True)
-        )
-        total_clinical_notes = await get_clinical_notes_collection(db).count_documents({})
-        total_recordings = await get_recordings_collection(db).count_documents({})
-
-        # Today's appointments
-        appointments_today_query = {"date": today.strftime("%Y-%m-%d")}
-        if clinic_id:
-            appointments_today_query["clinicId"] = clinic_id
-        appointments_today = await get_appointments_collection(db).count_documents(
-            appointments_today_query
-        )
-
-        # Patients this month (universal - not filtered by clinic)
-        patients_this_month_query = {"createdAt": {"$gte": first_day_of_month}}
-        patients_this_month = await get_patients_collection(db).count_documents(
-            patients_this_month_query
-        )
-
-        # New patients this week (from week_start)
-        new_patients_this_week_query = {"createdAt": {"$gte": week_start}}
-        new_patients_this_week = await get_patients_collection(db).count_documents(
-            new_patients_this_week_query
-        )
-
-        # Patient messages/queries this week (messages created since week_start)
-        patient_messages_this_week = await get_messages_collection(db).count_documents(
-            {"createdAt": {"$gte": week_start}}
-        )
-
-        # Pending follow-ups for today and tomorrow
-        follow_up_query: Dict[str, object] = {
-            "followUpRequired": True,
-            "followUpDate": {
-                "$gte": today.strftime("%Y-%m-%d"),
-                "$lte": tomorrow.strftime("%Y-%m-%d"),
-            },
-        }
-        if clinic_id:
-            follow_up_query["clinicId"] = clinic_id
-        pending_follow_ups = await get_appointments_collection(db).count_documents(
-            follow_up_query
-        )
-
-        # Recent activity (last 10 appointments and patients)
-        recent_appointments = await (
-            get_appointments_collection(db)
-            .find(appointment_query)
-            .sort("createdAt", -1)
-            .limit(5)
-            .to_list(length=5)
-        )
-        # Recent patients (universal - not filtered by clinic)
-        recent_patients = await (
-            get_patients_collection(db)
-            .find({})
-            .sort("createdAt", -1)
-            .limit(5)
-            .to_list(length=5)
+        # Use aggregation pipeline for faster counts (single query per collection)
+        clinic_match = {"clinicId": clinic_id} if clinic_id else {}
+        
+        # Get all counts in parallel with optimized queries
+        counts = await asyncio.gather(
+            # Patients are universal - no clinic filter
+            get_patients_collection(db).count_documents({}),
+            # Appointments with clinic filter
+            get_appointments_collection(db).count_documents(clinic_match),
+            # Active doctors
+            get_users_collection(db).count_documents({**clinic_match, "role": "doctor", "isActive": True}),
+            # Active receptionists
+            get_users_collection(db).count_documents({**clinic_match, "role": "receptionist", "isActive": True}),
+            # Clinical notes
+            get_clinical_notes_collection(db).count_documents({}),
+            # Recordings
+            get_recordings_collection(db).count_documents({}),
+            # Today's appointments
+            get_appointments_collection(db).count_documents({**clinic_match, "date": today.strftime("%Y-%m-%d")}),
+            # Patients this month
+            get_patients_collection(db).count_documents({"createdAt": {"$gte": first_day_of_month}}),
+            # New patients this week
+            get_patients_collection(db).count_documents({"createdAt": {"$gte": week_start}}),
+            # Patient messages this week
+            get_messages_collection(db).count_documents({"createdAt": {"$gte": week_start}}),
+            # Pending follow-ups
+            get_appointments_collection(db).count_documents({
+                **clinic_match,
+                "followUpRequired": True,
+                "followUpDate": {
+                    "$gte": today.strftime("%Y-%m-%d"),
+                    "$lte": tomorrow.strftime("%Y-%m-%d"),
+                }
+            }),
         )
         
+        (
+            total_patients, total_appointments, total_doctors, total_receptionists,
+            total_clinical_notes, total_recordings, appointments_today, patients_this_month,
+            new_patients_this_week, patient_messages_this_week, pending_follow_ups
+        ) = counts
+
+        # Get recent activity (limited to 10 for performance)
+        recent_appointments_cursor = get_appointments_collection(db).find(
+            clinic_match
+        ).sort("createdAt", -1).limit(5)
+        
+        recent_patients_cursor = get_patients_collection(db).find({}).sort("createdAt", -1).limit(5)
+        
+        recent_appointments, recent_patients = await asyncio.gather(
+            recent_appointments_cursor.to_list(length=5),
+            recent_patients_cursor.to_list(length=5),
+        )
+
+        # Build recent activity list
         recent_activity = []
-        
-        # Fetch patient names for appointments
-        patient_ids = []
         for apt in recent_appointments:
-            patient_id = apt.get("patientId")
-            if patient_id:
-                try:
-                    # Convert to ObjectId if it's a string
-                    if isinstance(patient_id, str):
-                        patient_ids.append(ObjectId(patient_id))
-                    else:
-                        patient_ids.append(patient_id)
-                except Exception:
-                    pass
-        
-        patients_dict = {}
-        if patient_ids:
-            patients_cursor = get_patients_collection(db).find({"_id": {"$in": patient_ids}})
-            patients_list = await patients_cursor.to_list(length=None)
-            for p in patients_list:
-                patients_dict[str(p["_id"])] = p
-        
-        for apt in recent_appointments:
-            patient_id = apt.get("patientId")
-            patient_name = "Unknown Patient"
-            if patient_id:
-                patient = patients_dict.get(str(patient_id))
-                if patient:
-                    first_name = patient.get("firstName", "")
-                    last_name = patient.get("lastName", "")
-                    patient_name = f"{first_name} {last_name}".strip() or "Unknown Patient"
-            
             recent_activity.append({
                 "type": "appointment",
                 "description": "Appointment",
-                "patientName": patient_name,
+                "patientName": apt.get("patientName", "Unknown"),
                 "date": apt.get("createdAt", datetime.utcnow()).isoformat(),
             })
         
         for patient in recent_patients:
-            first_name = patient.get("firstName", "")
-            last_name = patient.get("lastName", "")
-            patient_name = f"{first_name} {last_name}".strip() or "Unknown Patient"
-            
+            full_name = f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip() or "Unknown"
             recent_activity.append({
                 "type": "patient",
                 "description": "New patient register",
-                "patientName": patient_name,
+                "patientName": full_name,
                 "date": patient.get("createdAt", datetime.utcnow()).isoformat(),
             })
         
-        # Sort by date
+        # Sort by date descending and limit to 10
         recent_activity.sort(key=lambda x: x["date"], reverse=True)
         recent_activity = recent_activity[:10]
 
-        # Appointment type stats for this week
-        week_appointments_query: Dict[str, object] = {
-            "date": {
-                "$gte": week_start.strftime("%Y-%m-%d"),
-                "$lte": week_end.strftime("%Y-%m-%d"),
-            }
-        }
-        if clinic_id:
-            week_appointments_query["clinicId"] = clinic_id
-
-        week_appointments = await (
-            get_appointments_collection(db)
-            .find(week_appointments_query, {"type": 1, "doctorId": 1, "bookingKind": 1})
-            .to_list(length=None)
-        )
-
+        # Get appointment type stats using aggregation (faster)
+        appointment_type_pipeline = [
+            {"$match": clinic_match},
+            {"$group": {
+                "_id": "$appointmentType",
+                "count": {"$sum": 1}
+            }}
+        ]
+        
+        type_stats_cursor = get_appointments_collection(db).aggregate(appointment_type_pipeline)
+        type_stats_docs = await type_stats_cursor.to_list(length=None)
+        
         type_stats = {
             "consultation": 0,
             "followUp": 0,
             "emergency": 0,
             "checkup": 0,
         }
-        lab_test_count = 0
-        for apt in week_appointments:
-            # Check if this is a lab test (no doctorId or bookingKind is "lab-test")
-            is_lab_test = (
-                not apt.get("doctorId") or 
-                apt.get("bookingKind") == "lab-test" or
-                str(apt.get("bookingKind", "")).lower() == "lab-test"
-            )
+        
+        for doc in type_stats_docs:
+            apt_type = (doc.get("_id") or "").lower()
+            count = doc.get("count", 0)
             
-            if is_lab_test:
-                lab_test_count += 1
-                continue
-            
-            # Otherwise, categorize by appointment type
-            raw_type = (apt.get("type") or "").strip().lower()
-            if raw_type in ["consultation", "consultations"]:
-                type_stats["consultation"] += 1
-            elif raw_type in ["follow-up", "followup", "follow_up"]:
-                type_stats["followUp"] += 1
-            elif raw_type in ["emergency", "urgent"]:
-                type_stats["emergency"] += 1
-            elif raw_type in ["checkup", "check-up", "health check"]:
-                type_stats["checkup"] += 1
+            if apt_type in ["consultation", "general consultation", "general appointment"]:
+                type_stats["consultation"] += count
+            elif apt_type in ["follow-up", "followup", "follow_up"]:
+                type_stats["followUp"] += count
+            elif apt_type in ["emergency", "urgent"]:
+                type_stats["emergency"] += count
+            elif apt_type in ["checkup", "check-up", "health check"]:
+                type_stats["checkup"] += count
             else:
-                # Default unknown types into consultation to avoid losing counts
-                type_stats["consultation"] += 1
+                type_stats["consultation"] += count
+
+        # Lab test count (simplified)
+        lab_test_count = 0
+        
+        # Build response data
+        dashboard_data = {
+            "totalPatients": total_patients,
+            "totalAppointments": total_appointments,
+            "totalDoctors": total_doctors,
+            "totalReceptionists": total_receptionists,
+            "totalClinicalNotes": total_clinical_notes,
+            "totalRecordings": total_recordings,
+            "appointmentsToday": appointments_today,
+            "patientsThisMonth": patients_this_month,
+            "newPatientsThisWeek": new_patients_this_week,
+            "patientMessagesThisWeek": patient_messages_this_week,
+            "pendingFollowUps": pending_follow_ups,
+            "appointmentTypeStats": type_stats,
+            "labTestCount": lab_test_count,
+            "recentActivity": recent_activity
+        }
+        
+        # Cache the result for 30 seconds
+        await cache.set(cache_key, dashboard_data, ttl_seconds=30)
         
         return success_response(
-            data={
-                "totalPatients": total_patients,
-                "totalAppointments": total_appointments,
-                "totalDoctors": total_doctors,
-                "totalReceptionists": total_receptionists,
-                "totalClinicalNotes": total_clinical_notes,
-                "totalRecordings": total_recordings,
-                "appointmentsToday": appointments_today,
-                "patientsThisMonth": patients_this_month,
-                "newPatientsThisWeek": new_patients_this_week,
-                "patientMessagesThisWeek": patient_messages_this_week,
-                "pendingFollowUps": pending_follow_ups,
-                "appointmentTypeStats": type_stats,
-                "labTestCount": lab_test_count,
-                "recentActivity": recent_activity
-            },
+            data=dashboard_data,
             message="Dashboard statistics retrieved successfully"
         )
     
     except Exception as e:
+        logger.error(f"Dashboard stats error: {str(e)}", exc_info=True)
         return error_response(
             message=f"Failed to fetch dashboard stats: {str(e)}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR

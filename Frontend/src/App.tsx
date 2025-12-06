@@ -34,15 +34,11 @@ const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout"
 const LoaderShowcasePage = lazy(() => import("@/polymet/pages/loader-showcase-page").then(module => ({ default: module.LoaderShowcasePage })));
 const ResetPasswordPage = lazy(() => import("@/polymet/pages/reset-password").then(module => ({ default: module.ResetPasswordPage })));
 
+// Import MediEase loader
+import { MediEaseLoader } from "@/components/mediease-loader";
+
 // Loading component for Suspense fallback
-const LoadingFallback = () => (
-  <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-teal-50 dark:from-background dark:via-background dark:to-teal-950/30">
-    <div className="flex flex-col items-center gap-3 text-center">
-      <span className="h-12 w-12 rounded-full border-4 border-transparent border-t-[#00C4B3] animate-spin" />
-      <p className="text-muted-foreground text-sm">Loading page...</p>
-    </div>
-  </div>
-);
+const LoadingFallback = () => <MediEaseLoader message="Loading page..." fullScreen />;
 
 const prefetchModules = () => {
   const modules = [
@@ -199,6 +195,19 @@ export default function MediEaseClinicPrototype() {
                 <Suspense fallback={<LoadingFallback />}>
                   <HealthcareLayout>
                     <AdminBilling />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
+
+          <Route
+            path="/admin/patient-details/:patientId"
+            element={
+              <RequireAuth role="admin">
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <PatientOverview />
                   </HealthcareLayout>
                 </Suspense>
               </RequireAuth>

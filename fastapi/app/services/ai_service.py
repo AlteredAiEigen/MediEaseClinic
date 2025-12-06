@@ -4,7 +4,9 @@ Supports both OpenAI and Google Gemini.
 """
 
 import logging
-from typing import Dict, Optional
+from datetime import datetime
+from typing import Dict, Optional, Any
+import json
 from fastapi import HTTPException, status
 
 from app.config import settings
@@ -326,6 +328,137 @@ Summary:"""
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to generate AI response: {str(e)}",
             )
+
+    async def generate_patient_insights(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate AI-driven patient insights used for the consultation page.
+
+        This is used when the patient is checked in, and can be re-used after
+        consultation if needed.
+        """
+        # Basic fallback if no AI provider is configured
+        if not self.provider:
+            logger.warning("No AI provider configured, using heuristic insights")
+
+            chief_complaint = patient_data.get("chiefComplaint") or ""
+            condition = patient_data.get("condition") or ""
+            plan = patient_data.get("carePlanSummary") or ""
+
+            key_findings = []
+            for field in ("chiefComplaint", "currentSymptoms", "condition"):
+                value = patient_data.get(field)
+                if value:
+                    key_findings.append(str(value))
+
+            recommendations = []
+            if plan:
+                recommendations.append(str(plan))
+
+            return {
+                "riskAssessment": condition or "Risk assessment not available",
+                "riskLevel": "medium",
+                "successRate": patient_data.get("insights", {}).get("successRate", "N/A"),
+                "keyFindings": key_findings,
+                "recommendations": recommendations,
+                "lastUpdatedAt": datetime.utcnow().isoformat(),
+            }
+
+        # Build a compact context for the model
+        context: Dict[str, Any] = {
+            "demographics": {
+                "firstName": patient_data.get("firstName"),
+                "lastName": patient_data.get("lastName"),
+                "age": patient_data.get("age"),
+                "gender": patient_data.get("gender"),
+                "bloodGroup": patient_data.get("bloodGroup"),
+                "dateOfBirth": patient_data.get("dateOfBirth"),
+            },
+            "contact": {
+                "phone": patient_data.get("phone"),
+                "email": patient_data.get("email"),
+            },
+            "clinical": {
+                "allergies": patient_data.get("allergies"),
+                "currentMedications": patient_data.get("currentMedications"),
+                "chiefComplaint": patient_data.get("chiefComplaint"),
+                "currentSymptoms": patient_data.get("currentSymptoms"),
+                "condition": patient_data.get("condition"),
+                "carePlanSummary": patient_data.get("carePlanSummary"),
+                "followUpPlan": patient_data.get("followUpPlan"),
+                "lastVisit": patient_data.get("lastVisit"),
+            },
+            "history": {
+                # Optional longitudinal history summary prepared by the caller
+                "summary": patient_data.get("historySummary"),
+            },
+        }
+
+        prompt = (
+            "You are MediEase Clinic's AI assistant. Analyze the following patient profile and "
+            "produce concise, clinically useful insights for the doctor before a consultation.\n\n"
+            "Patient data (JSON):\n"
+            f"{json.dumps(context, indent=2)}\n\n"
+            "Return ONLY a JSON object with the following exact keys:\n"
+            "{\n"
+            '  "riskAssessment": "Short sentence describing overall risk profile",\n'
+            '  "riskLevel": "low" | "medium" | "high",\n'
+            '  "successRate": "Estimated treatment success probability as a percentage string like \\"90%\\",\n'
+            '  "keyFindings": ["bullet 1", "bullet 2", ...],\n'
+            '  "recommendations": ["recommendation 1", "recommendation 2", ...]\n'
+            "}\n\n"
+            "Guidelines:\n"
+            "- Be conservative and clinically reasonable.\n"
+            "- Base your reasoning ONLY on the provided data.\n"
+            "- If some fields are missing, still provide best-effort insights without hallucinating new facts.\n"
+            "- Keep keyFindings and recommendations focused and high-yield.\n"
+        )
+
+        try:
+            if self.provider == "openai":
+                response = self.client.chat.completions.create(
+                    model=settings.openai_model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are MediEase Clinic's medical risk and recommendations assistant. "
+                                "Always respond with STRICT JSON only."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.3,
+                    response_format={"type": "json_object"},
+                )
+                raw = response.choices[0].message.content
+            elif self.provider == "gemini":
+                # Gemini path: ask for JSON and attempt to parse
+                response = self.client.generate_content(
+                    "Return ONLY JSON.\n\n" + prompt
+                )
+                raw = response.text
+            else:
+                # Should not happen, but guard anyway
+                logger.warning("Unsupported AI provider: %s", self.provider)
+                return await self.generate_patient_insights(patient_data)
+
+            data = json.loads(raw)
+
+            insights = {
+                "riskAssessment": data.get("riskAssessment") or "Risk assessment not available",
+                "riskLevel": data.get("riskLevel") or "medium",
+                "successRate": data.get("successRate") or "N/A",
+                "keyFindings": data.get("keyFindings") or [],
+                "recommendations": data.get("recommendations") or [],
+                "lastUpdatedAt": datetime.utcnow().isoformat(),
+            }
+
+            return insights
+
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("AI patient insights generation failed: %s", exc, exc_info=True)
+            # Fall back to heuristic insights if model call fails
+            return await self.generate_patient_insights(patient_data)
 
 
 # Global AI service instance

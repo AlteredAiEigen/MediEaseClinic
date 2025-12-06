@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { put } from "@/lib/api-client";
 import { useAuth, type User } from "@/context/auth-context";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 export function AdminSettings() {
   const { user, refreshUser } = useAuth();

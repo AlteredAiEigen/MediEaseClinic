@@ -36,6 +36,7 @@ import {
   HeartPulseIcon,
 } from "lucide-react";
 import { get, post } from "@/lib/api-client";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 // Custom hook for debounced search
 const useDebounce = (value: string, delay: number) => {
@@ -173,34 +174,55 @@ export function AdminPatients() {
     let ignore = false;
 
     const fetchPatients = async () => {
+      console.log("🔍 AdminPatients: Starting to fetch patients...");
       setIsLoading(true);
       setFetchError(null);
+
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Request timeout - please try again")), 15000); // 15 second timeout
+      });
+
       try {
-        // Fetch patients with max limit (100) for stats calculation
-        const response = await get<any>("/api/patients?limit=100&page=1");
+        console.log("🔍 AdminPatients: Making API call to /api/patients...");
+        // Fetch patients with reduced limit for faster loading
+        const apiPromise = get<any>("/api/patients?limit=30&page=1");
+        const response = await Promise.race([apiPromise, timeoutPromise]);
+
         if (ignore) return;
+
+        console.log("🔍 AdminPatients: API response received:", {
+          success: response.success,
+          message: response.message,
+          dataLength: Array.isArray(response.data) ? response.data.length : 'not array',
+          hasPagination: !!(response as any).pagination
+        });
 
         if (response.success) {
           // Response structure: {success, message, data: [...], pagination: {total, page, limit, ...}}
           const patientsData = Array.isArray(response.data) ? response.data : [];
           const pagination = (response as any).pagination || {};
           const total = pagination.total ?? patientsData.length;
-          
+
+          console.log("🔍 AdminPatients: Processing", patientsData.length, "patients, total:", total);
+
           // Always set stats, even if 0
           setTotalPatients(total);
-          
+
           // For display, we'll use first 50 patients
           const mappedPatients = patientsData.slice(0, 50).map(mapApiPatientToUi);
           setPatientsList(mappedPatients);
-          
+
+          console.log("🔍 AdminPatients: Set", mappedPatients.length, "patients for display");
+
           // Note: In Clinic Today will be calculated from queue entries, not from presentInClinic flag
-          
+
           // Calculate new patients this week
           const now = new Date();
           const weekAgo = new Date(now);
           weekAgo.setDate(now.getDate() - 7);
           weekAgo.setHours(0, 0, 0, 0);
-          
+
           const newThisWeek = patientsData.filter((patient: ApiPatient) => {
             if (!patient.createdAt) return false;
             try {
@@ -210,9 +232,10 @@ export function AdminPatients() {
               return false;
             }
           }).length;
-          
+
           setNewPatientsThisWeek(newThisWeek);
         } else {
+          console.error("🔍 AdminPatients: API call failed:", response.message);
           setFetchError(response.message ?? "Unable to load patients right now.");
         }
       } catch (error) {
@@ -733,10 +756,7 @@ const statusLabels: Record<PatientStatus, string> = {
           </div>
 
           {isLoading ? (
-            <div className="py-16 flex flex-col items-center gap-4 text-muted-foreground">
-              <span className="h-10 w-10 rounded-full border-4 border-transparent border-t-[#00C4B3] animate-spin" />
-              <p className="text-sm">Loading patient records…</p>
-            </div>
+            <MediEaseLoader message="Loading patient records..." />
           ) : (
             <>
               {/* Patients Grid */}

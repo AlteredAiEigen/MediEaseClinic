@@ -131,7 +131,7 @@ export async function fetchPatients(params: PatientListParams = {}): Promise<Pat
 }
 
 export async function searchPatients(query: string): Promise<PatientSummary[]> {
-  if (!query || query.length < 2) {
+  if (!query || query.length < 1) {
     return [];
   }
 

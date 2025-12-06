@@ -712,13 +712,20 @@ class PatientService:
         Returns:
             List of matching patients
         """
+        # Optimize regex pattern for better performance
+        # For single characters, use word boundary or start-of-string matching
+        if len(query) == 1:
+            regex_pattern = f"^{query}"
+        else:
+            regex_pattern = query
+
         search_query = {
             "$or": [
-                {"firstName": {"$regex": query, "$options": "i"}},
-                {"lastName": {"$regex": query, "$options": "i"}},
-                {"email": {"$regex": query, "$options": "i"}},
-                {"phone": {"$regex": query, "$options": "i"}},
-                {"patientId": {"$regex": query, "$options": "i"}},
+                {"firstName": {"$regex": regex_pattern, "$options": "i"}},
+                {"lastName": {"$regex": regex_pattern, "$options": "i"}},
+                {"email": {"$regex": regex_pattern, "$options": "i"}},
+                {"phone": {"$regex": regex_pattern, "$options": "i"}},
+                {"patientId": {"$regex": regex_pattern, "$options": "i"}},
             ]
         }
         

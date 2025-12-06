@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { StatCard } from "@/polymet/components/stat-card";
 import { DoctorCard } from "@/polymet/components/doctor-card";
@@ -33,6 +33,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { get } from "@/lib/api-client";
+import { MediEaseLoader } from "@/components/mediease-loader";
 
 interface DashboardStats {
   totalPatients: number;
@@ -155,17 +156,17 @@ export function AdminDashboard() {
   };
 
   useEffect(() => {
+    let mounted = true;
+    
     const fetchDashboardData = async () => {
       try {
         setIsLoading(true);
         setError(null);
 
-        const [statsResponse, doctorsResponse, receptionistsResponse, revenueResponse] = await Promise.all([
-          get<DashboardStats>("/api/admin/dashboard"),
-          get<Doctor[]>("/api/doctors?limit=12"),
-          get<Receptionist[]>("/api/admin/users?role=receptionist&isActive=true&limit=12"),
-          get<RevenueOverview>(`/api/admin/metrics/revenue?period=${revenuePeriod}`),
-        ]);
+        // Fetch stats first (critical), then others in parallel
+        const statsResponse = await get<DashboardStats>("/api/admin/dashboard");
+        
+        if (!mounted) return;
 
         if (statsResponse.success && statsResponse.data) {
           setDashboardStats(statsResponse.data);
@@ -173,8 +174,17 @@ export function AdminDashboard() {
           throw new Error(statsResponse.message || "Unable to load dashboard stats");
         }
 
+        // Fetch less critical data in background (reduced limits for speed)
+        const [doctorsResponse, receptionistsResponse, revenueResponse] = await Promise.all([
+          get<Doctor[]>("/api/doctors?limit=6"),
+          get<Receptionist[]>("/api/admin/users?role=receptionist&isActive=true&limit=6"),
+          get<RevenueOverview>(`/api/admin/metrics/revenue?period=${revenuePeriod}`),
+        ]);
+
+        if (!mounted) return;
+
         if (doctorsResponse.success && Array.isArray(doctorsResponse.data)) {
-          setDoctors(doctorsResponse.data);
+          setDoctors(doctorsResponse.data.slice(0, 6));
         } else {
           setDoctors([]);
         }
@@ -190,7 +200,7 @@ export function AdminDashboard() {
             : [];
           const activeReceptionists = usersData.filter((r: any) => 
             r.role === "receptionist" && r.isActive !== false
-          );
+          ).slice(0, 6);
           setReceptionists(activeReceptionists);
         } else {
           setReceptionists([]);
@@ -202,58 +212,45 @@ export function AdminDashboard() {
           setRevenueOverview(null);
         }
       } catch (err) {
+        if (!mounted) return;
         const message = err instanceof Error ? err.message : "Failed to load dashboard data";
         setError(message);
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchDashboardData();
+    
+    return () => {
+      mounted = false;
+    };
   }, [revenuePeriod]);
 
-  // Format recent activities for display
-  const recentActivities = dashboardStats?.recentActivity?.slice(0, 4).map((activity, index) => {
-    const patientName = activity.patientName || "Unknown";
-    const actionText = activity.description === "Appointment" 
-      ? "Appointment" 
-      : activity.description === "New patient register"
-      ? "New patient register"
-      : activity.description;
-    
-    return {
-      id: index + 1,
-      action: actionText,
-      patientName: patientName,
-      time: new Date(activity.date).toLocaleString(),
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(patientName)}&background=random&color=ffffff`,
-    };
-  }) || [];
+  // Format recent activities for display - memoized
+  const recentActivities = useMemo(() => 
+    dashboardStats?.recentActivity?.slice(0, 4).map((activity, index) => {
+      const patientName = activity.patientName || "Unknown";
+      const actionText = activity.description === "Appointment" 
+        ? "Appointment" 
+        : activity.description === "New patient register"
+        ? "New patient register"
+        : activity.description;
+      
+      return {
+        id: index + 1,
+        action: actionText,
+        patientName: patientName,
+        time: new Date(activity.date).toLocaleString(),
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(patientName)}&background=random&color=ffffff`,
+      };
+    }) || []
+  , [dashboardStats?.recentActivity]);
 
   if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-          {[...Array(5)].map((_, i) => (
-            <Card key={i} className="border-border shadow-sm">
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-4">
-                  <div className="w-12 h-12 bg-muted rounded-xl" />
-                  <div className="space-y-2">
-                    <div className="w-20 h-4 bg-muted rounded" />
-                    <div className="w-16 h-6 bg-muted rounded" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <div className="text-center py-12">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading dashboard...</p>
-        </div>
-      </div>
-    );
+    return <MediEaseLoader message="Loading admin dashboard..." fullScreen />;
   }
 
   if (error) {

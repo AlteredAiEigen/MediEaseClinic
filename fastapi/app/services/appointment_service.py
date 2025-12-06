@@ -507,9 +507,11 @@ class AppointmentService:
             if cancellation_reason:
                 update_data["cancellationReason"] = cancellation_reason
         
+        appointment_object_id = ObjectId(appointment_id)
+
         # Update appointment
         result = await self.appointments_collection.update_one(
-            {"_id": ObjectId(appointment_id)},
+            {"_id": appointment_object_id},
             {"$set": update_data}
         )
         
@@ -520,7 +522,31 @@ class AppointmentService:
             )
 
         # Retrieve updated appointment
-        updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
+        updated_appointment = await self.appointments_collection.find_one({"_id": appointment_object_id})
+
+        # If an appointment is cancelled after check-in, make sure any related
+        # queue entries are also cancelled so they no longer appear in
+        # receptionist \"checked-in\" views.
+        if new_status == "cancelled":
+            try:
+                queue_collection = self.db.queue
+                await queue_collection.update_many(
+                    {
+                        "appointment": appointment_object_id,
+                        "is_active": True,
+                        "status": {"$in": ["waiting", "in-consultation", "completed", "checkout"]},
+                    },
+                    {
+                        "$set": {
+                            "status": "cancelled",
+                            "is_active": False,
+                            "updated_at": datetime.utcnow(),
+                        }
+                    },
+                )
+            except Exception as e:  # pragma: no cover - defensive
+                # Log but don't fail the appointment cancellation
+                print(f"Failed to cancel related queue entries for appointment {appointment_id}: {e}")
 
         # Broadcast appointment status update via WebSocket
         try:

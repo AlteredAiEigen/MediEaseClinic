@@ -12,6 +12,8 @@ from bson import ObjectId
 from app.models.recording import RecordingUpdate, recording_helper
 from app.models.patient import DEFAULT_PATIENT_INSIGHTS
 from app.services.aws_service import aws_service
+from app.services.patient_medical_history_service import PatientMedicalHistoryService
+from app.models.patient_medical_history import PatientMedicalHistoryCreate
 from app.config import settings
 
 
@@ -264,8 +266,26 @@ class RecordingService:
                     {"$set": appointment_updates}
                 )
 
-            # Update patient with medications and allergies
+            # Update patient with medications, allergies, and summary fields
             await self.update_patient_from_notes(recording["patientId"], structured_notes)
+
+            # Optionally update structured medical history collection
+            try:
+                if recording.get("patientId") and any(
+                    structured_notes.get(key)
+                    for key in ("medicalHistory", "familyHistory", "previousSurgeries")
+                ):
+                    history_service = PatientMedicalHistoryService(self.db)
+                    history_payload = PatientMedicalHistoryCreate(
+                        patientId=str(recording["patientId"]),
+                        medicalHistory=structured_notes.get("medicalHistory"),
+                        familyHistory=structured_notes.get("familyHistory"),
+                        previousSurgeries=structured_notes.get("previousSurgeries"),
+                    )
+                    await history_service.create_medical_history(history_payload)
+            except Exception as e:  # pragma: no cover - defensive
+                # Do not fail recording processing if history update fails
+                print(f"Warning: failed to update patient_medical_history: {e}")
 
         # Update recording with structured notes
         if update_data:
@@ -289,14 +309,88 @@ class RecordingService:
         patient_updates: Dict[str, any] = {}
         now_iso = datetime.utcnow().isoformat()
         
-        # Extract medications
+        # Extract medications from structured notes into currentMedications
         if structured_notes.get("medications"):
-            medications = structured_notes["medications"]
-            if isinstance(medications, list) and len(medications) > 0:
-                # Medications are handled via prescriptions / currentMedications;
-                # we no longer maintain the legacy `currentMedication` summary
-                # field on the patient document.
-                pass
+            meds = structured_notes["medications"]
+            if isinstance(meds, list) and meds:
+                existing_meds = patient.get("currentMedications", [])
+                if not isinstance(existing_meds, list):
+                    existing_meds = []
+
+                existing_names = {
+                    (m.get("name") or "").lower()
+                    for m in existing_meds
+                    if isinstance(m, dict)
+                }
+
+                def _parse_duration_to_end_date(duration_text: str) -> str:
+                    """
+                    Convert duration text like '5 days', '2 weeks', '1 month'
+                    into an ISO date string (YYYY-MM-DD). Falls back to empty
+                    string if parsing fails.
+                    """
+                    if not duration_text:
+                        return ""
+                    import re
+
+                    text = duration_text.strip().lower()
+                    match = re.match(r"(\\d+)\\s*(day|days|week|weeks|month|months)", text)
+                    if not match:
+                        return ""
+                    amount = int(match.group(1))
+                    unit = match.group(2)
+                    delta: timedelta
+                    if "week" in unit:
+                        delta = timedelta(weeks=amount)
+                    elif "month" in unit:
+                        delta = timedelta(days=amount * 30)
+                    else:
+                        delta = timedelta(days=amount)
+                    end_date = datetime.utcnow() + delta
+                    return end_date.strftime("%Y-%m-%d")
+
+                new_entries: List[Dict[str, Any]] = []
+                for raw in meds:
+                    if isinstance(raw, dict):
+                        name = (raw.get("name") or "").strip()
+                        if not name:
+                            continue
+                        if name.lower() in existing_names:
+                            continue
+                        dosage = (raw.get("dosage") or "").strip()
+                        frequency = (raw.get("frequency") or "").strip()
+                        duration_text = (raw.get("duration") or "").strip()
+                        instructions = (raw.get("instructions") or "").strip() or "From consultation transcript"
+                        start_date = now_iso.split("T")[0]
+                        end_date = _parse_duration_to_end_date(duration_text)
+                        entry = {
+                            "name": name,
+                            "dosage": dosage,
+                            "frequency": frequency,
+                            "duration": duration_text,
+                            "instructions": instructions,
+                            "startDate": start_date,
+                            "endDate": end_date,
+                        }
+                        new_entries.append(entry)
+                    else:
+                        # String or other primitive – treat as simple name
+                        name = str(raw).strip()
+                        if not name or name.lower() in existing_names:
+                            continue
+                        entry = {
+                            "name": name,
+                            "dosage": "",
+                            "frequency": "",
+                            "duration": "",
+                            "instructions": "From consultation transcript",
+                            "startDate": now_iso.split("T")[0],
+                            "endDate": "",
+                        }
+                        new_entries.append(entry)
+
+                if new_entries:
+                    patient_updates["currentMedications"] = existing_meds + new_entries
         
         # Extract allergies
         if structured_notes.get("allergies"):
@@ -321,24 +415,8 @@ class RecordingService:
 
         patient_updates["lastVisit"] = now_iso.split("T")[0]
 
-        # Update insights for dashboards
-        insights_source = patient.get("insights") or deepcopy(DEFAULT_PATIENT_INSIGHTS)
-        insights = deepcopy(DEFAULT_PATIENT_INSIGHTS)
-        insights.update({k: v for k, v in insights_source.items() if v is not None})
-        key_findings: List[str] = []
-        for field in ["historyOfPresentIllness", "reviewOfSystems", "physicalExamination", "clinicalImpression"]:
-            value = structured_notes.get(field)
-            if value:
-                key_findings.append(value)
-        if key_findings:
-            insights["keyFindings"] = key_findings
-        plan_text = structured_notes.get("plan")
-        if plan_text:
-            insights["recommendations"] = [plan_text]
-        if structured_notes.get("assessment"):
-            insights["riskAssessment"] = structured_notes["assessment"]
-        insights["lastUpdatedAt"] = now_iso
-        patient_updates["insights"] = insights
+        # NOTE: Do NOT overwrite patient.insights here.
+        # Longitudinal AI insights are generated separately by PatientInsightsService.
         
         if patient_updates:
             patient_updates["updatedAt"] = datetime.utcnow()
@@ -447,55 +525,12 @@ class RecordingService:
                     {"$set": appointment_updates}
                 )
 
-            # Extract and update patient medications and allergies from structured notes
+            # Extract and update patient data from structured notes using shared helper
             if notes_result.get("structured_notes") and recording.get("patientId"):
-                structured_notes = notes_result["structured_notes"]
-                patient_updates = {}
-                
-                # Extract medications
-                if structured_notes.get("medications"):
-                    medications = structured_notes["medications"]
-                    if isinstance(medications, list) and len(medications) > 0:
-                        # Medications are handled via prescriptions / currentMedications;
-                        # we no longer maintain the legacy `currentMedication` summary
-                        # field on the patient document.
-                        pass
-                
-                # Extract allergies from transcript or structured notes
-                # Check if allergies are mentioned in the transcript
-                transcript_lower = transcript.lower()
-                allergy_keywords = ["allergic", "allergy", "allergies", "sensitive to", "cannot take"]
-                found_allergies = []
-                
-                # Look for allergy mentions in transcript
-                for keyword in allergy_keywords:
-                    if keyword in transcript_lower:
-                        # Try to extract allergy information (simplified extraction)
-                        # In a real implementation, you'd use more sophisticated NLP
-                        pass
-                
-                # If structured notes have allergy information, use that
-                if structured_notes.get("allergies"):
-                    found_allergies = structured_notes["allergies"]
-                    if isinstance(found_allergies, list):
-                        # Update patient allergies (append new ones, avoid duplicates)
-                        patient = await self.patients_collection.find_one({"_id": ObjectId(recording["patientId"])})
-                        if patient:
-                            existing_allergies = patient.get("allergies", [])
-                            if isinstance(existing_allergies, str):
-                                existing_allergies = [existing_allergies] if existing_allergies else []
-                            
-                            # Combine and deduplicate
-                            combined_allergies = list(set(existing_allergies + found_allergies))
-                            patient_updates["allergies"] = combined_allergies
-                
-                # Update patient if there are any changes
-                if patient_updates:
-                    patient_updates["updatedAt"] = datetime.utcnow()
-                    await self.patients_collection.update_one(
-                        {"_id": ObjectId(recording["patientId"])},
-                        {"$set": patient_updates}
-                    )
+                await self.update_patient_from_notes(
+                    str(recording["patientId"]),
+                    notes_result["structured_notes"],
+                )
 
             updated_recording = await self.recordings_collection.find_one({"_id": recording_object_id})
             return await recording_helper(updated_recording)

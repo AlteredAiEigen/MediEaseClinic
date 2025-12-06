@@ -5,6 +5,7 @@ Authentication router with login, register, and token management endpoints.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.database import get_db
@@ -19,8 +20,10 @@ from app.schemas.auth import (
 )
 from app.services.auth_service import AuthService
 from app.services.password_reset_service import password_reset_service
+from app.services.email_verification_service import email_verification_service
 from app.middleware.auth import get_current_active_user
 from app.utils.response import success_response, error_response
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -47,28 +50,41 @@ async def register(
     """
     try:
         from app.services.auth_service import auth_service
+
         user = await auth_service.register_user(user_data)
-        
+
+        # For admin users, send an email verification link to their Gmail account.
+        if user.get("role") == "admin":
+            try:
+                await email_verification_service.send_verification_email(user)
+            except Exception as exc:
+                logger.error(
+                    "Failed to send admin verification email to %s: %s",
+                    user.get("email"),
+                    exc,
+                )
+
         # Generate tokens for immediate login
         token_data = {
             "user_id": user["_id"],
             "email": user["email"],
-            "role": user["role"]
+            "role": user["role"],
         }
-        
+
         from app.utils.security import create_access_token, create_refresh_token
+
         access_token = create_access_token(token_data)
         refresh_token = create_refresh_token({"user_id": user["_id"]})
-        
+
         return success_response(
             message="User registered successfully",
             data={
                 "user": user,
                 "accessToken": access_token,
                 "refreshToken": refresh_token,
-                "tokenType": "bearer"
+                "tokenType": "bearer",
             },
-            status_code=201
+            status_code=201,
         )
     
     except HTTPException as e:
@@ -227,6 +243,33 @@ async def confirm_password_reset(payload: ResetPasswordConfirm):
         payload.token, payload.newPassword
     )
     return success_response(message="Password reset successfully")
+
+
+@router.get("/verify-email")
+async def verify_email(token: str):
+    """
+    Verify a user's email address using a one-time token.
+    
+    This endpoint is typically called when the user clicks the activation link
+    sent to their Gmail account during admin signup.
+    
+    On success, it redirects the user to the admin login page.
+    """
+    try:
+        # Activate the account
+        await email_verification_service.verify_with_token(token)
+
+        # Redirect to admin login with a flag indicating verification success
+        redirect_url = f"{settings.frontend_base_url.rstrip('/')}/auth?role=admin&verified=1"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error("Email verification failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Email verification failed. Please try again or contact support.",
+        )
 
 
 @router.post("/logout")

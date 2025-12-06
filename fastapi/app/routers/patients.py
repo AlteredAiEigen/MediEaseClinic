@@ -14,6 +14,7 @@ from app.models.patient import PatientCreate
 from app.services.patient_service import PatientService
 from app.middleware.auth import get_current_active_user, require_any_role
 from app.utils.response import success_response, paginated_response
+from app.utils.cache import cache
 import logging
 
 logger = logging.getLogger(__name__)
@@ -123,6 +124,13 @@ async def list_patients(
     HIPAA Compliance: PHI access is logged in audit trail.
     """
     try:
+        # Try cache for non-search queries (30 second TTL)
+        cache_key = f"patients:list:{page}:{limit}:{search}:{gender}:{present_in_clinic}"
+        if not search:  # Only cache non-search queries
+            cached = await cache.get(cache_key)
+            if cached is not None:
+                return cached
+        
         patient_service = PatientService(db)
         # Patients are universal - not filtered by clinic
         # clinic_id is not passed to maintain universal patient access
@@ -136,13 +144,19 @@ async def list_patients(
             clinic_id=None  # Not used for filtering - patients are universal
         )
         
-        return paginated_response(
+        result = paginated_response(
             message="Patients retrieved successfully",
             data=patients,
             total=total,
             page=page,
             limit=limit
         )
+        
+        # Cache the result if no search query
+        if not search:
+            await cache.set(cache_key, result, ttl_seconds=30)
+        
+        return result
     
     except Exception as e:
         raise HTTPException(
@@ -153,13 +167,14 @@ async def list_patients(
 
 @router.get("/search")
 async def search_patients(
-    q: str = Query(..., min_length=2, description="Search query"),
+    q: str = Query(..., min_length=1, description="Search query"),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
     Search patients by name, email, phone, or patient ID.
-    
+
+    Supports single character searches with regex pattern matching.
     Returns up to 20 matching results.
     """
     try:

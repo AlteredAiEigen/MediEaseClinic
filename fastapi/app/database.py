@@ -170,6 +170,14 @@ class Database:
                 expireAfterSeconds=0
             )
 
+            # Email verification tokens
+            await cls.database.email_verification_tokens.create_index("tokenHash", unique=True)
+            await cls.database.email_verification_tokens.create_index("userId")
+            await cls.database.email_verification_tokens.create_index(
+                "expiresAt",
+                expireAfterSeconds=0
+            )
+
             # S3 reports collection
             await cls.database.s3_reports.create_index("patientId")
             await cls.database.s3_reports.create_index("patientMongoId")

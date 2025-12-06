@@ -300,25 +300,25 @@ class AWSService:
             prompt = f"""
             Extract structured clinical notes from the following doctor-patient consultation transcript.
             Format the information into these specific categories:
-
+            
             CHIEF COMPLAINT: Main reason for visit
             HISTORY OF PRESENT ILLNESS: Detailed description of current symptoms and timeline
             REVIEW OF SYSTEMS: Systematic review of body systems mentioned
             PHYSICAL EXAMINATION: Physical findings mentioned
             ASSESSMENT: Doctor's assessment/diagnosis
             PLAN: Treatment plan and recommendations
-            MEDICATIONS: Any medications prescribed or discussed (extract medication names)
+            MEDICATIONS: Any medications prescribed or discussed (extract full structure)
             ALLERGIES: Any allergies mentioned by the patient or doctor (extract specific allergy names)
             FOLLOW-UP INSTRUCTIONS: Follow-up care instructions
             DIFFERENTIAL DIAGNOSIS: Alternative diagnoses considered
             CLINICAL IMPRESSION: Overall clinical impression
-
+            
             Transcript:
             {transcript}
-
+            
             Patient Context:
             {patient_context or "No additional context provided"}
-
+            
             Provide the response in JSON format with these exact keys:
             {{
                 "chiefComplaint": "...",
@@ -327,17 +327,25 @@ class AWSService:
                 "physicalExamination": "...",
                 "assessment": "...",
                 "plan": "...",
-                "medications": ["medication name 1", "medication name 2"],
+                "medications": [
+                  {{
+                    "name": "Medication name",
+                    "dosage": "Dose and units (e.g. 500mg)",
+                    "frequency": "How often (e.g. 1-0-1, twice daily)",
+                    "duration": "Duration text (e.g. 5 days, 2 weeks, 1 month)",
+                    "instructions": "Any extra instructions"
+                  }}
+                ],
                 "allergies": ["allergy name 1", "allergy name 2"],
                 "followUpInstructions": "...",
                 "differentialDiagnosis": ["dx1", "dx2"],
                 "clinicalImpression": "..."
             }}
-
+            
             IMPORTANT: 
-            - Extract specific medication names mentioned (e.g., "Aspirin", "Metformin", "Ibuprofen")
-            - Extract specific allergy names mentioned (e.g., "Penicillin", "Peanuts", "Latex")
-            - If no medications or allergies are mentioned, use empty arrays []
+            - Extract medications as objects with name, dosage, frequency, duration, and instructions whenever possible.
+            - Extract specific allergy names mentioned (e.g., "Penicillin", "Peanuts", "Latex").
+            - If no medications or allergies are mentioned, use empty arrays [].
             - If any category is not mentioned or not applicable, use null or empty array.
             """
 
