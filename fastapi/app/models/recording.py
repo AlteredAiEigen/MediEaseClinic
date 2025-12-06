@@ -60,6 +60,8 @@ class AIProcessing(BaseModel):
     notesConfidence: Optional[float] = Field(None, ge=0, le=1)
     transcriptionModel: Optional[str] = None
     notesExtractionModel: Optional[str] = None
+    notesExtractionStatus: Optional[str] = None
+    notesExtractionError: Optional[str] = None
 
 
 class RecordingBase(BaseModel):

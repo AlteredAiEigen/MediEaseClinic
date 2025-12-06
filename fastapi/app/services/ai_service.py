@@ -127,6 +127,7 @@ Important:
         prompt: str,
         model: Optional[str] = None,
         system_prompt: Optional[str] = None,
+        response_format: Optional[dict] = None,
     ) -> str:
         """
         Generate a raw text response from the configured AI provider.
@@ -144,14 +145,21 @@ Important:
         
         try:
             if self.provider == "openai":
-                response = self.client.chat.completions.create(
-                    model=target_model,
-                    messages=[
+                response_kwargs = {
+                    "model": target_model,
+                    "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": prompt},
                     ],
-                    temperature=0.2,
-                )
+                    "temperature": 0.2,
+                }
+
+                # Only use response_format for models that support it
+                # GPT-4-turbo and newer models support JSON mode, base GPT-4 does not
+                if response_format and target_model in ["gpt-4-turbo", "gpt-4-turbo-preview", "gpt-4o", "gpt-4o-mini"]:
+                    response_kwargs["response_format"] = response_format
+
+                response = self.client.chat.completions.create(**response_kwargs)
                 return response.choices[0].message.content
             
             if self.provider == "gemini":

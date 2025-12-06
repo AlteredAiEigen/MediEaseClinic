@@ -151,6 +151,9 @@ export function DoctorPatients() {
   const [doctorStats, setDoctorStats] = useState<DoctorStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(20);
+  const [totalPatients, setTotalPatients] = useState(0);
 
   const latestPatientsStateRef = useRef({
     patients: [] as Patient[],
@@ -181,7 +184,7 @@ export function DoctorPatients() {
   );
 
   const fetchPatients = useCallback(
-    async (showLoading = true) => {
+    async (targetPage = page, showLoading = true) => {
       if (!user?._id) {
         if (showLoading) {
           setIsLoading(false);
@@ -195,7 +198,12 @@ export function DoctorPatients() {
         }
         setError(null);
 
-        const doctorPatientsRequest = get(`/api/doctors/me/patients?limit=100`);
+        const searchQueryParam = debouncedSearchQuery
+          ? `&search=${encodeURIComponent(debouncedSearchQuery)}`
+          : "";
+        const doctorPatientsRequest = get(
+          `/api/doctors/me/patients?limit=${pageSize}&page=${targetPage}${searchQueryParam}`
+        );
         const statsRequest = get("/api/doctors/me/stats");
         const appointmentsRequest = get(
           `/api/appointments?limit=100${user?._id ? `&doctor_id=${user._id}` : ""}`
@@ -208,16 +216,25 @@ export function DoctorPatients() {
         ]);
 
         let patientList: Patient[] = [];
+        let totalFromApi: number | undefined;
 
         if (patientsResponse.success) {
           patientList = extractList<Patient>(patientsResponse.data);
+          const totalRaw = (patientsResponse.data as any)?.total ?? (patientsResponse.data as any)?.pagination?.total;
+          if (Number.isFinite(Number(totalRaw))) {
+            totalFromApi = Number(totalRaw);
+          }
         }
 
         if (patientList.length === 0) {
           console.warn("Doctor patients endpoint returned no patients, trying fallback...");
-          const fallbackResponse = await get(`/api/patients?limit=100`);
+          const fallbackResponse = await get(`/api/patients?limit=${pageSize}&page=${targetPage}${searchQueryParam}`);
           if (fallbackResponse.success) {
             patientList = extractList<Patient>(fallbackResponse.data);
+            const totalRaw = (fallbackResponse.data as any)?.total ?? (fallbackResponse.data as any)?.pagination?.total;
+            if (Number.isFinite(Number(totalRaw))) {
+              totalFromApi = Number(totalRaw);
+            }
           }
         }
 
@@ -245,6 +262,13 @@ export function DoctorPatients() {
           } as Patient;
         });
 
+        setTotalPatients(
+          totalFromApi ??
+            (patientsResponse.success
+              ? patientList.length + (Math.max(0, targetPage - 1) * pageSize)
+              : patientList.length)
+        );
+        setPage(targetPage);
         setPatients(normalized);
 
         const resolvedDoctorStats = statsResponse.success
@@ -257,7 +281,7 @@ export function DoctorPatients() {
           : latestPatientsStateRef.current.appointments;
         setAppointments(resolvedAppointments);
 
-        if (patientsCacheKey) {
+        if (patientsCacheKey && targetPage === 1 && !debouncedSearchQuery) {
           sessionStorage.setItem(
             patientsCacheKey,
             JSON.stringify({
@@ -288,7 +312,7 @@ export function DoctorPatients() {
         }
       }
     },
-    [user?._id, patientsCacheKey]
+    [user?._id, patientsCacheKey, debouncedSearchQuery, page, pageSize]
   );
 
   useEffect(() => {
@@ -328,13 +352,17 @@ export function DoctorPatients() {
       console.warn("Failed to load cached patient data", err);
     }
 
-    fetchPatients(!usedCache);
+    fetchPatients(1, !usedCache);
   }, [user?._id, patientsCacheKey, fetchPatients]);
 
+  useEffect(() => {
+    setPage(1);
+    fetchPatients(1, true);
+  }, [debouncedSearchQuery, fetchPatients]);
+
   const totalPatientsCount = useMemo(() => {
-    // Always use the actual patients array length to ensure it updates when new patients are added
-    return patients.length;
-  }, [patients.length]);
+    return totalPatients || patients.length;
+  }, [totalPatients, patients.length]);
 
   const inClinicCount = useMemo(
     () => patients.filter((patient) => patient.presentInClinic).length,
@@ -785,6 +813,29 @@ export function DoctorPatients() {
                 </div>
               ))
             )}
+          </div>
+          <div className="flex items-center justify-between pt-4">
+            <div className="text-sm text-muted-foreground">
+              Page {page} of {Math.max(1, Math.ceil(totalPatientsCount / pageSize))} • {totalPatientsCount} total
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || isLoading}
+                onClick={() => fetchPatients(Math.max(1, page - 1), true)}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= Math.ceil(totalPatientsCount / pageSize) || isLoading}
+                onClick={() => fetchPatients(page + 1, true)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

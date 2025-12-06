@@ -278,6 +278,69 @@ class AWSService:
 
 # Removed old async get_transcription_result method - using synchronous start_transcription_job_and_wait instead
 
+    async def get_transcription_result(self, job_name: str) -> Dict[str, Any]:
+        """
+        Fetch transcription result for an existing AWS Transcribe job.
+
+        This keeps backward compatibility for code paths that still poll
+        after a job has been kicked off elsewhere.
+        """
+        try:
+            # boto3 client is synchronous; run in thread to avoid blocking event loop
+            response = await asyncio.to_thread(
+                self.transcribe_client.get_transcription_job,
+                TranscriptionJobName=job_name,
+            )
+            job = response.get("TranscriptionJob", {})
+            status = job.get("TranscriptionJobStatus")
+
+            if status == "COMPLETED":
+                transcript_uri = job.get("Transcript", {}).get("TranscriptFileUri")
+                if not transcript_uri:
+                    return {
+                        "success": False,
+                        "status": "error",
+                        "error": "Transcript URI missing from job result",
+                        "job_name": job_name,
+                    }
+
+                import requests
+
+                transcript_response = requests.get(transcript_uri, timeout=10)
+                transcript_json = transcript_response.json()
+                transcript_text = transcript_json["results"]["transcripts"][0]["transcript"]
+
+                return {
+                    "success": True,
+                    "status": "completed",
+                    "transcript": transcript_text,
+                    "confidence": transcript_json["results"]["transcripts"][0].get("confidence", 0.0),
+                    "job_name": job_name,
+                }
+
+            if status == "FAILED":
+                return {
+                    "success": False,
+                    "status": "error",
+                    "error": job.get("FailureReason") or "Transcription job failed",
+                    "job_name": job_name,
+                }
+
+            # Still processing
+            return {
+                "success": True,
+                "status": "processing",
+                "job_name": job_name,
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "status": "error",
+                "error": f"Transcription lookup failed: {str(e)}",
+                "job_name": job_name,
+            }
+
     async def extract_structured_notes(
         self,
         transcript: str,
@@ -296,6 +359,13 @@ class AWSService:
         try:
             from ..services.ai_service import AIService
             ai_service = AIService()
+
+            # Force OpenAI usage for faster, more reliable extraction when available
+            if ai_service.provider != "openai":
+                return {
+                    "success": False,
+                    "error": "OpenAI provider not configured; set OPENAI_API_KEY",
+                }
 
             prompt = f"""
             Extract structured clinical notes from the following doctor-patient consultation transcript.
@@ -342,16 +412,22 @@ class AWSService:
                 "clinicalImpression": "..."
             }}
             
-            IMPORTANT: 
+            IMPORTANT:
+            - Return ONLY a valid JSON object with the keys above. No prose, no code fences.
             - Extract medications as objects with name, dosage, frequency, duration, and instructions whenever possible.
             - Extract specific allergy names mentioned (e.g., "Penicillin", "Peanuts", "Latex").
             - If no medications or allergies are mentioned, use empty arrays [].
             - If any category is not mentioned or not applicable, use null or empty array.
             """
 
-            response = await ai_service.generate_response(prompt, model="gpt-4")
+            # Use configured OpenAI model (defaults to gpt-4 class models) with strict JSON output
+            response = await ai_service.generate_response(
+                prompt,
+                model="gpt-4",
+                response_format={"type": "json_object"},
+            )
 
-            # Parse JSON response
+            # Parse JSON response with a defensive fallback
             import json
             try:
                 structured_notes = json.loads(response)
@@ -361,6 +437,19 @@ class AWSService:
                     'confidence': 0.85  # Placeholder confidence score
                 }
             except json.JSONDecodeError:
+                # Fallback: attempt to extract JSON object from the text
+                import re
+                match = re.search(r"\{.*\}", response, re.DOTALL)
+                if match:
+                    try:
+                        structured_notes = json.loads(match.group(0))
+                        return {
+                            'success': True,
+                            'structured_notes': structured_notes,
+                            'confidence': 0.85
+                        }
+                    except Exception:
+                        pass
                 return {
                     'success': False,
                     'error': 'Failed to parse structured notes',

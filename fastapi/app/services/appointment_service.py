@@ -239,11 +239,17 @@ class AppointmentService:
         query = {}
         
         if patient_id:
-            # Handle both string and ObjectId formats
-            if ObjectId.is_valid(patient_id):
-                query["patientId"] = patient_id
-            else:
-                query["patientId"] = patient_id
+            # Handle both MongoDB ObjectId and human-readable patientId formats
+            resolved_patient_id = patient_id
+            
+            # If it's not a valid ObjectId, it might be a human-readable patientId like "PRA123"
+            # Look up the patient's MongoDB _id
+            if not ObjectId.is_valid(patient_id):
+                patient = await self.db.patients.find_one({"patientId": patient_id})
+                if patient:
+                    resolved_patient_id = str(patient["_id"])
+            
+            query["patientId"] = resolved_patient_id
         
         if doctor_id:
             # Handle both string and ObjectId formats - ensure string comparison

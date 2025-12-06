@@ -58,6 +58,8 @@ interface Recording {
   duration?: number;
   transcription?: string;
   aiProcessing?: {
+    notesExtractionStatus?: "pending" | "success" | "failed";
+    notesExtractionError?: string | null;
     structuredNotes?: {
       chiefComplaint?: string;
       assessment?: string;
@@ -96,23 +98,28 @@ export function ConsultationHistoryDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [total, setTotal] = useState(0);
 
   useEffect(() => {
     if (open && doctorId) {
-      fetchConsultationHistory();
+      setPage(1);
+      fetchConsultationHistory(1);
     }
   }, [open, doctorId]);
 
-  const fetchConsultationHistory = async () => {
+  const fetchConsultationHistory = async (targetPage: number = page) => {
     if (!doctorId) return;
 
     try {
       setIsLoading(true);
       setError(null);
 
-      // Fetch recordings for this doctor (all consultations)
-      const pageSize = 100;
-      const response = await get(`/api/recordings?doctor_id=${doctorId}&limit=${pageSize}`);
+      // Fetch recordings for this doctor (paged)
+      const response = await get(
+        `/api/recordings?doctor_id=${doctorId}&limit=${pageSize}&page=${targetPage}`
+      );
 
       if (!response.success) {
         throw new Error(response.message || "Request failed");
@@ -128,30 +135,13 @@ export function ConsultationHistoryDialog({
         return [];
       };
 
-      let recordingsPayload: Recording[] = extractRecordings(response.data);
-
+      const recordingsPayload: Recording[] = extractRecordings(response.data);
       const totalFromPayload = Number(response.data?.total ?? response.pagination?.total ?? NaN);
-      const total = Number.isFinite(totalFromPayload) ? totalFromPayload : recordingsPayload.length;
-      const limitFromPayload = Number(response.data?.limit ?? response.pagination?.limit ?? pageSize);
-      const effectiveLimit = limitFromPayload > 0 ? Math.min(limitFromPayload, pageSize) : pageSize;
-      const hasMore = total > recordingsPayload.length;
-
-      if (hasMore) {
-        const pages = Math.ceil(total / effectiveLimit);
-        const additionalRequests = [] as Promise<any>[];
-        for (let page = 2; page <= pages; page += 1) {
-          additionalRequests.push(
-            get(`/api/recordings?doctor_id=${doctorId}&limit=${effectiveLimit}&page=${page}`)
-          );
-        }
-
-        const additionalResponses = await Promise.all(additionalRequests);
-        for (const additionalResponse of additionalResponses) {
-          if (additionalResponse.success) {
-            recordingsPayload = recordingsPayload.concat(extractRecordings(additionalResponse.data));
-          }
-        }
-      }
+      const totalRecords = Number.isFinite(totalFromPayload)
+        ? totalFromPayload
+        : recordingsPayload.length;
+      setTotal(totalRecords);
+      setPage(targetPage);
 
       // Enrich recordings with patient and appointment information
       const enrichedRecordings = await Promise.all(
@@ -287,16 +277,35 @@ export function ConsultationHistoryDialog({
                 <p>No consultation recordings found</p>
               </div>
             ) : (
-              <ScrollArea className="h-[600px]">
-                <div className="space-y-4">
-                  {recordings.map((recording) => {
+              <div className="space-y-3">
+                <ScrollArea className="h-[600px]">
+                  <div className="space-y-4">
+                    {recordings.map((recording) => {
                     const summaryNotes =
-                      recording.aiProcessing?.structuredNotes || recording.appointment?.consultationSummary ||
+                      recording.aiProcessing?.structuredNotes ||
+                      recording.appointment?.consultationSummary ||
                       recording.appointment?.structuredNotes;
                     const hasTranscription = Boolean(
                       recording.transcription || recording.appointment?.transcription
                     );
                     const appointmentInfo = recording.appointment;
+                    const extractionStatus =
+                      recording.aiProcessing?.notesExtractionStatus ||
+                      (recording.aiProcessing?.structuredNotes ? "success" : undefined);
+                    const extractionLabel =
+                      extractionStatus === "success"
+                        ? "AI Extraction Success"
+                        : extractionStatus === "failed"
+                        ? "AI Extraction Failed"
+                        : hasTranscription || recording.status === "processed"
+                        ? "AI Extraction Pending"
+                        : null;
+                    const extractionBadgeClass =
+                      extractionStatus === "success"
+                        ? "text-xs bg-green-50 text-green-700"
+                        : extractionStatus === "failed"
+                        ? "text-xs bg-red-50 text-red-700"
+                        : "text-xs bg-amber-50 text-amber-700";
 
                     return (
                       <Card key={recording._id} className="border-border shadow-sm">
@@ -402,9 +411,14 @@ export function ConsultationHistoryDialog({
                                       Has Transcription
                                     </Badge>
                                   )}
+                                  {extractionLabel && (
+                                    <Badge variant="outline" className={extractionBadgeClass}>
+                                      {extractionLabel}
+                                    </Badge>
+                                  )}
                                 </div>
 
-                                {summaryNotes && (
+                                {summaryNotes ? (
                                   <div className="mt-3 p-3 bg-muted/50 rounded-lg space-y-1 text-sm">
                                     <h5 className="text-sm font-medium mb-1">Consultation Summary</h5>
                                     {typeof summaryNotes === "object" ? (
@@ -438,7 +452,12 @@ export function ConsultationHistoryDialog({
                                       <p className="whitespace-pre-wrap leading-relaxed">{String(summaryNotes)}</p>
                                     )}
                                   </div>
-                                )}
+                                ) : extractionLabel ? (
+                                  <div className="mt-3 p-3 bg-muted/30 rounded-lg text-sm text-muted-foreground flex items-center gap-2">
+                                    <Loader2Icon className="w-4 h-4 animate-spin" />
+                                    <span>{extractionLabel}</span>
+                                  </div>
+                                ) : null}
 
                                 {recording.status === "error" && recording.appointment?.followUpNotes && (
                                   <p className="text-xs text-red-600">
@@ -478,7 +497,31 @@ export function ConsultationHistoryDialog({
                     );
                   })}
                 </div>
-              </ScrollArea>
+                </ScrollArea>
+                <div className="flex items-center justify-between pt-3">
+                  <div className="text-sm text-muted-foreground">
+                    Page {page} of {Math.max(1, Math.ceil(total / pageSize))} • {total} total
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1 || isLoading}
+                      onClick={() => fetchConsultationHistory(Math.max(1, page - 1))}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= Math.ceil(total / pageSize) || isLoading}
+                      onClick={() => fetchConsultationHistory(page + 1)}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </DialogContent>
@@ -614,6 +657,44 @@ export function ConsultationHistoryDialog({
                       <div>
                         <span className="font-medium">Patient ID:</span> {selectedRecording.patientId}
                       </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">AI Extraction:</span>
+                        {(() => {
+                          const extractionStatus =
+                            selectedRecording.aiProcessing?.notesExtractionStatus ||
+                            (selectedRecording.aiProcessing?.structuredNotes ? "success" : undefined);
+                          const extractionLabel =
+                            extractionStatus === "success"
+                              ? "AI Extraction Success"
+                              : extractionStatus === "failed"
+                              ? "AI Extraction Failed"
+                              : selectedRecording.transcription || selectedRecording.appointment?.transcription
+                              ? "AI Extraction Pending"
+                              : null;
+                          const className =
+                            extractionStatus === "success"
+                              ? "text-xs bg-green-50 text-green-700"
+                              : extractionStatus === "failed"
+                              ? "text-xs bg-red-50 text-red-700"
+                              : "text-xs bg-amber-50 text-amber-700";
+
+                          if (!extractionLabel) {
+                            return <span className="text-sm text-muted-foreground">Not started</span>;
+                          }
+
+                          return (
+                            <Badge variant="outline" className={className}>
+                              {extractionLabel}
+                            </Badge>
+                          );
+                        })()}
+                      </div>
+                      {selectedRecording.aiProcessing?.notesExtractionStatus === "failed" &&
+                        selectedRecording.aiProcessing?.notesExtractionError && (
+                          <div className="col-span-2 text-xs text-red-600">
+                            {selectedRecording.aiProcessing.notesExtractionError}
+                          </div>
+                        )}
                     </div>
                   </CardContent>
                 </Card>
@@ -624,7 +705,16 @@ export function ConsultationHistoryDialog({
                     selectedRecording.aiProcessing?.structuredNotes ||
                     selectedRecording.appointment?.structuredNotes ||
                     selectedRecording.appointment?.consultationSummary;
-                  if (!structured) return null;
+                  const extractionStatus =
+                    selectedRecording.aiProcessing?.notesExtractionStatus ||
+                    (selectedRecording.aiProcessing?.structuredNotes ? "success" : undefined);
+                  const extractionError = selectedRecording.aiProcessing?.notesExtractionError;
+                  const extractionLabel =
+                    extractionStatus === "success"
+                      ? "AI extraction complete"
+                      : extractionStatus === "failed"
+                      ? "AI extraction failed"
+                      : "AI extraction pending";
 
                   return (
                     <Card>
@@ -632,41 +722,58 @@ export function ConsultationHistoryDialog({
                         <CardTitle className="text-lg">Clinical Summary</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4 text-sm">
-                        {structured.chiefComplaint && (
-                          <div>
-                            <span className="font-medium">Chief Complaint:</span>
-                            <p className="mt-1">{structured.chiefComplaint}</p>
+                        {structured ? (
+                          <>
+                            {structured.chiefComplaint && (
+                              <div>
+                                <span className="font-medium">Chief Complaint:</span>
+                                <p className="mt-1">{structured.chiefComplaint}</p>
+                              </div>
+                            )}
+                            {structured.assessment && (
+                              <div>
+                                <span className="font-medium">Assessment:</span>
+                                <p className="mt-1">{structured.assessment}</p>
+                              </div>
+                            )}
+                            {structured.plan && (
+                              <div>
+                                <span className="font-medium">Plan:</span>
+                                <p className="mt-1">{structured.plan}</p>
+                              </div>
+                            )}
+                            {structured.followUpInstructions && (
+                              <div>
+                                <span className="font-medium">Follow-up Instructions:</span>
+                                <p className="mt-1">{structured.followUpInstructions}</p>
+                              </div>
+                            )}
+                            {structured.differentialDiagnosis && (
+                              <div>
+                                <span className="font-medium">Differential Diagnosis:</span>
+                                <p className="mt-1">{structured.differentialDiagnosis}</p>
+                              </div>
+                            )}
+                            {structured.clinicalImpression && (
+                              <div>
+                                <span className="font-medium">Clinical Impression:</span>
+                                <p className="mt-1">{structured.clinicalImpression}</p>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            {extractionStatus === "failed" ? (
+                              <XIcon className="w-4 h-4 text-red-500" />
+                            ) : (
+                              <Loader2Icon className="w-4 h-4 animate-spin" />
+                            )}
+                            <span>{extractionLabel}</span>
                           </div>
                         )}
-                        {structured.assessment && (
-                          <div>
-                            <span className="font-medium">Assessment:</span>
-                            <p className="mt-1">{structured.assessment}</p>
-                          </div>
-                        )}
-                        {structured.plan && (
-                          <div>
-                            <span className="font-medium">Plan:</span>
-                            <p className="mt-1">{structured.plan}</p>
-                          </div>
-                        )}
-                        {structured.followUpInstructions && (
-                          <div>
-                            <span className="font-medium">Follow-up Instructions:</span>
-                            <p className="mt-1">{structured.followUpInstructions}</p>
-                          </div>
-                        )}
-                        {structured.differentialDiagnosis && (
-                          <div>
-                            <span className="font-medium">Differential Diagnosis:</span>
-                            <p className="mt-1">{structured.differentialDiagnosis}</p>
-                          </div>
-                        )}
-                        {structured.clinicalImpression && (
-                          <div>
-                            <span className="font-medium">Clinical Impression:</span>
-                            <p className="mt-1">{structured.clinicalImpression}</p>
-                          </div>
+
+                        {extractionStatus === "failed" && extractionError && (
+                          <div className="text-xs text-red-600">{extractionError}</div>
                         )}
                       </CardContent>
                     </Card>
@@ -705,39 +812,42 @@ export function ConsultationHistoryDialog({
                 {(() => {
                   const transcription =
                     selectedRecording.transcription || selectedRecording.appointment?.transcription;
-
-                  if (transcription) {
-                    return (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-lg">Full Transcription</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <ScrollArea className="h-96 border rounded-lg p-4 bg-muted/30">
-                            <pre className="text-sm whitespace-pre-wrap leading-relaxed">{transcription}</pre>
-                          </ScrollArea>
-                        </CardContent>
-                      </Card>
-                    );
-                  }
-
-                  if (selectedRecording.status === "processed") {
-                    return (
-                      <Card>
-                        <CardContent className="p-6 text-center text-muted-foreground">
-                          <FileTextIcon className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                          <p>No transcription available for this consultation.</p>
-                        </CardContent>
-                      </Card>
-                    );
-                  }
+                  const statusLabel =
+                    selectedRecording.status === "processed"
+                      ? "Transcription pending"
+                      : selectedRecording.status === "error"
+                      ? "Transcription failed"
+                      : "Recording is still being processed...";
 
                   return (
                     <Card>
-                      <CardContent className="p-6 text-center text-muted-foreground">
-                        <Loader2Icon className="w-12 h-12 mx-auto mb-2 opacity-50 animate-spin" />
-                        <p>Recording is still being processed...</p>
-                        <p className="text-sm mt-1">Status: {selectedRecording.status}</p>
+                      <CardHeader>
+                        <CardTitle className="text-lg">Full Transcription</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {transcription ? (
+                          <ScrollArea className="h-96 border rounded-lg p-4 bg-muted/30">
+                            <pre className="text-sm whitespace-pre-wrap leading-relaxed">{transcription}</pre>
+                          </ScrollArea>
+                        ) : (
+                          <div className="p-6 text-center text-muted-foreground space-y-2">
+                            {selectedRecording.status === "error" ? (
+                              <XIcon className="w-10 h-10 mx-auto text-red-500" />
+                            ) : (
+                              <Loader2Icon className="w-12 h-12 mx-auto opacity-50 animate-spin" />
+                            )}
+                            <p>{statusLabel}</p>
+                            {selectedRecording.status && (
+                              <p className="text-sm">Status: {selectedRecording.status}</p>
+                            )}
+                            {selectedRecording.aiProcessing?.notesExtractionError &&
+                              selectedRecording.status === "error" && (
+                                <p className="text-xs text-red-600">
+                                  {selectedRecording.aiProcessing.notesExtractionError}
+                                </p>
+                              )}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   );

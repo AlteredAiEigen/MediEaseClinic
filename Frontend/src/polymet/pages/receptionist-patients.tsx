@@ -94,22 +94,37 @@ export function ReceptionistPatients() {
   const [appointmentsTodayCount, setAppointmentsTodayCount] = useState(0);
   const [appointmentsThisWeekCount, setAppointmentsThisWeekCount] = useState(0);
   const [queueEntriesToday, setQueueEntriesToday] = useState<any[]>([]);
-
-  const todayRef = useMemo(() => new Date(), []);
-  const weekStart = useMemo(() => startOfWeek(todayRef), [todayRef]);
-  const weekEnd = useMemo(() => endOfDay(todayRef), [todayRef]);
-
-  useEffect(() => {
-    const fetchPatients = async () => {
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(15);
+  const [totalPatients, setTotalPatients] = useState(0);
+  const fetchPatients = useCallback(
+    async (targetPage: number = page) => {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Call the real backend API
-        const response = await get<Patient[]>("/api/patients?limit=100");
+        const searchParam = debouncedSearchQuery
+          ? `&search=${encodeURIComponent(debouncedSearchQuery)}`
+          : "";
+        const response = await get(`/api/patients?limit=${pageSize}&page=${targetPage}${searchParam}`);
         
-        if (response.success && Array.isArray(response.data)) {
-          setPatients(response.data);
+        if (response.success) {
+          const payload = response.data as any;
+          const list = Array.isArray(payload)
+            ? payload
+            : Array.isArray(payload?.data)
+            ? payload.data
+            : Array.isArray(payload?.patients)
+            ? payload.patients
+            : [];
+          setPatients(list as Patient[]);
+          const totalRaw = payload?.total ?? payload?.pagination?.total;
+          if (Number.isFinite(Number(totalRaw))) {
+            setTotalPatients(Number(totalRaw));
+          } else {
+            setTotalPatients(list.length + (targetPage - 1) * pageSize);
+          }
+          setPage(targetPage);
         } else {
           setPatients([]);
           if (response.message) {
@@ -122,10 +137,21 @@ export function ReceptionistPatients() {
       } finally {
         setIsLoading(false);
       }
-    };
+    },
+    [debouncedSearchQuery, pageSize]
+  );
 
-    fetchPatients();
-  }, []);
+  const todayRef = useMemo(() => new Date(), []);
+  const weekStart = useMemo(() => startOfWeek(todayRef), [todayRef]);
+  const weekEnd = useMemo(() => endOfDay(todayRef), [todayRef]);
+
+  useEffect(() => {
+    fetchPatients(1);
+  }, [pageSize, debouncedSearchQuery, fetchPatients]);
+
+  useEffect(() => {
+    fetchPatients(page);
+  }, [page, fetchPatients]);
 
   useEffect(() => {
     const fetchAppointmentStats = async () => {
@@ -462,7 +488,7 @@ export function ReceptionistPatients() {
       {/* Patients List */}
       <Card className="border-border shadow-md">
         <CardHeader>
-          <CardTitle>All Patients ({filteredPatients.length})</CardTitle>
+          <CardTitle>All Patients ({totalPatients || filteredPatients.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -540,6 +566,30 @@ export function ReceptionistPatients() {
                 </div>
               ))
             )}
+          </div>
+          <div className="flex items-center justify-between pt-4">
+            <div className="text-sm text-muted-foreground">
+              Page {page} of {Math.max(1, Math.ceil((totalPatients || filteredPatients.length) / pageSize))} •{" "}
+              {totalPatients || filteredPatients.length} total
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || isLoading}
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= Math.ceil((totalPatients || filteredPatients.length) / pageSize) || isLoading}
+                onClick={() => setPage((prev) => prev + 1)}
+              >
+                Next
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

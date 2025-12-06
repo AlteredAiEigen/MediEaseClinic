@@ -59,6 +59,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/context/auth-context";
 import { LabReportViewerDialog, LabReportData } from "@/polymet/components/lab-report-viewer-dialog";
 import { S3ReportViewerDialog } from "@/polymet/components/s3-report-viewer-dialog";
+import { AppointmentDetailsDialog } from "@/polymet/components/appointment-details-dialog";
 import { get } from "@/lib/api-client";
 import {
   updatePatient,
@@ -233,6 +234,7 @@ interface Appointment {
   reason?: string;
   status: string;
   doctorName?: string;
+  patientName?: string;
   createdAt?: string;
   created_at?: string;
   prescription?: string;
@@ -242,6 +244,32 @@ interface Appointment {
   treatmentPlan?: string;
   followUpInstructions?: string;
   detailedNotes?: string;
+  transcription?: string;
+  consultationNotes?: string;
+  structuredNotes?: {
+    chiefComplaint?: string;
+    historyOfPresentIllness?: string;
+    reviewOfSystems?: string;
+    physicalExamination?: string;
+    assessment?: string;
+    plan?: string;
+    medications?: Array<{
+      name: string;
+      dosage?: string;
+      frequency?: string;
+      duration?: string;
+      instructions?: string;
+    }>;
+    allergies?: string[];
+    followUpInstructions?: string;
+    differentialDiagnosis?: string[];
+    clinicalImpression?: string;
+  };
+  consultationSummary?: {
+    chiefComplaint?: string;
+    assessment?: string;
+    plan?: string;
+  };
   aiRecommendations?: string | {
     riskAssessment?: {
       level?: string;
@@ -389,6 +417,8 @@ export function PatientOverview() {
   const [error, setError] = useState<string | null>(null);
   const [hasAnyData, setHasAnyData] = useState(false);
   const [pastAppointmentsPage, setPastAppointmentsPage] = useState(1);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
   const [activeEditSection, setActiveEditSection] = useState<EditableSection | null>(null);
   const [isSavingSection, setIsSavingSection] = useState<EditableSection | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -1130,6 +1160,7 @@ export function PatientOverview() {
                             apt.doctor?.lastName || ""
                           }`.trim()
                         : "Doctor"),
+                    patientName: apt.patientName,
                     createdAt: apt.createdAt || apt.created_at,
                     created_at: apt.created_at || apt.createdAt,
                     prescription: apt.prescription,
@@ -1140,6 +1171,11 @@ export function PatientOverview() {
                     followUpInstructions: apt.followUpInstructions,
                     detailedNotes: apt.detailedNotes,
                     aiRecommendations: apt.aiRecommendations,
+                    // Clinical notes fields
+                    structuredNotes: apt.structuredNotes,
+                    consultationSummary: apt.consultationSummary,
+                    consultationNotes: apt.consultationNotes,
+                    transcription: apt.transcription,
                   })
                 );
 
@@ -5052,6 +5088,17 @@ export function PatientOverview() {
                         >
                           {appointment.status}
                         </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 px-2 hover:bg-[#00C4B3]/10 hover:text-[#00C4B3] hover:border-[#00C4B3]"
+                          onClick={() => {
+                            setSelectedAppointment(appointment);
+                            setAppointmentDialogOpen(true);
+                          }}
+                        >
+                          View Details
+                        </Button>
                         {/* Edit button - only show if appointment was created today */}
                         {isAppointmentCreatedToday(appointment) && canEditPatientProfile && (
                           <Button
@@ -5123,7 +5170,13 @@ export function PatientOverview() {
                       appointment.followUpInstructions ||
                       appointment.detailedNotes ||
                       appointment.aiRecommendations ||
+                      appointment.structuredNotes ||
+                      appointment.consultationSummary ||
                       (mergedClinicalNotes && mergedClinicalNotes.length > 0);
+                    
+                    const hasPatientUpdates = appointment.structuredNotes?.medications?.length > 0 ||
+                      appointment.structuredNotes?.allergies?.length > 0 ||
+                      appointment.structuredNotes?.chiefComplaint;
                     const appointmentValue = `appointment-${appointment._id}`;
                     
                     return (
@@ -5198,6 +5251,12 @@ export function PatientOverview() {
                                         </span>
                                       </div>
                                     )}
+                                    {appointment.structuredNotes && (
+                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#00C4B3]/10 border border-[#00C4B3]/30">
+                                        <SparklesIcon className="w-3 h-3 text-[#00C4B3]" />
+                                        <span className="text-xs font-medium text-[#00C4B3]">AI Summary</span>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -5215,6 +5274,24 @@ export function PatientOverview() {
                                     Details Available
                                   </Badge>
                                 )}
+                                {hasPatientUpdates && (
+                                  <Badge variant="outline" className="text-xs bg-[#00C4B3]/10 text-[#00C4B3] border-[#00C4B3]/30">
+                                    <SparklesIcon className="w-3 h-3 mr-1" />
+                                    Profile Updated
+                                  </Badge>
+                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs h-7 px-2 hover:bg-[#00C4B3]/10 hover:text-[#00C4B3] hover:border-[#00C4B3]"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedAppointment(appointment);
+                                    setAppointmentDialogOpen(true);
+                                  }}
+                                >
+                                  View Details
+                                </Button>
                               </div>
                             </div>
                           </AccordionTrigger>
@@ -6192,6 +6269,13 @@ export function PatientOverview() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Appointment Details Dialog */}
+      <AppointmentDetailsDialog
+        open={appointmentDialogOpen}
+        onOpenChange={setAppointmentDialogOpen}
+        appointment={selectedAppointment}
+      />
 
     </div>
   );

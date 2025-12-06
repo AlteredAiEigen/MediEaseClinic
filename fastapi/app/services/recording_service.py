@@ -171,7 +171,9 @@ class RecordingService:
                     "version": "1.0",
                     "language": "en-US",
                     "transcriptionModel": "AWS Transcribe",
-                    "notesExtractionModel": "GPT-4"
+                    "notesExtractionModel": "GPT-4",
+                    "notesExtractionStatus": "pending",
+                    "notesExtractionError": None
                 }
             })
         else:
@@ -227,65 +229,91 @@ class RecordingService:
                     "chiefComplaint": patient.get("chiefComplaint")
                 }
 
-        # Extract structured notes using LLM
-        notes_result = await aws_service.extract_structured_notes(transcript, patient_context)
-
+        # Mark extraction as pending before calling LLM
         update_data = {}
-        if notes_result["success"] and notes_result.get("structured_notes"):
-            structured_notes = notes_result["structured_notes"]
-            update_data["aiProcessing"] = {
-                "model": "gpt-4",
-                "version": "1.0",
-                "language": "en-US",
-                "transcriptionModel": "AWS Transcribe",
-                "notesExtractionModel": "GPT-4",
-                "notesConfidence": 0.85,
-                "structuredNotes": structured_notes
-            }
+        ai_processing = deepcopy(recording.get("aiProcessing") or {})
+        ai_processing.update({
+            "model": "gpt-4",
+            "version": "1.0",
+            "language": "en-US",
+            "transcriptionModel": "AWS Transcribe",
+            "notesExtractionModel": "GPT-4",
+            "notesExtractionStatus": "pending",
+            "notesExtractionError": None,
+        })
+        await self.recordings_collection.update_one(
+            {"_id": recording_id},
+            {"$set": {"aiProcessing": ai_processing, "updatedAt": datetime.utcnow()}}
+        )
 
-            # Update appointment with structured notes
-            if recording.get("appointmentId"):
-                appointment_notes = self._format_notes_for_appointment(structured_notes)
-                appointment_summary = self._build_appointment_summary(structured_notes)
-                appointment_updates = {
-                    "consultationNotes": appointment_notes,
-                    "transcription": transcript,
+        try:
+            notes_result = await aws_service.extract_structured_notes(transcript, patient_context)
+
+            if notes_result["success"] and notes_result.get("structured_notes"):
+                structured_notes = notes_result["structured_notes"]
+                ai_processing.update({
+                    "notesConfidence": 0.85,
                     "structuredNotes": structured_notes,
-                    "consultationSummary": appointment_summary,
-                    "followUpNotes": structured_notes.get("followUpInstructions"),
-                    "updatedAt": datetime.utcnow()
-                }
-                appointment = await self.appointments_collection.find_one({"_id": ObjectId(recording["appointmentId"])})
-                if appointment:
-                    if structured_notes.get("chiefComplaint"):
-                        appointment_updates["reason"] = structured_notes["chiefComplaint"]
-                    if structured_notes.get("historyOfPresentIllness"):
-                        appointment_updates["notes"] = structured_notes["historyOfPresentIllness"]
-                await self.appointments_collection.update_one(
-                    {"_id": ObjectId(recording["appointmentId"])},
-                    {"$set": appointment_updates}
-                )
+                    "notesExtractionStatus": "success",
+                    "notesExtractionError": None,
+                })
+                update_data["aiProcessing"] = ai_processing
 
-            # Update patient with medications, allergies, and summary fields
-            await self.update_patient_from_notes(recording["patientId"], structured_notes)
-
-            # Optionally update structured medical history collection
-            try:
-                if recording.get("patientId") and any(
-                    structured_notes.get(key)
-                    for key in ("medicalHistory", "familyHistory", "previousSurgeries")
-                ):
-                    history_service = PatientMedicalHistoryService(self.db)
-                    history_payload = PatientMedicalHistoryCreate(
-                        patientId=str(recording["patientId"]),
-                        medicalHistory=structured_notes.get("medicalHistory"),
-                        familyHistory=structured_notes.get("familyHistory"),
-                        previousSurgeries=structured_notes.get("previousSurgeries"),
+                # Update appointment with structured notes
+                if recording.get("appointmentId"):
+                    appointment_notes = self._format_notes_for_appointment(structured_notes)
+                    appointment_summary = self._build_appointment_summary(structured_notes)
+                    appointment_updates = {
+                        "consultationNotes": appointment_notes,
+                        "transcription": transcript,
+                        "structuredNotes": structured_notes,
+                        "consultationSummary": appointment_summary,
+                        "followUpNotes": structured_notes.get("followUpInstructions"),
+                        "updatedAt": datetime.utcnow()
+                    }
+                    appointment = await self.appointments_collection.find_one({"_id": ObjectId(recording["appointmentId"])})
+                    if appointment:
+                        if structured_notes.get("chiefComplaint"):
+                            appointment_updates["reason"] = structured_notes["chiefComplaint"]
+                        if structured_notes.get("historyOfPresentIllness"):
+                            appointment_updates["notes"] = structured_notes["historyOfPresentIllness"]
+                    await self.appointments_collection.update_one(
+                        {"_id": ObjectId(recording["appointmentId"])},
+                        {"$set": appointment_updates}
                     )
-                    await history_service.create_medical_history(history_payload)
-            except Exception as e:  # pragma: no cover - defensive
-                # Do not fail recording processing if history update fails
-                print(f"Warning: failed to update patient_medical_history: {e}")
+
+                # Update patient with medications, allergies, and summary fields
+                await self.update_patient_from_notes(recording["patientId"], structured_notes)
+
+                # Optionally update structured medical history collection
+                try:
+                    if recording.get("patientId") and any(
+                        structured_notes.get(key)
+                        for key in ("medicalHistory", "familyHistory", "previousSurgeries")
+                    ):
+                        history_service = PatientMedicalHistoryService(self.db)
+                        history_payload = PatientMedicalHistoryCreate(
+                            patientId=str(recording["patientId"]),
+                            medicalHistory=structured_notes.get("medicalHistory"),
+                            familyHistory=structured_notes.get("familyHistory"),
+                            previousSurgeries=structured_notes.get("previousSurgeries"),
+                        )
+                        await history_service.create_medical_history(history_payload)
+                except Exception as e:  # pragma: no cover - defensive
+                    # Do not fail recording processing if history update fails
+                    print(f"Warning: failed to update patient_medical_history: {e}")
+            else:
+                ai_processing.update({
+                    "notesExtractionStatus": "failed",
+                    "notesExtractionError": notes_result.get("error") or "Structured notes not returned",
+                })
+                update_data["aiProcessing"] = ai_processing
+        except Exception as e:
+            ai_processing.update({
+                "notesExtractionStatus": "failed",
+                "notesExtractionError": f"Extraction exception: {str(e)}",
+            })
+            update_data["aiProcessing"] = ai_processing
 
         # Update recording with structured notes
         if update_data:
@@ -427,130 +455,181 @@ class RecordingService:
 
     async def process_transcription_result(self, recording_id: str) -> dict:
         """Process completed transcription and extract structured notes."""
+        print(f"DEBUG: Starting process_transcription_result for recording_id: {recording_id}")
         query = {"_id": ObjectId(recording_id)} if ObjectId.is_valid(recording_id) else {"recordingId": recording_id}
-        
+
         recording = await self.recordings_collection.find_one(query)
         if not recording:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
-        
+
         recording_object_id = recording["_id"]
 
-        job_name = recording.get("transcriptionJobName")
-        if not job_name:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No transcription job found")
+        # Check if transcription already exists (for re-processing already completed recordings)
+        existing_transcript = recording.get("transcription")
 
-        # Get transcription result from AWS
-        transcription_result = await aws_service.get_transcription_result(job_name)
-
-        if not transcription_result["success"]:
-            # Update recording with error
+        # If recording has error status but has transcription, reset to processing
+        if existing_transcript and recording.get("status") == "error":
             await self.recordings_collection.update_one(
                 {"_id": recording_object_id},
-                {"$set": {
-                    "status": "error",
-                    "errorMessage": transcription_result.get("error", "Transcription failed"),
-                    "updatedAt": datetime.utcnow()
-                }}
+                {"$set": {"status": "processing"}}
             )
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                              detail=f"Transcription failed: {transcription_result.get('error')}")
+            recording["status"] = "processing"
 
-        if transcription_result["status"] == "completed":
-            transcript = transcription_result["transcript"]
-            confidence = transcription_result.get("confidence", 0)
+        if existing_transcript:
+            # Use existing transcription data
+            transcript = existing_transcript
+            confidence = recording.get("transcriptionConfidence", 0)
+        else:
+            # Get transcription result from AWS
+            job_name = recording.get("transcriptionJobName")
+            if not job_name:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No transcription job found")
 
-            # Get patient context for better note extraction
-            patient_context = {}
-            if recording.get("patientId"):
-                patient = await self.patients_collection.find_one({"_id": ObjectId(recording["patientId"])})
-                if patient:
-                    patient_context = {
-                        "age": patient.get("age"),
-                        "gender": patient.get("gender"),
-                        "medicalHistory": patient.get("medicalHistory", []),
-                        "allergies": patient.get("allergies", []),
-                        "chiefComplaint": patient.get("chiefComplaint")
-                    }
+            transcription_result = await aws_service.get_transcription_result(job_name)
 
-            # Extract structured notes using LLM
-            notes_result = await aws_service.extract_structured_notes(transcript, patient_context)
+            if not transcription_result["success"]:
+                # Update recording with error
+                await self.recordings_collection.update_one(
+                    {"_id": recording_object_id},
+                    {"$set": {
+                        "status": "error",
+                        "errorMessage": transcription_result.get("error", "Transcription failed"),
+                        "updatedAt": datetime.utcnow()
+                    }}
+                )
+                raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                                  detail=f"Transcription failed: {transcription_result.get('error')}")
 
-            update_data = {
-                "status": "processed",
-                "transcription": transcript,
-                "transcriptionConfidence": confidence,
-                "processingCompletedAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow(),
-                "aiProcessing": {
-                    "model": "gpt-4",
-                    "version": "1.0",
-                    "processingTime": None,  # Could calculate this
-                    "language": "en-US",
-                    "transcriptionModel": "AWS Transcribe",
-                    "notesExtractionModel": "GPT-4",
-                    "notesConfidence": notes_result.get("structured_notes") and 0.85 or 0.0
+            if transcription_result["status"] == "completed":
+                transcript = transcription_result["transcript"]
+                confidence = transcription_result.get("confidence", 0)
+            else:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                  detail="Transcription not yet completed")
+
+        # Get patient context for better note extraction (runs for both existing and new transcription)
+        patient_context = {}
+        if recording.get("patientId"):
+            patient = await self.patients_collection.find_one({"_id": ObjectId(recording["patientId"])})
+            if patient:
+                patient_context = {
+                    "age": patient.get("age"),
+                    "gender": patient.get("gender"),
+                    "medicalHistory": patient.get("medicalHistory", []),
+                    "allergies": patient.get("allergies", []),
+                    "chiefComplaint": patient.get("chiefComplaint")
                 }
+
+        # Extract structured notes using LLM (runs for both existing and new transcription)
+        notes_result = await aws_service.extract_structured_notes(transcript, patient_context)
+
+        ai_processing = {
+            "model": "gpt-4",
+            "version": "1.0",
+            "processingTime": None,  # Could calculate this
+            "language": "en-US",
+            "transcriptionModel": "AWS Transcribe",
+            "notesExtractionModel": "GPT-4",
+            "notesConfidence": notes_result.get("structured_notes") and 0.85 or 0.0,
+            "notesExtractionStatus": "pending",
+            "notesExtractionError": None,
+        }
+
+        if notes_result.get("success") and notes_result.get("structured_notes"):
+            ai_processing.update({
+                "structuredNotes": notes_result["structured_notes"],
+                "notesExtractionStatus": "success",
+                "notesExtractionError": None,
+            })
+        else:
+            ai_processing.update({
+                "notesExtractionStatus": "failed",
+                "notesExtractionError": notes_result.get("error") or "Structured notes not returned",
+            })
+
+        update_data = {
+            "status": "processed",
+            "transcription": transcript,
+            "transcriptionConfidence": confidence,
+            "processingCompletedAt": datetime.utcnow(),
+            "updatedAt": datetime.utcnow(),
+            "aiProcessing": ai_processing
+        }
+
+        # Update recording with transcription and structured notes
+        await self.recordings_collection.update_one(
+            {"_id": recording_object_id},
+            {"$set": update_data}
+        )
+
+        # Update appointment with structured notes if appointment exists
+        if recording.get("appointmentId"):
+            structured_payload = notes_result.get("structured_notes", {})
+            appointment_notes = self._format_notes_for_appointment(structured_payload)
+            appointment_summary = self._build_appointment_summary(structured_payload)
+            appointment_updates = {
+                "consultationNotes": appointment_notes,
+                "transcription": transcript,
+                "structuredNotes": structured_payload,
+                "consultationSummary": appointment_summary,
+                "followUpNotes": structured_payload.get("followUpInstructions"),
+                "updatedAt": datetime.utcnow()
+            }
+            appointment = await self.appointments_collection.find_one({"_id": ObjectId(recording["appointmentId"])})
+            if appointment:
+                if structured_payload.get("chiefComplaint"):
+                    appointment_updates["reason"] = structured_payload["chiefComplaint"]
+                if structured_payload.get("historyOfPresentIllness"):
+                    appointment_updates["notes"] = structured_payload["historyOfPresentIllness"]
+            await self.appointments_collection.update_one(
+                {"_id": ObjectId(recording["appointmentId"])},
+                {"$set": appointment_updates}
+            )
+
+        # Extract and update patient data from structured notes using shared helper
+        if notes_result.get("structured_notes") and recording.get("patientId"):
+            await self.update_patient_from_notes(
+                str(recording["patientId"]),
+                notes_result["structured_notes"],
+            )
+
+            # Instead of querying the database again, update the recording object in memory
+            # and return it directly to avoid potential ObjectId serialization issues
+            updated_recording = {**recording, **update_data}
+
+            # Convert ObjectIds to strings for JSON serialization
+            result = {
+                "_id": str(updated_recording["_id"]),
+                "id": str(updated_recording["_id"]),
+                "recordingId": updated_recording.get("recordingId", ""),
+                "patientId": str(updated_recording.get("patientId", "")),
+                "appointmentId": str(updated_recording.get("appointmentId", "")),
+                "doctorId": str(updated_recording.get("doctorId", "")),
+                "patientName": updated_recording.get("patientName"),
+                "doctorName": updated_recording.get("doctorName"),
+                "duration": updated_recording.get("duration", 0),
+                "filePath": updated_recording.get("filePath", ""),
+                "fileName": updated_recording.get("fileName", ""),
+                "fileSize": updated_recording.get("fileSize", 0),
+                "mimeType": updated_recording.get("mimeType", "audio/wav"),
+                "status": updated_recording.get("status", "processed"),
+                "transcription": updated_recording.get("transcription", ""),
+                "transcriptionJobName": updated_recording.get("transcriptionJobName"),
+                "s3Url": updated_recording.get("s3Url"),
+                "transcriptionConfidence": updated_recording.get("transcriptionConfidence"),
+                "processingStartedAt": updated_recording.get("processingStartedAt"),
+                "processingCompletedAt": updated_recording.get("processingCompletedAt"),
+                "errorMessage": updated_recording.get("errorMessage"),
+                "audioQuality": updated_recording.get("audioQuality"),
+                "aiProcessing": updated_recording.get("aiProcessing"),
+                "isEncrypted": updated_recording.get("isEncrypted", True),
+                "retentionPolicy": updated_recording.get("retentionPolicy", "standard"),
+                "expiresAt": updated_recording.get("expiresAt"),
+                "createdAt": updated_recording.get("createdAt"),
+                "updatedAt": updated_recording.get("updatedAt")
             }
 
-            if notes_result["success"] and notes_result.get("structured_notes"):
-                update_data["aiProcessing"]["structuredNotes"] = notes_result["structured_notes"]
-
-            # Update recording with transcription and structured notes
-            await self.recordings_collection.update_one(
-                {"_id": recording_object_id},
-                {"$set": update_data}
-            )
-
-            # Update appointment with structured notes if appointment exists
-            if recording.get("appointmentId"):
-                structured_payload = notes_result.get("structured_notes", {})
-                appointment_notes = self._format_notes_for_appointment(structured_payload)
-                appointment_summary = self._build_appointment_summary(structured_payload)
-                appointment_updates = {
-                    "consultationNotes": appointment_notes,
-                    "transcription": transcript,
-                    "structuredNotes": structured_payload,
-                    "consultationSummary": appointment_summary,
-                    "followUpNotes": structured_payload.get("followUpInstructions"),
-                    "updatedAt": datetime.utcnow()
-                }
-                appointment = await self.appointments_collection.find_one({"_id": ObjectId(recording["appointmentId"])})
-                if appointment:
-                    if structured_payload.get("chiefComplaint"):
-                        appointment_updates["reason"] = structured_payload["chiefComplaint"]
-                    if structured_payload.get("historyOfPresentIllness"):
-                        appointment_updates["notes"] = structured_payload["historyOfPresentIllness"]
-                await self.appointments_collection.update_one(
-                    {"_id": ObjectId(recording["appointmentId"])},
-                    {"$set": appointment_updates}
-                )
-
-            # Extract and update patient data from structured notes using shared helper
-            if notes_result.get("structured_notes") and recording.get("patientId"):
-                await self.update_patient_from_notes(
-                    str(recording["patientId"]),
-                    notes_result["structured_notes"],
-                )
-
-            updated_recording = await self.recordings_collection.find_one({"_id": recording_object_id})
-            return await recording_helper(updated_recording)
-
-        elif transcription_result["status"] == "failed":
-            # Update recording with failure
-            await self.recordings_collection.update_one(
-                {"_id": recording_object_id},
-                {"$set": {
-                    "status": "error",
-                    "errorMessage": transcription_result.get("error", "Transcription job failed"),
-                    "updatedAt": datetime.utcnow()
-                }}
-            )
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                              detail=f"Transcription failed: {transcription_result.get('error')}")
-
-        else:
-            # Still processing
-            return await recording_helper(recording)
+            return result
     
     def _build_appointment_summary(self, structured_notes: dict) -> Dict[str, Any]:
         """Build a structured summary object for appointments."""
@@ -667,6 +746,23 @@ class RecordingService:
         
         if not recording:
             return None
+
+        # If transcription is available but structured notes are missing or failed, trigger extraction
+        try:
+            ai_proc = recording.get("aiProcessing") or {}
+            needs_notes = (
+                recording.get("transcription")
+                and recording.get("status") == "processed"
+                and not ai_proc.get("structuredNotes")
+                and ai_proc.get("notesExtractionStatus") != "success"
+            )
+            if needs_notes:
+                # Kick off extraction and refresh the record
+                await self.process_structured_notes(recording["_id"])
+                recording = await self.recordings_collection.find_one({"_id": recording["_id"]})
+        except Exception as e:  # pragma: no cover
+            # Do not block retrieval on extraction failures
+            print(f"Warning: auto-extract structured notes failed: {e}")
         
         result = await recording_helper(recording)
         
