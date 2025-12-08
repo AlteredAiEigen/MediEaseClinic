@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     jwt_secret_key: str
     jwt_refresh_secret_key: str = ""
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
+    # Extend access token lifetime to 24 hours (1440 minutes)
+    access_token_expire_minutes: int = 60 * 24
     refresh_token_expire_days: int = 7
     
     # AWS Configuration

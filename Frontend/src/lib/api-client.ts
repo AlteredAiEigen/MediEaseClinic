@@ -69,6 +69,41 @@ export function clearTokens() {
   localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
+async function attemptTokenRefresh(): Promise<string | null> {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) return null;
+
+  try {
+    const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    const payload = await parseResponse<{
+      accessToken?: string;
+      refreshToken?: string;
+    }>(refreshResponse, true);
+
+    const newAccessToken = payload?.data?.accessToken;
+    if (payload?.success && newAccessToken) {
+      storeTokens({
+        accessToken: newAccessToken,
+        refreshToken: payload.data?.refreshToken ?? refreshToken,
+      });
+      return newAccessToken;
+    }
+  } catch {
+    // fall through to clearing tokens below
+  }
+
+  clearTokens();
+  return null;
+}
+
 async function parseResponse<T>(response: Response, parseJson: boolean) {
   if (!parseJson) {
     if (!response.ok) {
@@ -136,26 +171,37 @@ export async function apiRequest<T = unknown>(
 ): Promise<ApiResponse<T>> {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
 
-  const requestHeaders = new Headers({
-    Accept: "application/json",
-    ...headers,
-  });
+  const executeRequest = async (accessTokenOverride?: string) => {
+    const requestHeaders = new Headers({
+      Accept: "application/json",
+      ...headers,
+    });
 
-  if (!(options.body instanceof FormData)) {
-    requestHeaders.set("Content-Type", "application/json");
-  }
+    if (!(options.body instanceof FormData)) {
+      requestHeaders.set("Content-Type", "application/json");
+    }
 
-  if (auth) {
-    const token = getStoredAccessToken();
-    if (token) {
-      requestHeaders.set("Authorization", `Bearer ${token}`);
+    if (auth) {
+      const token = accessTokenOverride ?? getStoredAccessToken();
+      if (token) {
+        requestHeaders.set("Authorization", `Bearer ${token}`);
+      }
+    }
+
+    return fetch(url, {
+      ...options,
+      headers: requestHeaders,
+    });
+  };
+
+  let response = await executeRequest();
+
+  if (auth && response.status === 401) {
+    const newAccessToken = await attemptTokenRefresh();
+    if (newAccessToken) {
+      response = await executeRequest(newAccessToken);
     }
   }
-
-  const response = await fetch(url, {
-    ...options,
-    headers: requestHeaders,
-  });
 
   return (await parseResponse<T>(response, parseJson)) ?? {
     success: response.ok,
