@@ -7,6 +7,7 @@ from typing import Optional, Dict
 
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
+import logging
 
 from app.models.user import UserCreate, UserInDB, user_helper
 from app.schemas.auth import RegisterRequest
@@ -33,7 +34,7 @@ class AuthService:
             raise Exception("Database not initialized")
         return db["users"]
     
-    async def register_user(self, user_data: RegisterRequest) -> dict:
+    async def register_user(self, user_data: RegisterRequest, db: Optional[AsyncIOMotorDatabase] = None) -> dict:
         """
         Register a new user.
         
@@ -76,10 +77,24 @@ class AuthService:
 
         # Validate clinic information
         if user_data.role == "admin":
-            if not user_data.clinicName:
+            missing_fields = []
+            for field_name in [
+                "clinicName",
+                "clinicPhone",
+                "clinicEmail",
+                "clinicAddress",
+                "clinicCity",
+                "clinicState",
+                "clinicPincode",
+                "clinicCountry",
+                "clinicRegistrationNumber",
+            ]:
+                if not getattr(user_data, field_name, None):
+                    missing_fields.append(field_name)
+            if missing_fields:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Clinic name is required for admin registration",
+                    detail=f"Missing required clinic fields: {', '.join(missing_fields)}",
                 )
             # Generate unique clinic ID for admin
             import uuid
@@ -143,6 +158,41 @@ class AuthService:
         
         # Retrieve created user
         created_user = await self._get_users_collection().find_one({"_id": result.inserted_id})
+        
+        # For admin registration, create healthcare provider record
+        if user_data.role == "admin" and db is not None:
+            try:
+                from app.services.healthcare_provider_service import HealthcareProviderService
+                from app.models.healthcare_provider import HealthcareProviderCreate
+                
+                provider_service = HealthcareProviderService(db)
+                provider_data = HealthcareProviderCreate(
+                    clinicId=clinic_id,
+                    name=clinic_name,
+                    phone=user_data.clinicPhone,
+                    email=user_data.clinicEmail,
+                    address=user_data.clinicAddress,
+                    city=user_data.clinicCity,
+                    state=user_data.clinicState,
+                    pincode=user_data.clinicPincode,
+                    country=user_data.clinicCountry or "India",
+                    website=user_data.clinicWebsite,
+                    registrationNumber=user_data.clinicRegistrationNumber,
+                )
+                # Enforce unique registration number
+                if await provider_service.registration_exists(provider_data.registrationNumber):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Registration/license number already exists",
+                    )
+                await provider_service.create_provider(provider_data)
+            except HTTPException:
+                raise
+            except Exception as e:
+                # Log error but don't fail registration if provider creation fails
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to create healthcare provider record: {e}")
         
         return await user_helper(created_user)
     

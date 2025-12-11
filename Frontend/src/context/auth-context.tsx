@@ -21,6 +21,8 @@ export interface User {
   profileImage?: string | null;
   speciality?: string | null;
   licenseNumber?: string | null;
+  isActive?: boolean;
+  accountStatus?: string;
 }
 
 interface AuthState {
@@ -37,9 +39,17 @@ interface LoginPayload {
 interface RegisterPayload extends LoginPayload {
   firstName: string;
   lastName: string;
-  phone?: string;
   role: UserRole;
   clinicName?: string;
+  clinicPhone?: string;
+  clinicEmail?: string;
+  clinicAddress?: string;
+  clinicCity?: string;
+  clinicState?: string;
+  clinicPincode?: string;
+  clinicCountry?: string;
+  clinicWebsite?: string;
+  clinicRegistrationNumber?: string;
   speciality?: string;
   licenseNumber?: string;
 }
@@ -79,9 +89,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else {
         setState((prev) => ({ ...prev, user: null, initialized: true }));
       }
-    } catch {
-      clearTokens();
-      setState((prev) => ({ ...prev, user: null, initialized: true }));
+    } catch (error: any) {
+      // Handle 403 Forbidden gracefully (inactive accounts)
+      // Don't clear tokens on 403, just set user to null
+      if (error?.status === 403 || error?.response?.status === 403) {
+        setState((prev) => ({ ...prev, user: null, initialized: true }));
+      } else {
+        // For other errors (401, network, etc.), clear tokens
+        clearTokens();
+        setState((prev) => ({ ...prev, user: null, initialized: true }));
+      }
     }
   }, []);
 
@@ -131,9 +148,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       password,
       firstName,
       lastName,
-      phone,
       role,
       clinicName,
+      clinicPhone,
+      clinicEmail,
+      clinicAddress,
+      clinicCity,
+      clinicState,
+      clinicPincode,
+      clinicCountry,
+      clinicWebsite,
+      clinicRegistrationNumber,
       speciality,
       licenseNumber,
     }: RegisterPayload) => {
@@ -145,9 +170,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
           password,
           firstName,
           lastName,
-          phone,
           role,
           clinicName,
+          clinicPhone,
+          clinicEmail,
+          clinicAddress,
+          clinicCity,
+          clinicState,
+          clinicPincode,
+          clinicCountry,
+          clinicWebsite,
+          clinicRegistrationNumber,
           speciality,
           licenseNumber,
         };
@@ -162,6 +195,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
           throw new Error(response.message ?? "Registration failed");
         }
 
+        // For admin accounts, don't store tokens if account is inactive (pending email verification)
+        // The account will be activated after email verification
+        const user = response.data.user;
+        if (user.role === "admin" && !user.isActive) {
+          // Don't store tokens for inactive admin accounts
+          // They need to verify email first
+          setState({
+            user: null,
+            loading: false,
+            initialized: true,
+          });
+          return user;
+        }
+
+        // For active accounts (doctors/receptionists), store tokens normally
         storeTokens({
           accessToken: response.data.accessToken,
           refreshToken: response.data.refreshToken,

@@ -23,6 +23,10 @@ import {
   LockIcon,
   UserIcon,
   PhoneIcon,
+  BuildingIcon,
+  MapPinIcon,
+  GlobeIcon,
+  FileTextIcon,
 } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 
@@ -65,8 +69,47 @@ export function AuthPage() {
   // Signup form state
   const [signupName, setSignupName] = useState("");
   const [signupEmail, setSignupEmail] = useState("");
-  const [signupPhone, setSignupPhone] = useState("");
   const [signupClinicName, setSignupClinicName] = useState("");
+  const [signupClinicPhone, setSignupClinicPhone] = useState("");
+  const [signupClinicEmail, setSignupClinicEmail] = useState("");
+  const [signupClinicAddress, setSignupClinicAddress] = useState("");
+  const [signupClinicCity, setSignupClinicCity] = useState("");
+  const [signupClinicState, setSignupClinicState] = useState("");
+  const [signupClinicPincode, setSignupClinicPincode] = useState("");
+  const [signupClinicCountry, setSignupClinicCountry] = useState("India");
+  const [signupClinicWebsite, setSignupClinicWebsite] = useState("");
+  const [signupClinicRegistrationNumber, setSignupClinicRegistrationNumber] = useState("");
+  const indianStates = [
+    "Andhra Pradesh",
+    "Arunachal Pradesh",
+    "Assam",
+    "Bihar",
+    "Chhattisgarh",
+    "Goa",
+    "Gujarat",
+    "Haryana",
+    "Himachal Pradesh",
+    "Jharkhand",
+    "Karnataka",
+    "Kerala",
+    "Madhya Pradesh",
+    "Maharashtra",
+    "Manipur",
+    "Meghalaya",
+    "Mizoram",
+    "Nagaland",
+    "Odisha",
+    "Punjab",
+    "Rajasthan",
+    "Sikkim",
+    "Tamil Nadu",
+    "Telangana",
+    "Tripura",
+    "Uttar Pradesh",
+    "Uttarakhand",
+    "West Bengal",
+    "Delhi",
+  ];
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [signupSuccessEmail, setSignupSuccessEmail] = useState<string | null>(null);
@@ -152,6 +195,24 @@ export function AuthPage() {
       return;
     }
 
+    // Basic required clinic fields validation for admin
+    if (selectedRole === "admin") {
+      const missing: string[] = [];
+      if (!signupClinicName.trim()) missing.push("Clinic/Hospital Name");
+      if (!signupClinicPhone.trim()) missing.push("Clinic Phone Number");
+      if (!signupClinicEmail.trim()) missing.push("Clinic Email");
+      if (!signupClinicAddress.trim()) missing.push("Street Address");
+      if (!signupClinicCity.trim()) missing.push("City");
+      if (!signupClinicState.trim()) missing.push("State");
+      if (!signupClinicPincode.trim()) missing.push("Pincode");
+      if (!signupClinicCountry.trim()) missing.push("Country");
+      if (!signupClinicRegistrationNumber.trim()) missing.push("Registration/License Number");
+      if (missing.length) {
+        setError(`Please fill: ${missing.join(", ")}`);
+        return;
+      }
+    }
+
     if (signupPassword !== signupConfirmPassword) {
       alert("Passwords do not match!");
       return;
@@ -168,9 +229,17 @@ export function AuthPage() {
         password: signupPassword,
         firstName: firstName || "Admin",
         lastName: lastName || "User",
-        phone: signupPhone,
         role: selectedRole as UserRole,
         clinicName: selectedRole === "admin" ? signupClinicName : undefined,
+        clinicPhone: selectedRole === "admin" ? signupClinicPhone : undefined,
+        clinicEmail: selectedRole === "admin" ? signupClinicEmail : undefined,
+        clinicAddress: selectedRole === "admin" ? signupClinicAddress : undefined,
+        clinicCity: selectedRole === "admin" ? signupClinicCity : undefined,
+        clinicState: selectedRole === "admin" ? signupClinicState : undefined,
+        clinicPincode: selectedRole === "admin" ? signupClinicPincode : undefined,
+        clinicCountry: selectedRole === "admin" ? signupClinicCountry : undefined,
+        clinicWebsite: selectedRole === "admin" ? signupClinicWebsite : undefined,
+        clinicRegistrationNumber: selectedRole === "admin" ? signupClinicRegistrationNumber : undefined,
       });
 
       // Show confirmation UI instead of logging the user in immediately
@@ -534,7 +603,7 @@ export function AuthPage() {
                             </p>
                           </div>
                         ) : (
-                          <form onSubmit={handleSignup} className="space-y-4">
+                          <form onSubmit={handleSignup} className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                             {error && (
                               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
                                 {error}
@@ -558,7 +627,9 @@ export function AuthPage() {
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-email">Gmail address</Label>
+                              <Label htmlFor="signup-email">
+                                Gmail address <span className="text-red-500">*</span>
+                              </Label>
                               <div className="relative">
                                 <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 
@@ -579,42 +650,11 @@ export function AuthPage() {
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-phone">Phone Number</Label>
-                              <div className="relative">
-                                <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-
-                                <Input
-                                  id="signup-phone"
-                                  type="tel"
-                                  placeholder="+1 (555) 123-4567"
-                                  value={signupPhone}
-                                  onChange={(e) =>
-                                    setSignupPhone(e.target.value)
-                                  }
-                                  className="pl-10"
-                                  required
-                                />
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
                               <Label htmlFor="signup-clinic">
-                                Clinic/Hospital Name
+                                Clinic/Hospital Name <span className="text-red-500">*</span>
                               </Label>
                               <div className="relative">
-                                <svg
-                                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground"
-                                  fill="none"
-                                  viewBox="0 0 24 24"
-                                  stroke="currentColor"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                                  />
-                                </svg>
+                                <BuildingIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                                 <Input
                                   id="signup-clinic"
                                   type="text"
@@ -627,6 +667,176 @@ export function AuthPage() {
                                   required
                                 />
                               </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="signup-clinic-phone">
+                                Clinic Phone Number <span className="text-red-500">*</span>
+                              </Label>
+                              <div className="relative">
+                                <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                  id="signup-clinic-phone"
+                                  type="tel"
+                                  placeholder="+91-9876543210"
+                                  value={signupClinicPhone}
+                                  onChange={(e) =>
+                                    setSignupClinicPhone(e.target.value)
+                                  }
+                                  className="pl-10"
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="signup-clinic-email">
+                                Clinic Email <span className="text-red-500">*</span>
+                              </Label>
+                              <div className="relative">
+                                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                  id="signup-clinic-email"
+                                  type="email"
+                                  placeholder="clinic@example.com"
+                                  value={signupClinicEmail}
+                                  onChange={(e) =>
+                                    setSignupClinicEmail(e.target.value)
+                                  }
+                                  className="pl-10"
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="signup-clinic-address">
+                                Street Address <span className="text-red-500">*</span>
+                              </Label>
+                              <div className="relative">
+                                <MapPinIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                  id="signup-clinic-address"
+                                  type="text"
+                                  placeholder="123 Main Street"
+                                  value={signupClinicAddress}
+                                  onChange={(e) =>
+                                    setSignupClinicAddress(e.target.value)
+                                  }
+                                  className="pl-10"
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="signup-clinic-city">
+                                  City <span className="text-red-500">*</span>
+                                </Label>
+                                <Input
+                                  id="signup-clinic-city"
+                                  type="text"
+                                  placeholder="Mumbai"
+                                  value={signupClinicCity}
+                                  onChange={(e) =>
+                                    setSignupClinicCity(e.target.value)
+                                  }
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="signup-clinic-state">
+                                  State <span className="text-red-500">*</span>
+                                </Label>
+                                <select
+                                  id="signup-clinic-state"
+                                  value={signupClinicState}
+                                  onChange={(e) => setSignupClinicState(e.target.value)}
+                                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  required
+                                >
+                                  <option value="">Select State</option>
+                                  {indianStates.map((st) => (
+                                    <option key={st} value={st}>
+                                      {st}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-2">
+                                <Label htmlFor="signup-clinic-pincode">
+                                  Pincode <span className="text-red-500">*</span>
+                                </Label>
+                                <Input
+                                  id="signup-clinic-pincode"
+                                  type="text"
+                                  placeholder="400001"
+                                  value={signupClinicPincode}
+                                  onChange={(e) =>
+                                    setSignupClinicPincode(e.target.value)
+                                  }
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="signup-clinic-country">
+                                  Country <span className="text-red-500">*</span>
+                                </Label>
+                                <Input
+                                  id="signup-clinic-country"
+                                  type="text"
+                                  placeholder="India"
+                                  value={signupClinicCountry}
+                                  onChange={(e) =>
+                                    setSignupClinicCountry(e.target.value)
+                                  }
+                                  required
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="signup-clinic-website">Website</Label>
+                              <div className="relative">
+                                <GlobeIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                  id="signup-clinic-website"
+                                  type="url"
+                                  placeholder="https://www.example.com"
+                                  value={signupClinicWebsite}
+                                  onChange={(e) =>
+                                    setSignupClinicWebsite(e.target.value)
+                                  }
+                                  className="pl-10"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="signup-clinic-registration">
+                                  Registration/License Number <span className="text-red-500">*</span>
+                                </Label>
+                              <div className="relative">
+                                <FileTextIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <Input
+                                  id="signup-clinic-registration"
+                                  type="text"
+                                  placeholder="MED/2024/12345"
+                                  value={signupClinicRegistrationNumber}
+                                  onChange={(e) =>
+                                    setSignupClinicRegistrationNumber(e.target.value)
+                                  }
+                                  className="pl-10"
+                                  required
+                                />
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Medical registration or license number (if applicable)
+                              </p>
                             </div>
 
                             <div className="space-y-2">

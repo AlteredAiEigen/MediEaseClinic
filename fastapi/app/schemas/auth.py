@@ -3,7 +3,6 @@ Pydantic schemas for authentication endpoints.
 """
 
 from typing import Optional
-import re
 
 from pydantic import BaseModel, EmailStr, Field
 from pydantic import ConfigDict, field_validator
@@ -24,10 +23,17 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str = Field(...)
     role: str = Field(...)
-    phone: Optional[str] = Field(None)
-
     # Clinic information (required for admin registration)
-    clinicName: Optional[str] = Field(None)
+    clinicName: str = Field(...)
+    clinicPhone: str = Field(...)
+    clinicEmail: EmailStr = Field(...)
+    clinicAddress: str = Field(..., max_length=500)
+    clinicCity: str = Field(..., max_length=100)
+    clinicState: str = Field(..., max_length=100)
+    clinicPincode: str = Field(..., max_length=20)
+    clinicCountry: str = Field("India", max_length=100)
+    clinicWebsite: Optional[str] = Field(None, max_length=200)
+    clinicRegistrationNumber: str = Field(..., max_length=100)
     clinicId: Optional[str] = None  # Auto-generated for admin registration
 
     # Doctor specific
@@ -71,17 +77,6 @@ class RegisterRequest(BaseModel):
     def validate_role(cls, value: str) -> str:
         if value not in {"admin", "doctor", "receptionist"}:
             raise ValueError("Role must be one of: admin, doctor, or receptionist")
-        return value
-
-    @field_validator("phone")
-    @classmethod
-    def validate_phone(cls, value: Optional[str]) -> Optional[str]:
-        if value is None or value == "":
-            return None
-        if not re.match(r"^[\d\s\-\+\(\)]+$", value):
-            raise ValueError("Phone number can only contain digits, spaces, plus, minus, and parentheses")
-        if len(re.sub(r"\D", "", value)) < 10:
-            raise ValueError("Phone number must include at least 10 digits")
         return value
 
     @field_validator("clinicName")

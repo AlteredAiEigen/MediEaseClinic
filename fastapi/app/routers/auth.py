@@ -51,7 +51,7 @@ async def register(
     try:
         from app.services.auth_service import auth_service
 
-        user = await auth_service.register_user(user_data)
+        user = await auth_service.register_user(user_data, db)
 
         # For admin users, send an email verification link to their Gmail account.
         if user.get("role") == "admin":
