@@ -153,6 +153,18 @@ export function SolutionsSection() {
     },
   ];
 
+  const languages = [
+    "English",
+    "हिंदी (Hindi)",
+    "मराठी (Marathi)",
+    "తెలుగు (Telugu)",
+    "বাংলা (Bengali)",
+    "தமிழ் (Tamil)",
+    "ગુજરાતી (Gujarati)",
+    "ಕನ್ನಡ (Kannada)",
+    "മലയാളം (Malayalam)",
+  ];
+
   return (
     <section
       id="solutions"
@@ -244,17 +256,16 @@ export function SolutionsSection() {
                 Full support for English and Hindi interfaces. Switch languages
                 seamlessly to serve diverse patient populations across India.
               </p>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 rounded-lg border border-border">
-                  <CheckCircle2Icon className="w-4 h-4 text-teal-500" />
-
-                  <span className="text-sm font-semibold">English</span>
-                </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-900 rounded-lg border border-border">
-                  <CheckCircle2Icon className="w-4 h-4 text-teal-500" />
-
-                  <span className="text-sm font-semibold">हिंदी</span>
-                </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                {languages.map((lang) => (
+                  <div
+                    key={lang}
+                    className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg border border-border"
+                  >
+                    <CheckCircle2Icon className="w-4 h-4 text-teal-500" />
+                    <span className="text-sm font-semibold">{lang}</span>
+                  </div>
+                ))}
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
