@@ -46,6 +46,7 @@ type LeadFormState = {
   name: string;
   email: string;
   phone: string;
+  providerName: string;
   query: string;
 };
 
@@ -53,6 +54,7 @@ const emptyLeadForm: LeadFormState = {
   name: "",
   email: "",
   phone: "",
+  providerName: "",
   query: "",
 };
 
@@ -94,10 +96,15 @@ export function HealthcareLanding() {
 
   const handleLeadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!leadForm.name.trim() || !leadForm.email.trim() || !leadForm.phone.trim()) {
+    if (
+      !leadForm.name.trim() ||
+      !leadForm.email.trim() ||
+      !leadForm.phone.trim() ||
+      !leadForm.providerName.trim()
+    ) {
       toast({
         title: "Missing information",
-        description: "Please provide your name, email, and phone number.",
+        description: "Please provide your name, email, phone number, and clinic/hospital name.",
         variant: "destructive",
       });
       return;
@@ -105,11 +112,12 @@ export function HealthcareLanding() {
 
     try {
       setIsSubmittingLead(true);
-      await post("/api/leads", {
+      await post("/api/contact", {
         name: leadForm.name.trim(),
         email: leadForm.email.trim(),
         phone: leadForm.phone.trim(),
-        query: leadForm.query.trim(),
+        providerName: leadForm.providerName.trim(),
+        query: leadForm.query.trim() || "No additional details provided.",
       });
       toast({
         title: "Thanks for reaching out!",
@@ -1528,15 +1536,27 @@ export function HealthcareLanding() {
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="lead-phone">Phone Number</Label>
-              <Input
-                id="lead-phone"
-                value={leadForm.phone}
-                onChange={(event) => handleLeadFieldChange("phone", event.target.value)}
-                placeholder="+91 98765 43210"
-                required
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="lead-provider">Clinic/Hospital Name</Label>
+                <Input
+                  id="lead-provider"
+                  value={leadForm.providerName}
+                  onChange={(event) => handleLeadFieldChange("providerName", event.target.value)}
+                  placeholder="MediCare Hospital"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="lead-phone">Phone Number</Label>
+                <Input
+                  id="lead-phone"
+                  value={leadForm.phone}
+                  onChange={(event) => handleLeadFieldChange("phone", event.target.value)}
+                  placeholder="+91 98765 43210"
+                  required
+                />
+              </div>
             </div>
             <div>
               <Label htmlFor="lead-query">Tell us more</Label>

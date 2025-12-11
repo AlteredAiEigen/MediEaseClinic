@@ -100,6 +100,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "noreply@medieaseclinic.com"
     lead_email_recipient: str = ""
+    contact_email_recipient: str = "alteredai@alteredai.care"
 
     # Frontend + password reset
     frontend_base_url: str = "https://app.clinic.alteredai.care"

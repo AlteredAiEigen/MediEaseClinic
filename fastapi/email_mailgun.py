@@ -69,17 +69,11 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     return os.getenv(name, default)
 
 
-MAILGUN_DOMAIN=mediease.alteredai.care
-MAILGUN_API_BASE_URL=https://api.mailgun.net/v3
-MAILGUN_WEBHOOK_SIGNING_KEY=pubkey-4209da887c582073751d71b8f29f6c57
-TEST_RECIPIENT_EMAIL=chanpreet@gmail.com
-MAILGUN_WEBHOOK_SIGNING_KEY=pubkey-4209da887c582073751d71b8f29f6c57
-
-
 MAILGUN_API_KEY = _env("MAILGUN_API_KEY", "")
 MAILGUN_DOMAIN = _env("MAILGUN_DOMAIN", "")
 MAILGUN_API_BASE_URL = _env("MAILGUN_API_BASE_URL", "https://api.mailgun.net/v3")
 MAILGUN_WEBHOOK_SIGNING_KEY = _env("MAILGUN_WEBHOOK_SIGNING_KEY", "")
+TEST_RECIPIENT_EMAIL = _env("TEST_RECIPIENT_EMAIL", "")
 
 NOTIFY_FROM_ADDRESS = _env(
     "MAILGUN_NOTIFY_FROM_ADDRESS",

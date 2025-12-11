@@ -4,12 +4,11 @@ Sends an email to the configured recipient.
 """
 
 import logging
-import anyio
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 
-from email_mailgun import send_email_via_mailgun
 from app.config import settings
+from app.services.email_service import EmailService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,33 +45,30 @@ async def create_contact(request: ContactRequest):
     recipient = settings.contact_email_recipient or "alteredai@alteredai.care"
 
     try:
-        # Fast-fail if Mailgun is not configured – but do not block the user.
-        from email_mailgun import MAILGUN_API_KEY, MAILGUN_DOMAIN
-        if not MAILGUN_API_KEY or not MAILGUN_DOMAIN:
-            logger.warning("Mailgun config missing; skipping email send for contact request.")
+        email_service = EmailService()
+        if not email_service.is_configured():
+            logger.warning("Email service not configured; skipping contact email to %s", recipient)
             return {
-                "success": True,
-                "message": "Inquiry received. Email delivery is temporarily disabled.",
+                "success": False,
+                "message": "Email service not configured on server.",
             }
 
-        # Run the blocking Mailgun call off the event loop with a timeout
-        async with anyio.fail_after(12):
-            response = await anyio.to_thread.run_sync(
-                send_email_via_mailgun,
-                recipient,
-                subject,
-                body,
-            )
-        if response.status_code >= 400:
-            logger.error("Mailgun send failed: %s - %s", response.status_code, response.text)
+        result = await email_service.send_email(
+            to=recipient,
+            subject=subject,
+            body=body,
+            reply_to=request.email,
+        )
+        if not result.get("success"):
+            logger.error("Contact email send failed: %s", result.get("error"))
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to send inquiry email. Please try again later.",
             )
-    except (HTTPException, anyio.get_cancelled_exc_class()):
+    except HTTPException:
         raise
     except Exception as exc:
-        logger.error("Failed to send contact email via Mailgun: %s", exc, exc_info=True)
+        logger.error("Failed to send contact email: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to send inquiry email. Please try again later.",
