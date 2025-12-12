@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,14 @@ export function ReceptionistPatients() {
         const searchParam = debouncedSearchQuery
           ? `&search=${encodeURIComponent(debouncedSearchQuery)}`
           : "";
-        const response = await get(`/api/patients?limit=${pageSize}&page=${targetPage}${searchParam}`);
+        
+        // Add status filter to API call if not "all"
+        // Convert "in-clinic" -> true, "remote" -> false
+        const statusParam = statusFilter !== "all"
+          ? `&present_in_clinic=${statusFilter === "in-clinic" ? "true" : "false"}`
+          : "";
+        
+        const response = await get(`/api/patients?limit=${pageSize}&page=${targetPage}${searchParam}${statusParam}`);
         
         if (response.success) {
           const payload = response.data as any;
@@ -118,15 +125,25 @@ export function ReceptionistPatients() {
             ? payload.patients
             : [];
           setPatients(list as Patient[]);
-          const totalRaw = payload?.total ?? payload?.pagination?.total;
+          
+          // Properly extract total from pagination object
+          const pagination = payload?.pagination || {};
+          const totalRaw = pagination.total ?? payload?.total;
+          
           if (Number.isFinite(Number(totalRaw))) {
             setTotalPatients(Number(totalRaw));
           } else {
-            setTotalPatients(list.length + (targetPage - 1) * pageSize);
+            // Fallback: estimate total if not provided
+            // If we got a full page, there might be more
+            const estimatedTotal = list.length === pageSize 
+              ? list.length + (targetPage - 1) * pageSize + 1
+              : list.length + (targetPage - 1) * pageSize;
+            setTotalPatients(estimatedTotal);
           }
           setPage(targetPage);
         } else {
           setPatients([]);
+          setTotalPatients(0);
           if (response.message) {
             setError(response.message);
           }
@@ -134,24 +151,30 @@ export function ReceptionistPatients() {
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to load patients";
         setError(message);
+        setPatients([]);
+        setTotalPatients(0);
       } finally {
         setIsLoading(false);
       }
     },
-    [debouncedSearchQuery, pageSize]
+    [debouncedSearchQuery, pageSize, statusFilter]
   );
 
   const todayRef = useMemo(() => new Date(), []);
   const weekStart = useMemo(() => startOfWeek(todayRef), [todayRef]);
   const weekEnd = useMemo(() => endOfDay(todayRef), [todayRef]);
 
+  // Reset to page 1 when search query or status filter changes
   useEffect(() => {
-    fetchPatients(1);
-  }, [pageSize, debouncedSearchQuery, fetchPatients]);
+    if (page !== 1) {
+      setPage(1);
+    }
+  }, [debouncedSearchQuery, statusFilter]);
 
+  // Fetch patients when page, search, or status filter changes
   useEffect(() => {
     fetchPatients(page);
-  }, [page, fetchPatients]);
+  }, [page, debouncedSearchQuery, statusFilter, fetchPatients]);
 
   // Load appointment stats in background after patient list loads
   useEffect(() => {
@@ -261,21 +284,11 @@ export function ReceptionistPatients() {
     fetchQueueEntries();
   }, []);
 
+  // No client-side filtering needed - API handles both search and status filter
+  // This ensures pagination works correctly
   const filteredPatients = useMemo(() => {
-    const query = debouncedSearchQuery.trim().toLowerCase();
-    return patients.filter((patient) => {
-      const matchesSearch =
-        query.length === 0 ||
-        patient.fullName.toLowerCase().includes(query) ||
-        patient.patientId.toLowerCase().includes(query) ||
-        patient.email?.toLowerCase().includes(query);
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "in-clinic" && patient.presentInClinic) ||
-        (statusFilter === "remote" && !patient.presentInClinic);
-      return matchesSearch && matchesStatus;
-    });
-  }, [patients, debouncedSearchQuery, statusFilter]);
+    return patients;
+  }, [patients]);
 
   const inClinicCount = useMemo(() => {
     // Calculate based on actual queue entries today, not just presentInClinic field
@@ -490,7 +503,14 @@ export function ReceptionistPatients() {
       {/* Patients List */}
       <Card className="border-border shadow-md">
         <CardHeader>
-          <CardTitle>All Patients ({totalPatients || filteredPatients.length})</CardTitle>
+          <CardTitle>
+            All Patients
+            {totalPatients > 0 && (
+              <span className="text-muted-foreground font-normal ml-2">
+                ({totalPatients.toLocaleString()})
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -569,30 +589,43 @@ export function ReceptionistPatients() {
               ))
             )}
           </div>
-          <div className="flex items-center justify-between pt-4">
-            <div className="text-sm text-muted-foreground">
-              Page {page} of {Math.max(1, Math.ceil((totalPatients || filteredPatients.length) / pageSize))} •{" "}
-              {totalPatients || filteredPatients.length} total
+          {/* Pagination Controls */}
+          {totalPatients > 0 && (
+            <div className="flex items-center justify-between pt-4 border-t border-border mt-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {((page - 1) * pageSize) + 1} - {Math.min(page * pageSize, totalPatients)} of {totalPatients} patients
+                {totalPatients > pageSize && (
+                  <span className="ml-2">• Page {page} of {Math.max(1, Math.ceil(totalPatients / pageSize))}</span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1 || isLoading}
+                  onClick={() => {
+                    const newPage = Math.max(1, page - 1);
+                    setPage(newPage);
+                    fetchPatients(newPage);
+                  }}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= Math.ceil(totalPatients / pageSize) || isLoading || totalPatients === 0}
+                  onClick={() => {
+                    const newPage = page + 1;
+                    setPage(newPage);
+                    fetchPatients(newPage);
+                  }}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1 || isLoading}
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= Math.ceil((totalPatients || filteredPatients.length) / pageSize) || isLoading}
-                onClick={() => setPage((prev) => prev + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          )}
         </CardContent>
       </Card>
 
