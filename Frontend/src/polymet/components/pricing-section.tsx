@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
 import {
   CheckCircle2Icon,
   XIcon,
@@ -35,7 +36,7 @@ export function PricingSection() {
       ],
 
       color: "from-cyan-500 to-teal-500",
-      buttonText: "Start Free Trial",
+      buttonText: "Contact Us",
     },
     {
       name: "Small Clinic",
@@ -59,7 +60,7 @@ export function PricingSection() {
       ],
 
       color: "from-teal-500 to-emerald-500",
-      buttonText: "Start Free Trial",
+      buttonText: "Contact Us",
     },
     {
       name: "Multi-Specialty Hospital",
@@ -196,16 +197,18 @@ export function PricingSection() {
                 </p>
               </div>
 
-              <Button
-                className={`w-full mb-8 ${
-                  plan.popular
-                    ? "bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
-                    : "bg-teal-50 text-teal-600 hover:bg-teal-100 dark:bg-teal-950/30 dark:hover:bg-teal-950/50"
-                }`}
-                size="lg"
-              >
-                {plan.buttonText} <ArrowRightIcon className="w-4 h-4 ml-2" />
-              </Button>
+              <Link to="/contact" className="w-full">
+                <Button
+                  className={`w-full mb-8 ${
+                    plan.popular
+                      ? "bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
+                      : "bg-teal-50 text-teal-600 hover:bg-teal-100 dark:bg-teal-950/30 dark:hover:bg-teal-950/50"
+                  }`}
+                  size="lg"
+                >
+                  {plan.buttonText} <ArrowRightIcon className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
 
               <div className="space-y-3">
                 {plan.features.map((feature, idx) => (

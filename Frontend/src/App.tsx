@@ -8,6 +8,8 @@ const FeaturesPage = lazy(() => import("@/polymet/pages/features-page").then(mod
 const SolutionsPage = lazy(() => import("@/polymet/pages/solutions-page").then(module => ({ default: module.SolutionsPage })));
 const SecurityPage = lazy(() => import("@/polymet/pages/security-page").then(module => ({ default: module.SecurityPage })));
 const RoadmapPage = lazy(() => import("@/polymet/pages/roadmap-page").then(module => ({ default: module.RoadmapPage })));
+const ContactPage = lazy(() => import("@/polymet/pages/contact-page").then(module => ({ default: module.ContactPage })));
+const AboutUsPage = lazy(() => import("@/polymet/pages/about-us-page").then(module => ({ default: module.AboutUsPage })));
 const RoleSelection = lazy(() => import("@/polymet/pages/role-selection").then(module => ({ default: module.RoleSelection })));
 const AuthPage = lazy(() => import("@/polymet/pages/auth-page").then(module => ({ default: module.AuthPage })));
 const AdminDashboard = lazy(() => import("@/polymet/pages/admin-dashboard").then(module => ({ default: module.AdminDashboard })));
@@ -95,11 +97,15 @@ export default function MediEaseClinicPrototype() {
 
           <Route path="/features" element={<FeaturesPage />} />
 
-          <Route path="/solutions" element={<SolutionsPage />} />
+          <Route path="/pricing" element={<SolutionsPage />} />
 
           <Route path="/security" element={<SecurityPage />} />
 
           <Route path="/roadmap" element={<RoadmapPage />} />
+
+          <Route path="/contact" element={<ContactPage />} />
+
+          <Route path="/about-us" element={<AboutUsPage />} />
 
           <Route path="/role-selection" element={<RoleSelection />} />
 

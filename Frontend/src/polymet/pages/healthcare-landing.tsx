@@ -154,10 +154,10 @@ export function HealthcareLanding() {
               Features
             </button>
             <button
-              onClick={() => scrollToSection('solutions')}
+              onClick={() => scrollToSection('roadmap')}
               className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
             >
-              Solutions
+              Roadmap
             </button>
             <button
               onClick={() => scrollToSection('security')}
@@ -166,17 +166,17 @@ export function HealthcareLanding() {
               Security
             </button>
             <button
-              onClick={() => scrollToSection('roadmap')}
+              onClick={() => scrollToSection('pricing')}
               className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
             >
-              Roadmap
+              Pricing
             </button>
             <button
               type="button"
               onClick={() => setLeadModalOpen(true)}
               className="text-sm font-medium text-teal-600 hover:text-teal-700 transition-colors"
             >
-              Get Started
+              Book a Demo
             </button>
             <Link to="/role-selection">
               <Button
@@ -187,14 +187,13 @@ export function HealthcareLanding() {
                 Sign In
               </Button>
             </Link>
-            <Link to="/role-selection">
-              <Button
-                size="default"
-                className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-medium px-6 py-2"
-              >
-                Start Free Trial
-              </Button>
-            </Link>
+            <Button
+              size="default"
+              onClick={() => setLeadModalOpen(true)}
+              className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-medium px-6 py-2"
+            >
+              Book a Demo
+            </Button>
           </nav>
         </div>
       </header>
@@ -233,20 +232,12 @@ export function HealthcareLanding() {
               </p>
             </div>
             <div className="flex gap-4">
-              <Link to="/role-selection">
-                <Button
-                  size="lg"
-                  className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-4 text-lg font-semibold"
-                >
-                  Start Free Trial <ArrowRightIcon className="w-5 h-5 ml-2" />
-                </Button>
-              </Link>
               <Button
                 size="lg"
-                variant="outline"
-                className="border-teal-500 text-teal-600 hover:bg-teal-50 px-8 py-4 text-lg font-semibold"
+                onClick={() => setLeadModalOpen(true)}
+                className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-4 text-lg font-semibold"
               >
-                <PlayIcon className="w-5 h-5 mr-2" /> Watch Video
+                Book a Demo <ArrowRightIcon className="w-5 h-5 ml-2" />
               </Button>
             </div>
 
@@ -1363,22 +1354,13 @@ export function HealthcareLanding() {
             better patient care with AI-powered solutions
           </p>
           <div className="flex gap-4 justify-center">
-            <Link to="/role-selection">
-              <Button
-                size="lg"
-                variant="secondary"
-                className="bg-white text-teal-600 hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
-              >
-                Start Free Trial <ArrowRightIcon className="w-5 h-5 ml-2" />
-              </Button>
-            </Link>
             <Button
               size="lg"
-              variant="outline"
-              className="border-white text-white hover:bg-white hover:text-teal-600 px-8 py-4 text-lg font-semibold"
+              variant="secondary"
               onClick={() => setLeadModalOpen(true)}
+              className="bg-white text-teal-600 hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
             >
-              Get Started
+              Book a Demo <ArrowRightIcon className="w-5 h-5 ml-2" />
             </Button>
           </div>
         </div>
@@ -1414,8 +1396,8 @@ export function HealthcareLanding() {
                   </a>
                 </li>
                 <li>
-                  <a href="#solutions" className="hover:text-teal-400">
-                    Solutions
+                  <a href="#pricing" className="hover:text-teal-400">
+                    Pricing
                   </a>
                 </li>
                 <li>
@@ -1429,7 +1411,7 @@ export function HealthcareLanding() {
                     onClick={() => setLeadModalOpen(true)}
                     className="hover:text-teal-400 text-left w-full"
                   >
-                    Get Started
+                    Book a Demo
                   </button>
                 </li>
               </ul>
@@ -1438,9 +1420,9 @@ export function HealthcareLanding() {
               <h4 className="font-bold mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-slate-400">
                 <li>
-                  <a href="#" className="hover:text-teal-400">
+                  <Link to="/about-us" className="hover:text-teal-400">
                     About Us
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <a href="#" className="hover:text-teal-400">
@@ -1448,9 +1430,9 @@ export function HealthcareLanding() {
                   </a>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-teal-400">
+                  <Link to="/contact" className="hover:text-teal-400">
                     Contact
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <a href="#" className="hover:text-teal-400">

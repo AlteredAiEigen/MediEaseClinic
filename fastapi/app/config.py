@@ -108,6 +108,9 @@ class Settings(BaseSettings):
     password_reset_token_exp_minutes: int = 60 * 24  # default 24 hours
 
     # Mailgun / inbound email processing
+    mailgun_api_key: str = ""
+    mailgun_domain: str = ""
+    mailgun_api_base_url: str = "https://api.mailgun.net/v3"
     mailgun_signing_key: str = ""
     mailgun_allowed_test_tokens: str = ""
     mailgun_expected_recipient_domain: str = "mediease.clinic"

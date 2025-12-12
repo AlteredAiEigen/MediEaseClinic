@@ -192,10 +192,16 @@ export function FeaturesPage() {
                 Home
               </Link>
               <Link
-                to="/solutions"
+                to="/features"
                 className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
               >
-                Solutions
+                Features
+              </Link>
+              <Link
+                to="/roadmap"
+                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
+              >
+                Roadmap
               </Link>
               <Link
                 to="/security"
@@ -204,13 +210,13 @@ export function FeaturesPage() {
                 Security
               </Link>
               <Link
-                to="/roadmap"
+                to="/pricing"
                 className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
               >
-                Roadmap
+                Pricing
               </Link>
               <Button className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600">
-                Start Free Trial
+                Book a Demo
               </Button>
             </div>
           </div>
@@ -240,15 +246,8 @@ export function FeaturesPage() {
                 size="lg"
                 className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 gap-2"
               >
-                Start Free Trial
+                Book a Demo
                 <ArrowRightIcon className="w-4 h-4" />
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-teal-500 text-teal-600 hover:bg-teal-50"
-              >
-                Get Started
               </Button>
             </div>
           </div>

@@ -12,80 +12,81 @@ import {
   ClockIcon,
   SparklesIcon,
   ArrowRightIcon,
+  Network,
 } from "lucide-react";
 
 export function RoadmapSection() {
   const upcomingFeatures = [
     {
-      icon: SmartphoneIcon,
-      title: "Native Mobile App",
+      icon: CreditCardIcon,
+      title: "Integration with Ayushman Card",
       description:
-        "iOS and Android apps for doctors and patients with offline capabilities",
-      timeline: "Q2 2024",
-      status: "In Development",
+        "Allow patients to directly check if tests or medicines are covered under the Ayushman card scheme along with coverage limits, improving transparency and cost management.",
+      timeline: "Q4 2024",
+      status: "Planned",
       features: [
-        "Offline patient records access",
-        "Mobile prescription writing",
-        "Push notifications",
-        "Biometric authentication",
+        "Real-time Ayushman card eligibility verification",
+        "Coverage limit checking for tests and medicines",
+        "Transparent cost management",
+        "Direct claim processing",
+      ],
+
+      color: "from-blue-500 to-cyan-500",
+    },
+    {
+      icon: CreditCardIcon,
+      title: "Linkage to Private Insurance",
+      description:
+        "Enable seamless integration with private insurance providers for better patient benefits and billing processing.",
+      timeline: "Q4 2024",
+      status: "Planned",
+      features: [
+        "Direct integration with major private insurers",
+        "Real-time eligibility verification",
+        "Automated claim submission",
+        "Seamless billing processing",
+      ],
+
+      color: "from-purple-500 to-pink-500",
+    },
+    {
+      icon: Network,
+      title: "Cross-Hospital Patient Data Sharing",
+      description:
+        "Allow authorized healthcare providers across hospitals to search and view patient details securely, facilitating continuity of care.",
+      timeline: "Q1 2025",
+      status: "Research",
+      features: [
+        "Secure cross-hospital patient data access",
+        "Authorized provider search functionality",
+        "Continuity of care facilitation",
+        "HIPAA-compliant data sharing",
       ],
 
       color: "from-teal-500 to-emerald-500",
     },
     {
-      icon: BarChart3Icon,
-      title: "Advanced Queue Analytics",
+      icon: GraduationCapIcon,
+      title: "Medical Student Training with Simulated Cases",
       description:
-        "AI-powered queue optimization with predictive wait times and patient flow analysis",
-      timeline: "Q3 2024",
-      status: "Planned",
+        "Use recorded patient cases to create simulated diagnosis scenarios for medical students, enriching their learning experience with diverse clinical cases.",
+      timeline: "Q2 2025",
+      status: "Research",
       features: [
-        "Predictive wait time calculation",
-        "Patient flow optimization",
-        "Peak hour analysis",
-        "Staff allocation recommendations",
+        "Anonymized patient case simulations",
+        "Diverse clinical scenarios",
+        "AI-powered diagnosis training",
+        "Interactive learning modules",
       ],
 
-      color: "from-emerald-500 to-cyan-500",
-    },
-    {
-      icon: PillIcon,
-      title: "Enhanced Prescription Analysis",
-      description:
-        "Advanced drug interaction detection and personalized medication recommendations",
-      timeline: "Q3 2024",
-      status: "Planned",
-      features: [
-        "AI-powered drug interactions",
-        "Allergy cross-checking",
-        "Generic alternatives suggestion",
-        "Dosage optimization",
-      ],
-
-      color: "from-cyan-500 to-teal-500",
-    },
-    {
-      icon: CreditCardIcon,
-      title: "Insurance Integrations",
-      description:
-        "Direct integration with major Indian insurance providers for seamless claims",
-      timeline: "Q4 2024",
-      status: "Planned",
-      features: [
-        "Real-time eligibility verification",
-        "Automated claim submission",
-        "Pre-authorization management",
-        "Cashless treatment processing",
-      ],
-
-      color: "from-purple-500 to-teal-500",
+      color: "from-orange-500 to-red-500",
     },
   ];
 
   const educationInitiative = {
-    title: "Medical Education Initiative",
+    title: "Medical Student Training with Simulated Cases",
     description:
-      "Securely stored patient case data will be anonymized and leveraged for clinical training of MBBS students, contributing to modern medical education in India through AI-powered simulation modules.",
+      "Use recorded patient cases to create simulated diagnosis scenarios for medical students, enriching their learning experience with diverse clinical cases.",
     features: [
       {
         title: "Anonymized Case Studies",

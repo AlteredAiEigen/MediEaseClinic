@@ -19,6 +19,8 @@ import {
   HeartPulseIcon,
   ShieldIcon,
   GlobeIcon,
+  Building2Icon,
+  Network,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MediEaseLogo } from "@/polymet/components/mediease-logo";
@@ -26,107 +28,108 @@ import { MediEaseLogo } from "@/polymet/components/mediease-logo";
 export function RoadmapPage() {
   const upcomingFeatures = [
     {
-      icon: SmartphoneIcon,
-      title: "Native Mobile Applications",
-      quarter: "Q2 2024",
-      status: "In Development",
-      description:
-        "Full-featured iOS and Android apps for doctors, staff, and patients",
-      features: [
-        "Offline consultation mode with auto-sync",
-        "Push notifications for appointments",
-        "Mobile prescription writing",
-        "Patient video consultations",
-        "Voice commands for hands-free operation",
-        "Biometric authentication",
-        "Real-time queue updates",
-        "Emergency patient alerts",
-      ],
-
-      benefits: [
-        "Access patient records anywhere",
-        "Respond to emergencies faster",
-        "Better work-life balance for doctors",
-      ],
-
-      gradient: "from-teal-500 to-emerald-500",
-      progress: 65,
-    },
-    {
-      icon: ScanIcon,
-      title: "Advanced Prescription Analysis",
-      quarter: "Q3 2024",
-      status: "Planning",
-      description:
-        "AI-powered prescription analysis with drug interaction detection",
-      features: [
-        "Real-time drug interaction warnings",
-        "Dosage optimization suggestions",
-        "Generic medicine alternatives",
-        "Cost-effective prescription recommendations",
-        "Allergy cross-checking",
-        "Pregnancy/lactation safety checks",
-        "Age-appropriate dosing",
-        "Multi-drug therapy optimization",
-      ],
-
-      benefits: [
-        "Reduce medication errors by 90%",
-        "Save patients 30-40% on medicine costs",
-        "Improve treatment outcomes",
-      ],
-
-      gradient: "from-purple-500 to-pink-500",
-      progress: 30,
-    },
-    {
       icon: CreditCardIcon,
-      title: "Insurance Integration",
+      title: "Integration with Ayushman Card",
       quarter: "Q4 2024",
       status: "Planning",
-      description: "Seamless integration with major Indian insurance providers",
+      description:
+        "Allow patients to directly check if tests or medicines are covered under the Ayushman card scheme along with coverage limits, improving transparency and cost management.",
       features: [
-        "Direct insurance claim submission",
-        "Real-time eligibility verification",
-        "Pre-authorization management",
-        "Cashless treatment processing",
+        "Real-time Ayushman card eligibility verification",
+        "Coverage limit checking for tests and medicines",
+        "Transparent cost management",
+        "Direct claim processing",
+        "Coverage details display",
+        "Pre-authorization support",
         "Claim status tracking",
-        "TPA integration (all major TPAs)",
-        "CGHS/ECHS integration",
-        "Ayushman Bharat integration",
+        "Seamless integration with Ayushman Bharat scheme",
       ],
 
       benefits: [
-        "Reduce claim processing time by 70%",
-        "Minimize claim rejections",
-        "Faster reimbursements",
+        "Improve transparency for patients",
+        "Better cost management",
+        "Faster claim processing",
       ],
 
       gradient: "from-blue-500 to-cyan-500",
       progress: 15,
     },
     {
-      icon: HeartPulseIcon,
-      title: "IoT Device Integration",
-      quarter: "Q1 2025",
-      status: "Research",
+      icon: CreditCardIcon,
+      title: "Linkage to Private Insurance",
+      quarter: "Q4 2024",
+      status: "Planning",
       description:
-        "Connect with medical devices for automatic vitals recording",
+        "Enable seamless integration with private insurance providers for better patient benefits and billing processing.",
       features: [
-        "Blood pressure monitor integration",
-        "Glucometer data sync",
-        "Pulse oximeter connectivity",
-        "ECG machine integration",
-        "Weight scale auto-recording",
-        "Temperature sensor sync",
-        "Spirometer integration",
-        "Wearable device data import",
+        "Direct integration with major private insurers",
+        "Real-time eligibility verification",
+        "Automated claim submission",
+        "Pre-authorization management",
+        "Cashless treatment processing",
+        "Claim status tracking",
+        "TPA integration (all major TPAs)",
+        "Seamless billing processing",
       ],
 
       benefits: [
-        "Eliminate manual data entry errors",
-        "Real-time patient monitoring",
-        "Better chronic disease management",
+        "Better patient benefits",
+        "Streamlined billing processing",
+        "Faster claim processing",
+      ],
+
+      gradient: "from-purple-500 to-pink-500",
+      progress: 20,
+    },
+    {
+      icon: Network,
+      title: "Cross-Hospital Patient Data Sharing",
+      quarter: "Q1 2025",
+      status: "Research",
+      description:
+        "Allow authorized healthcare providers across hospitals to search and view patient details securely, facilitating continuity of care.",
+      features: [
+        "Secure cross-hospital patient data access",
+        "Authorized provider search functionality",
+        "Continuity of care facilitation",
+        "HIPAA-compliant data sharing",
+        "Patient consent management",
+        "Audit trail for all access",
+        "Encrypted data transmission",
+        "Role-based access control",
+      ],
+
+      benefits: [
+        "Improved continuity of care",
+        "Better patient outcomes",
+        "Reduced duplicate tests and procedures",
+      ],
+
+      gradient: "from-teal-500 to-emerald-500",
+      progress: 10,
+    },
+    {
+      icon: GraduationCapIcon,
+      title: "Medical Student Training with Simulated Cases",
+      quarter: "Q2 2025",
+      status: "Research",
+      description:
+        "Use recorded patient cases to create simulated diagnosis scenarios for medical students, enriching their learning experience with diverse clinical cases.",
+      features: [
+        "Anonymized patient case simulations",
+        "Diverse clinical scenarios",
+        "AI-powered diagnosis training",
+        "Interactive learning modules",
+        "Performance tracking and analytics",
+        "Safe learning environment",
+        "Real-world case exposure",
+        "Medical college partnerships",
+      ],
+
+      benefits: [
+        "Enrich medical student learning",
+        "Exposure to diverse clinical cases",
+        "Better prepared healthcare professionals",
       ],
 
       gradient: "from-orange-500 to-red-500",
@@ -203,47 +206,29 @@ export function RoadmapPage() {
 
   const timeline = [
     {
-      quarter: "Q2 2024",
-      month: "Apr - Jun 2024",
-      items: [
-        { title: "Native Mobile Apps (iOS & Android)", status: "in-progress" },
-        { title: "Offline Mode for Consultations", status: "in-progress" },
-        { title: "Enhanced Voice Recognition", status: "in-progress" },
-      ],
-    },
-    {
-      quarter: "Q3 2024",
-      month: "Jul - Sep 2024",
-      items: [
-        { title: "Advanced Prescription Analysis", status: "planned" },
-        { title: "Drug Interaction Detection", status: "planned" },
-        { title: "Generic Medicine Recommendations", status: "planned" },
-      ],
-    },
-    {
       quarter: "Q4 2024",
       month: "Oct - Dec 2024",
       items: [
-        { title: "Insurance Integration (Major Providers)", status: "planned" },
-        { title: "Cashless Treatment Processing", status: "planned" },
-        { title: "Ayushman Bharat Integration", status: "planned" },
+        { title: "Integration with Ayushman Card", status: "planned" },
+        { title: "Linkage to Private Insurance", status: "planned" },
+        { title: "Coverage limit checking", status: "planned" },
       ],
     },
     {
       quarter: "Q1 2025",
       month: "Jan - Mar 2025",
       items: [
-        { title: "IoT Medical Device Integration", status: "research" },
-        { title: "Wearable Device Connectivity", status: "research" },
-        { title: "Real-time Patient Monitoring", status: "research" },
+        { title: "Cross-Hospital Patient Data Sharing", status: "research" },
+        { title: "Secure data access protocols", status: "research" },
+        { title: "Continuity of care features", status: "research" },
       ],
     },
     {
       quarter: "Q2 2025",
       month: "Apr - Jun 2025",
       items: [
-        { title: "Medical Education Platform Launch", status: "research" },
-        { title: "AI Simulation Modules", status: "research" },
+        { title: "Medical Student Training Platform", status: "research" },
+        { title: "Simulated Case Scenarios", status: "research" },
         { title: "Medical College Partnerships", status: "research" },
       ],
     },
@@ -278,10 +263,10 @@ export function RoadmapPage() {
                 Features
               </Link>
               <Link
-                to="/solutions"
+                to="/roadmap"
                 className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
               >
-                Solutions
+                Roadmap
               </Link>
               <Link
                 to="/security"
@@ -289,8 +274,14 @@ export function RoadmapPage() {
               >
                 Security
               </Link>
+              <Link
+                to="/pricing"
+                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
+              >
+                Pricing
+              </Link>
               <Button className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600">
-                Start Free Trial
+                Book a Demo
               </Button>
             </div>
           </div>

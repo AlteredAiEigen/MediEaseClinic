@@ -156,6 +156,7 @@ export function SolutionsSection() {
   const languages = [
     "English",
     "हिंदी (Hindi)",
+    "ਪੰਜਾਬੀ (Punjabi)",
     "मराठी (Marathi)",
     "తెలుగు (Telugu)",
     "বাংলা (Bengali)",
@@ -328,27 +329,6 @@ export function SolutionsSection() {
           </div>
         </div>
 
-        {/* Demo CTA */}
-        <div className="mt-16 text-center">
-          <div className="inline-flex flex-col items-center gap-4 bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-2xl p-8 border border-teal-100 dark:border-teal-900">
-            <SparklesIcon className="w-12 h-12 text-teal-600" />
-
-            <h3 className="text-2xl font-bold">
-              See Data Extraction in Action
-            </h3>
-            <p className="text-muted-foreground max-w-xl">
-              Watch how MediEase automatically extracts data from scanned
-              prescriptions, spoken consultations, and patient-doctor
-              interactions—reducing manual entry by 98%
-            </p>
-            <Button
-              size="lg"
-              className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
-            >
-              Watch Demo Video <ArrowRightIcon className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        </div>
 
         <Dialog open={isContactOpen} onOpenChange={handleDialogChange}>
           <DialogContent className="sm:max-w-lg">
