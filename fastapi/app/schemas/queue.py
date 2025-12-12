@@ -20,7 +20,7 @@ class QueueCheckIn(BaseModel):
 
 class QueueStatusUpdate(BaseModel):
     """Queue status update schema."""
-    status: str = Field(..., pattern="^(waiting|in-consultation|completed|checked-out|cancelled)$")
+    status: str = Field(..., pattern="^(waiting|in-consultation|completed|checkout-pending|checked-out|cancelled)$")
 
 
 class QueueConsultationUpdate(BaseModel):
@@ -67,6 +67,8 @@ class QueueStats(BaseModel):
     in_consultation: int
     completed: int
     checked_out: int
+    checkout_pending: Optional[int] = 0
+    cancelled: Optional[int] = 0
     average_wait_time: float
 
 

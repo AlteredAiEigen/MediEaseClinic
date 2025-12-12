@@ -24,7 +24,7 @@ import {
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
-import { get, post, put } from "@/lib/api-client";
+import { get, post, put, patch } from "@/lib/api-client";
 import { MedicalHistoryRecord } from "@/lib/api/patients";
 import {
   addPendingConsultationUpload,
@@ -68,6 +68,24 @@ interface Recording {
   recordedAt: string;
 }
 
+interface LabResultDisplay {
+  name: string;
+  value: string;
+  date: string;
+  status: "normal" | "high" | "low";
+  url?: string;
+}
+
+interface VisitHistoryItem {
+  id: string;
+  date: string;
+  time: string;
+  title: string;
+  description: string;
+  doctor: string;
+  relativeTime: string;
+}
+
 export function ConsultationSession() {
   const { patientId } = useParams();
   const { user } = useAuth();
@@ -80,6 +98,8 @@ export function ConsultationSession() {
   const [resolvedPatientObjectId, setResolvedPatientObjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [labResults, setLabResults] = useState<LabResultDisplay[]>([]);
+  const [visitHistory, setVisitHistory] = useState<VisitHistoryItem[]>([]);
 
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -164,35 +184,6 @@ export function ConsultationSession() {
     return defaultAiAnalysis;
   }, [patient]);
 
-  const defaultAppointmentTimeline = [
-  {
-    title: "Initial Consultation",
-    date: "2024-11-04",
-    notes: "Baseline assessment completed with stable vitals.",
-  },
-  {
-    title: "Follow-up Visit",
-    date: "2024-12-02",
-    notes: "Medications adjusted based on lab improvements.",
-  },
-  {
-    title: "Specialist Referral",
-    date: "2025-01-15",
-    notes: "Cardiology referral arranged for extended evaluation.",
-  },
-  {
-    title: "Therapy Session",
-    date: "2025-02-10",
-    notes: "Lifestyle coaching session completed.",
-  },
-  {
-    title: "Lab Review",
-    date: "2025-03-05",
-    notes: "Latest labs show favorable trends across key indicators.",
-  },
-];
-
-const appointmentTimeline = defaultAppointmentTimeline;
   const consultationIdentifiers = useMemo(
     () => ({
       mongoId: resolvedPatientObjectId || patient?._id || null,
@@ -431,6 +422,77 @@ const appointmentTimeline = defaultAppointmentTimeline;
       sessionStorage.removeItem("autoConsultationRecording");
     }
   }, [patient, consultationIdentifiers, autoRecordingIntent]);
+
+  // Fetch lab results (S3 reports) and recent visits (appointments) for the patient
+  useEffect(() => {
+    const fetchLabResultsAndVisits = async () => {
+      if (!patientId) return;
+
+      // Lab results from S3 reports (best-effort)
+      try {
+        const s3Response = await get(`/api/s3-reports?patient_id=${patientId}&limit=5`);
+        if (s3Response.success) {
+          const reports = (s3Response.data as any)?.reports ?? s3Response.data ?? [];
+          const mapped = Array.isArray(reports)
+            ? reports.map((r: any) => {
+                const created = r.createdAt || r.reportedDate || r.collectedDate;
+                const d = created ? new Date(created) : null;
+                const dateStr = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : "—";
+                return {
+                  name: r.reportType || r.category || r.title || r.filename || "Lab Report",
+                  value: r.summary || r.status || "View",
+                  date: dateStr,
+                  status: "normal" as const,
+                  url: r.fileUrl || r.url,
+                };
+              })
+            : [];
+          setLabResults(mapped.slice(0, 5));
+        } else {
+          setLabResults([]);
+        }
+      } catch {
+        setLabResults([]);
+      }
+
+      // Recent visit history from appointments (best-effort)
+      try {
+        const apptResponse = await get(`/api/appointments?limit=5&patient_id=${patientId}`);
+        if (apptResponse.success) {
+          const list =
+            (apptResponse.data as any)?.appointments ??
+            (Array.isArray(apptResponse.data) ? apptResponse.data : []);
+          const mapped: VisitHistoryItem[] = Array.isArray(list)
+            ? list.map((a: any) => {
+                const start = a.startTime || a.date || a.appointmentDate || a.createdAt;
+                const d = start ? new Date(start) : null;
+                const dateStr = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : "—";
+                const timeStr =
+                  d && !Number.isNaN(d.getTime())
+                    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    : "—";
+                return {
+                  id: a._id || a.appointmentId || Math.random().toString(36).slice(2),
+                  date: dateStr,
+                  time: timeStr,
+                  title: a.title || a.type || "Appointment",
+                  description: a.reason || a.notes || a.status || "",
+                  doctor: a.doctorName || a.doctor?.name || "Doctor",
+                  relativeTime: "",
+                };
+              })
+            : [];
+          setVisitHistory(mapped.slice(0, 5));
+        } else {
+          setVisitHistory([]);
+        }
+      } catch {
+        setVisitHistory([]);
+      }
+    };
+
+    fetchLabResultsAndVisits();
+  }, [patientId]);
 
   useEffect(() => {
     if (!autoRecordingIntent || autoRecordingActive || isRecording || isLoading) return;
@@ -1028,10 +1090,21 @@ const appointmentTimeline = defaultAppointmentTimeline;
         if (targetQueueId) {
           try {
             await put(`/api/queue/${targetQueueId}/status`, {
-              status: "completed",
+              status: "checkout-pending",
             });
           } catch (err) {
             console.error("Failed to update queue status:", err);
+          }
+        }
+        
+        // Also update appointment status if we have appointmentId
+        if (appointmentId) {
+          try {
+            await patch(`/api/appointments/${appointmentId}/status`, {
+              status: "checkout-pending",
+            });
+          } catch (err) {
+            console.error("Failed to update appointment status:", err);
           }
         }
 
@@ -1379,7 +1452,7 @@ const appointmentTimeline = defaultAppointmentTimeline;
           </Card>
 
           {/* Recent Lab Results */}
-          <LabResultsCard />
+          <LabResultsCard results={labResults} />
         </div>
 
         {/* Right Column - Quick Info & Consultation Actions */}
@@ -1410,7 +1483,7 @@ const appointmentTimeline = defaultAppointmentTimeline;
       {/* Patient Visit History Section - Bottom */}
       <div className="mt-8">
         <PatientVisitHistory
-          visits={appointmentTimeline.slice(1, 5)}
+          visits={visitHistory}
           patientId={patient.id}
         />
       </div>

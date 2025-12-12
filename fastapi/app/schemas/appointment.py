@@ -29,7 +29,7 @@ class AppointmentUpdateRequest(BaseModel):
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reason: Optional[str] = Field(None, max_length=500)
     insurance: Optional[bool] = None
-    status: Optional[str] = Field(None, pattern="^(scheduled|checked-in|in-progress|ongoing|checkout|completed|cancelled|no-show)$")
+    status: Optional[str] = Field(None, pattern="^(scheduled|checked-in|in-progress|ongoing|checkout|checkout-pending|completed|cancelled|no-show)$")
     followUpRequired: Optional[bool] = None
     followUpNotes: Optional[str] = None
     # Allow updating doctor and type
@@ -61,7 +61,7 @@ class AppointmentUpdateRequest(BaseModel):
 
 class AppointmentStatusUpdate(BaseModel):
     """Update appointment status."""
-    status: str = Field(..., pattern="^(scheduled|checked-in|in-progress|ongoing|checkout|completed|cancelled|no-show)$")
+    status: str = Field(..., pattern="^(scheduled|checked-in|in-progress|ongoing|checkout|checkout-pending|completed|cancelled|no-show)$")
     cancellationReason: Optional[str] = None
 
 

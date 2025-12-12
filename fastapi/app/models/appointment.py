@@ -35,7 +35,7 @@ class AppointmentBase(BaseModel):
     date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: str = Field(..., pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
     duration: int = Field(30, ge=15, le=480)
-    status: str = Field("scheduled", pattern="^(scheduled|cancelled|checked-in|ongoing|checkout|completed)$")
+    status: str = Field("scheduled", pattern="^(scheduled|cancelled|checked-in|ongoing|in-progress|checkout|checkout-pending|completed)$")
     priority: str = Field("medium", pattern="^(low|medium|high)$")
     reason: str = Field(..., max_length=500)
     insurance: bool = False
@@ -146,7 +146,7 @@ class AppointmentUpdate(BaseModel):
     date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     time: Optional[str] = Field(None, pattern=r"^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$")
     duration: Optional[int] = Field(None, ge=15, le=480)
-    status: Optional[str] = Field(None, pattern="^(scheduled|cancelled|checked-in|ongoing|checkout|completed|no-show)$")
+    status: Optional[str] = Field(None, pattern="^(scheduled|cancelled|checked-in|ongoing|in-progress|checkout|checkout-pending|completed|no-show)$")
     isNoShow: Optional[bool] = None
     priority: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     reason: Optional[str] = Field(None, max_length=500)

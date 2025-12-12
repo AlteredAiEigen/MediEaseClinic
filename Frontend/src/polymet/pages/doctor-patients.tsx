@@ -262,14 +262,32 @@ export function DoctorPatients() {
           } as Patient;
         });
 
+        // Client-side filter to make search reliable even if backend search param is ignored
+        const filtered = (() => {
+          if (!debouncedSearchQuery.trim()) return normalized;
+          const q = debouncedSearchQuery.toLowerCase();
+          return normalized.filter((p) => {
+            return (
+              p.fullName.toLowerCase().includes(q) ||
+              (p.patientId || "").toLowerCase().includes(q) ||
+              (p.phone || "").toLowerCase().includes(q) ||
+              (p.email || "").toLowerCase().includes(q) ||
+              (p.chiefComplaint || "").toLowerCase().includes(q)
+            );
+          });
+        })();
+
+        // When searching, reflect filtered count; otherwise use API total if provided
         setTotalPatients(
-          totalFromApi ??
-            (patientsResponse.success
-              ? patientList.length + (Math.max(0, targetPage - 1) * pageSize)
-              : patientList.length)
+          debouncedSearchQuery.trim()
+            ? filtered.length
+            : totalFromApi ??
+              (patientsResponse.success
+                ? patientList.length + (Math.max(0, targetPage - 1) * pageSize)
+                : patientList.length)
         );
         setPage(targetPage);
-        setPatients(normalized);
+        setPatients(filtered);
 
         const resolvedDoctorStats = statsResponse.success
           ? ((statsResponse.data as DoctorStats) ?? null)

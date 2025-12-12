@@ -347,7 +347,18 @@ class AppointmentService:
                     consultation_time = (now - started_at).total_seconds() / 60.0  # Convert to minutes
                     update_dict["consultationTimeMinutes"] = round(consultation_time, 1)
                     update_dict["completedAt"] = now
+            elif new_status == "checkout-pending":
+                # Set completedAt when consultation ends and moves to checkout-pending
+                if existing_appointment.get("startedAt") and not existing_appointment.get("completedAt"):
+                    started_at = existing_appointment["startedAt"]
+                    if isinstance(started_at, str):
+                        started_at = datetime.fromisoformat(started_at.replace('Z', '+00:00'))
+                    consultation_time = (now - started_at).total_seconds() / 60.0  # Convert to minutes
+                    update_dict["consultationTimeMinutes"] = round(consultation_time, 1)
+                update_dict["completedAt"] = now
             elif new_status == "ongoing" and not existing_appointment.get("startedAt"):
+                update_dict["startedAt"] = now
+            elif new_status == "in-progress" and not existing_appointment.get("startedAt"):
                 update_dict["startedAt"] = now
         
         # Track if date/time is being changed for notification
@@ -541,8 +552,13 @@ class AppointmentService:
                 detail="Appointment not found"
             )
         
+        # Normalize status: when a doctor marks "completed", we set it to "checkout-pending"
+        normalized_status = new_status
+        if new_status == "completed":
+            normalized_status = "checkout-pending"
+
         update_data = {
-            "status": new_status,
+            "status": normalized_status,
             "updatedAt": datetime.utcnow()
         }
         
@@ -551,9 +567,9 @@ class AppointmentService:
             update_data["checkedInAt"] = datetime.utcnow()
         elif new_status == "in-progress":
             update_data["startedAt"] = datetime.utcnow()
-        elif new_status == "completed":
+        elif normalized_status in ["completed", "checkout-pending"]:
             update_data["completedAt"] = datetime.utcnow()
-        elif new_status == "cancelled":
+        elif normalized_status == "cancelled":
             update_data["cancelledAt"] = datetime.utcnow()
             if cancellation_reason:
                 update_data["cancellationReason"] = cancellation_reason
@@ -574,6 +590,31 @@ class AppointmentService:
 
         # Retrieve updated appointment
         updated_appointment = await self.appointments_collection.find_one({"_id": appointment_object_id})
+
+        # Keep queue entries in sync with appointment status for checkout-pending / checkout
+        try:
+            queue_collection = self.db.queue
+            if normalized_status in ["checkout-pending", "checkout"]:
+                queue_update: Dict = {
+                    "status": normalized_status,
+                    "updated_at": datetime.utcnow(),
+                }
+                if normalized_status == "checkout-pending":
+                    queue_update["consultation_ended_at"] = datetime.utcnow()
+                    queue_update["is_active"] = True  # keep visible for receptionist
+                if normalized_status == "checkout":
+                    queue_update["consultation_ended_at"] = datetime.utcnow()
+                    queue_update["is_active"] = False
+
+                await queue_collection.update_many(
+                    {
+                        "appointment": appointment_object_id,
+                        "is_active": {"$in": [True, False]},
+                    },
+                    {"$set": queue_update},
+                )
+        except Exception as e:  # pragma: no cover - defensive
+            print(f"Failed to sync queue entries for appointment {appointment_id}: {e}")
 
         # If an appointment is cancelled after check-in, make sure any related
         # queue entries are also cancelled so they no longer appear in

@@ -22,7 +22,7 @@ import {
   ArrowDownIcon,
   Loader2Icon,
 } from "lucide-react";
-import { get, put } from "@/lib/api-client";
+import { get, put, patch } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 import { ConsultationHistoryDialog } from "@/polymet/components/consultation-history-dialog";
 
@@ -41,6 +41,7 @@ interface QueuePatient {
   patientId: string;
   status: string;
   lastVisit?: string;
+  appointmentId?: string;
 }
 
 interface QueueEntry {
@@ -242,6 +243,41 @@ export function DoctorWorkstation() {
           mappedQueue = activeQueueEntries.map((entry) => {
             const patientId = entry.patient._id || entry.patient.patientId;
 
+            // Use appointment time if available, otherwise use checked_in_at time
+            let appointmentTime: string;
+            if (entry.appointment && typeof entry.appointment === 'object' && entry.appointment.time) {
+              // Format appointment time (e.g., "06:01" or "06:01 AM")
+              const timeStr = entry.appointment.time.trim();
+              if (/am|pm/i.test(timeStr)) {
+                appointmentTime = timeStr;
+              } else {
+                // Convert 24-hour format to 12-hour format
+                const [hours, minutes] = timeStr.split(':');
+                const hoursNum = parseInt(hours, 10);
+                const period = hoursNum >= 12 ? 'PM' : 'AM';
+                const normalizedHours = hoursNum % 12 || 12;
+                appointmentTime = `${normalizedHours.toString().padStart(2, '0')}:${minutes || '00'} ${period}`;
+              }
+            } else {
+              // Fall back to checked_in_at time
+              appointmentTime = new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+            }
+
+            // Extract appointment ID
+            let appointmentId: string | undefined;
+            if (entry.appointment) {
+              if (typeof entry.appointment === "string") {
+                appointmentId = entry.appointment;
+              } else if (entry.appointment._id) {
+                appointmentId = String(entry.appointment._id);
+              } else if (entry.appointment.appointmentId) {
+                appointmentId = String(entry.appointment.appointmentId);
+              }
+            }
+
             return {
               id: entry._id,
               name: entry.patient.fullName,
@@ -249,10 +285,7 @@ export function DoctorWorkstation() {
               gender: entry.patient.gender || "N/A",
               phone: entry.patient.phone || "N/A",
               email: entry.patient.email || "N/A",
-              appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
+              appointmentTime: appointmentTime,
               reason: entry.reason || "Consultation",
               priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
               waitTime: `${entry.wait_time} min`,
@@ -260,6 +293,7 @@ export function DoctorWorkstation() {
               patientId: patientId,
               status: entry.status,
               lastVisit: patientId ? lastVisitByPatientId[patientId] : undefined,
+              appointmentId: appointmentId,
             };
           });
 
@@ -372,6 +406,41 @@ export function DoctorWorkstation() {
                   }
                 }
 
+                // Use appointment time if available, otherwise use checked_in_at time
+                let appointmentTime: string;
+                if (entry.appointment && typeof entry.appointment === 'object' && entry.appointment.time) {
+                  // Format appointment time (e.g., "06:01" or "06:01 AM")
+                  const timeStr = entry.appointment.time.trim();
+                  if (/am|pm/i.test(timeStr)) {
+                    appointmentTime = timeStr;
+                  } else {
+                    // Convert 24-hour format to 12-hour format
+                    const [hours, minutes] = timeStr.split(':');
+                    const hoursNum = parseInt(hours, 10);
+                    const period = hoursNum >= 12 ? 'PM' : 'AM';
+                    const normalizedHours = hoursNum % 12 || 12;
+                    appointmentTime = `${normalizedHours.toString().padStart(2, '0')}:${minutes || '00'} ${period}`;
+                  }
+                } else {
+                  // Fall back to checked_in_at time
+                  appointmentTime = new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                }
+
+                // Extract appointment ID
+                let appointmentId: string | undefined;
+                if (entry.appointment) {
+                  if (typeof entry.appointment === "string") {
+                    appointmentId = entry.appointment;
+                  } else if (entry.appointment._id) {
+                    appointmentId = String(entry.appointment._id);
+                  } else if (entry.appointment.appointmentId) {
+                    appointmentId = String(entry.appointment.appointmentId);
+                  }
+                }
+
                 return {
                   id: entry._id,
                   name: entry.patient.fullName,
@@ -379,16 +448,14 @@ export function DoctorWorkstation() {
                   gender: entry.patient.gender || "N/A",
                   phone: entry.patient.phone || "N/A",
                   email: entry.patient.email || "N/A",
-                  appointmentTime: new Date(entry.checked_in_at).toLocaleTimeString("en-US", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }),
+                  appointmentTime: appointmentTime,
                   reason: entry.reason || "Consultation",
                   priority: (entry.priority as "low" | "normal" | "high" | "emergency") || "normal",
                   waitTime: `${entry.wait_time} min`,
                   avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
                   patientId: patientId,
                   status: entry.status,
+                  appointmentId: appointmentId,
                 };
               });
             setQueuePatients(mappedQueue);
@@ -488,12 +555,23 @@ export function DoctorWorkstation() {
     if (!currentPatient) return;
 
     try {
-      // Mark consultation as completed
+      // Mark consultation as checkout-pending (will appear in receptionist checkout section)
       const response = await put(`/api/queue/${currentPatient.id}/status`, {
-        status: "completed",
+        status: "checkout-pending",
       });
 
       if (response.success) {
+        // Also update appointment status if we have appointmentId
+        if (currentPatient.appointmentId) {
+          try {
+            await patch(`/api/appointments/${currentPatient.appointmentId}/status`, {
+              status: "checkout-pending",
+            });
+          } catch (err) {
+            console.error("Failed to update appointment status:", err);
+          }
+        }
+        
         // Remove current patient and automatically move to next
         setQueuePatients((prev) => {
           const newQueue = prev.filter((_, index) => index !== currentIndex);

@@ -1672,7 +1672,7 @@ export function PatientOverview() {
   };
 
   const sanitizeText = (value?: string) =>
-    value && value.trim().length > 0 ? value.trim() : undefined;
+    value !== undefined ? value.trim() : undefined;
 
   type EditablePatientField =
     | "gender"

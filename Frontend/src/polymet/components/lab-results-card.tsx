@@ -6,6 +6,7 @@ interface LabResult {
   value: string;
   date: string;
   status: "normal" | "high" | "low";
+  url?: string;
 }
 
 interface LabResultsCardProps {
@@ -13,31 +14,7 @@ interface LabResultsCardProps {
   className?: string;
 }
 
-const defaultResults: LabResult[] = [
-  {
-    name: "Cholesterol",
-    value: "245 mg/dL",
-    date: "Jan 15, 2024",
-    status: "high",
-  },
-  {
-    name: "HbA1c",
-    value: "6.2%",
-    date: "Jan 15, 2024",
-    status: "normal",
-  },
-  {
-    name: "Blood Glucose",
-    value: "105 mg/dL",
-    date: "Jan 15, 2024",
-    status: "normal",
-  },
-];
-
-export function LabResultsCard({
-  results = defaultResults,
-  className = "",
-}: LabResultsCardProps) {
+export function LabResultsCard({ results = [], className = "" }: LabResultsCardProps) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "high":
@@ -66,31 +43,45 @@ export function LabResultsCard({
         <CardTitle className="text-base">Recent Lab Results</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-3">
-          {results.map((result, index) => (
-            <div key={index}>
-              {index > 0 && <Separator className="mb-3" />}
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {result.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{result.date}</p>
-                </div>
-                <div className="text-right">
-                  <p
-                    className={`text-sm font-bold ${getStatusColor(result.status)}`}
-                  >
-                    {result.value}
-                  </p>
-                  <p className={`text-xs ${getStatusColor(result.status)}`}>
-                    {getStatusText(result.status)}
-                  </p>
+        {results.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No lab results available.</p>
+        ) : (
+          <div className="space-y-3">
+            {results.map((result, index) => (
+              <div key={index}>
+                {index > 0 && <Separator className="mb-3" />}
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">
+                      {result.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{result.date}</p>
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`text-sm font-bold ${getStatusColor(result.status)}`}
+                    >
+                      {result.value}
+                    </p>
+                    <p className={`text-xs ${getStatusColor(result.status)}`}>
+                      {getStatusText(result.status)}
+                    </p>
+                    {result.url && (
+                      <a
+                        href={result.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-teal-600 hover:underline"
+                      >
+                        View report
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

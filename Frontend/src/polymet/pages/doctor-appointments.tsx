@@ -13,8 +13,6 @@ import {
   PlusIcon,
   FilterIcon,
   TrendingUpIcon,
-  ArrowRightIcon,
-  PlayIcon,
 } from "lucide-react";
 import {
   Select,
@@ -292,21 +290,6 @@ export function DoctorAppointments() {
     }
   };
 
-  // Handle starting an appointment - navigates to workstation
-  const handleStartAppointment = async (appointment: any) => {
-    try {
-      // Update status to in-progress if it's scheduled or checked-in
-      if (appointment.status === "scheduled" || appointment.status === "checked-in") {
-        await patch(`/api/appointments/${appointment._id || appointment.id}/status`, {
-          status: "in-progress"
-        });
-      }
-      // Navigate to workstation with the appointment
-      window.location.href = `/doctor-workstation?appointmentId=${appointment._id || appointment.id}&patientId=${appointment.patientId}`;
-    } catch (error) {
-      console.error("Failed to start appointment:", error);
-    }
-  };
 
   // Handle viewing appointment details - opens patient overview with appointment details
   const handleViewDetails = (appointment: any) => {
@@ -742,30 +725,6 @@ export function DoctorAppointments() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                      {appointment.status === "scheduled" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleStartAppointment(appointment)}
-                          className="gap-2"
-                        >
-                          <PlayIcon className="w-4 h-4" />
-                          Start
-                        </Button>
-                      )}
-
-                      {(appointment.status === "checked-in" ||
-                        appointment.status === "ongoing") && (
-                        <Button
-                          size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
-                          onClick={() => handleStartAppointment(appointment)}
-                        >
-                          <ArrowRightIcon className="w-4 h-4" />
-                          Continue
-                        </Button>
-                      )}
-
                       {!isPastAppointment(appointment.date) && appointment.status !== "cancelled" && appointment.status !== "completed" && (
                         <>
                           <Button

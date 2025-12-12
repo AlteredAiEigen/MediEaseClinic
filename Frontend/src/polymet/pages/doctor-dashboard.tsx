@@ -28,7 +28,7 @@ import {
   Loader2Icon,
   AlertCircleIcon,
 } from "lucide-react";
-import { get, post, put } from "@/lib/api-client";
+import { get, post, put, patch } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/components/ui/use-toast";
 import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
@@ -45,6 +45,7 @@ interface QueuePatient {
   queueNumber?: number;
   priority?: string;
   reason?: string;
+  appointmentId?: string;
 }
 
 interface UpcomingAppointment {
@@ -72,6 +73,13 @@ interface QueueEntry {
     fullName?: string;
     firstName?: string;
     lastName?: string;
+  };
+  appointment?: string | {
+    _id: string;
+    appointmentId?: string;
+    time?: string;
+    date?: string;
+    status?: string;
   };
   checked_in_at: string;
   status: string;
@@ -235,22 +243,57 @@ export function DoctorDashboard() {
           nextQueuePatients = queueResponse.data.queue
             .filter((entry) => entry.status === "waiting" || entry.status === "in-consultation")
             .filter((entry) => entry.doctor._id === user._id)
-            .map((entry) => ({
-              id: entry._id,
-              patientId: entry.patient._id,
-              name: entry.patient.fullName,
-              avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
-              time: new Date(entry.checked_in_at).toLocaleString("en-US", {
-                timeZone: "Asia/Kolkata",
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              appointmentType: entry.reason || "Consultation",
-              status: entry.status === "in-consultation" ? "in-progress" : "waiting",
-              queueNumber: entry.queue_number,
-              priority: entry.priority,
-              reason: entry.reason,
-            }));
+            .map((entry) => {
+              // Use appointment time if available, otherwise use checked_in_at time
+              let appointmentTime: string;
+              if (entry.appointment && typeof entry.appointment === 'object' && entry.appointment.time) {
+                // Format appointment time (e.g., "06:01" or "06:01 AM")
+                const timeStr = entry.appointment.time.trim();
+                if (/am|pm/i.test(timeStr)) {
+                  appointmentTime = timeStr;
+                } else {
+                  // Convert 24-hour format to 12-hour format
+                  const [hours, minutes] = timeStr.split(':');
+                  const hoursNum = parseInt(hours, 10);
+                  const period = hoursNum >= 12 ? 'PM' : 'AM';
+                  const normalizedHours = hoursNum % 12 || 12;
+                  appointmentTime = `${normalizedHours.toString().padStart(2, '0')}:${minutes || '00'} ${period}`;
+                }
+              } else {
+                // Fall back to checked_in_at time
+                appointmentTime = new Date(entry.checked_in_at).toLocaleString("en-US", {
+                  timeZone: "Asia/Kolkata",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+              }
+              
+              // Extract appointment ID
+              let appointmentId: string | undefined;
+              if (entry.appointment) {
+                if (typeof entry.appointment === "string") {
+                  appointmentId = entry.appointment;
+                } else if (entry.appointment._id) {
+                  appointmentId = entry.appointment._id;
+                } else if (entry.appointment.appointmentId) {
+                  appointmentId = entry.appointment.appointmentId;
+                }
+              }
+
+              return {
+                id: entry._id,
+                patientId: entry.patient._id,
+                name: entry.patient.fullName,
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(entry.patient.fullName)}&background=random`,
+                time: appointmentTime,
+                appointmentType: entry.reason || "Consultation",
+                status: entry.status === "in-consultation" ? "in-progress" : "waiting",
+                queueNumber: entry.queue_number,
+                priority: entry.priority,
+                reason: entry.reason,
+                appointmentId: appointmentId,
+              };
+            });
           setQueuePatients(nextQueuePatients);
           setInQueue(nextQueuePatients.length);
         }
@@ -506,21 +549,71 @@ export function DoctorDashboard() {
     source: "appointments" | "queue";
   } | null>(null);
 
-  // Move patient from queue to upcoming
-  const moveToUpcoming = (patientId: string) => {
-    const patient = queuePatients.find((p) => p.id === patientId);
-    if (patient) {
-      setQueuePatients((prev) => prev.filter((p) => p.id !== patientId));
-      setUpcomingAppointments((prev) => [
-        ...prev,
-        {
-          id: patient.id,
-          name: patient.name,
-          avatar: patient.avatar,
-          time: patient.time,
-          appointmentType: patient.appointmentType,
-        },
-      ]);
+  // Move patient from queue to upcoming (persist to backend)
+  const moveToUpcoming = async (queueEntryId: string) => {
+    const patient = queuePatients.find((p) => p.id === queueEntryId);
+    if (!patient) {
+      return;
+    }
+
+    try {
+      // Cancel the queue entry
+      const queueResponse = await put(`/api/queue/${queueEntryId}/status`, {
+        status: "cancelled"
+      });
+
+      if (!queueResponse.success) {
+        throw new Error(queueResponse.message || "Failed to remove patient from queue");
+      }
+
+      // Update appointment status back to "scheduled" if appointment exists
+      if (patient.appointmentId) {
+        try {
+          await patch(`/api/appointments/${patient.appointmentId}/status`, {
+            status: "scheduled"
+          });
+        } catch (err) {
+          // Log but don't fail - queue entry is already cancelled
+          console.warn("Failed to update appointment status:", err);
+        }
+      }
+
+      // Optimistically update UI
+      setQueuePatients((prev) => prev.filter((p) => p.id !== queueEntryId));
+      
+      // Only add to upcoming if we have appointment ID (to match with actual appointment)
+      if (patient.appointmentId) {
+        setUpcomingAppointments((prev) => [
+          ...prev,
+          {
+            id: patient.appointmentId,
+            name: patient.name,
+            avatar: patient.avatar,
+            time: patient.time,
+            appointmentType: patient.appointmentType,
+            patientId: patient.patientId,
+          },
+        ]);
+      }
+
+      toast({
+        title: "Patient moved back to appointments",
+        description: `${patient.name} has been removed from the queue.`,
+      });
+
+      // Refresh dashboard data to ensure consistency
+      await fetchDashboardData(false);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to move patient back to appointments";
+
+      toast({
+        title: "Operation failed",
+        description: message,
+        variant: "destructive",
+      });
     }
   };
 

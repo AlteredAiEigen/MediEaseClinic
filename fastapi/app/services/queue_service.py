@@ -489,7 +489,7 @@ class QueueService:
                 {
                     "$match": {
                         "checked_in_at": {"$gte": today},
-                        "status": {"$in": ["waiting", "in-consultation", "checkout", "completed"]},
+                        "status": {"$in": ["waiting", "in-consultation", "checkout", "checkout-pending", "completed"]},
                         "is_active": True
                     }
                 },
@@ -607,6 +607,14 @@ class QueueService:
                     }
                 },
                 {
+                    "$lookup": {
+                        "from": "appointments",
+                        "localField": "appointment",
+                        "foreignField": "_id",
+                        "as": "appointment_info"
+                    }
+                },
+                {
                     "$sort": {"priority": -1, "queue_number": 1}
                 }
             ]
@@ -656,6 +664,16 @@ class QueueService:
                         doctor["fullName"] = f"{firstName} {lastName}".strip()
                     entry["doctor"] = doctor
                     del entry["doctor_info"]
+                
+                if entry.get("appointment_info") and len(entry["appointment_info"]) > 0:
+                    appointment = entry["appointment_info"][0]
+                    appointment["_id"] = str(appointment["_id"])
+                    # Convert any ObjectIds in appointment document
+                    for key, value in appointment.items():
+                        if isinstance(value, ObjectId):
+                            appointment[key] = str(value)
+                    entry["appointment"] = appointment
+                    del entry["appointment_info"]
             
             return queue
         
@@ -742,6 +760,9 @@ class QueueService:
             # Handle specific status transitions
             if status_update.status == "in-consultation":
                 update_data["consultation_started_at"] = datetime.utcnow()
+            elif status_update.status in ["checkout-pending"]:
+                update_data["consultation_ended_at"] = datetime.utcnow()
+                update_data["is_active"] = True  # keep visible for receptionist checkout
             elif status_update.status in ["completed", "checkout", "checked-out"]:  # Handle all completion statuses
                 update_data["consultation_ended_at"] = datetime.utcnow()
                 update_data["is_active"] = False  # Mark as inactive when consultation completes
@@ -782,7 +803,10 @@ class QueueService:
                             appointment_status_update = {}
                             
                             # Map queue status to appointment status
-                            if status_update.status == "checkout":
+                            if status_update.status == "checkout-pending":
+                                appointment_status_update["status"] = "checkout-pending"
+                                appointment_status_update["completedAt"] = datetime.utcnow()
+                            elif status_update.status == "checkout":
                                 appointment_status_update["status"] = "checkout"
                                 appointment_status_update["completedAt"] = datetime.utcnow()
                             elif status_update.status == "completed":
@@ -1081,6 +1105,7 @@ class QueueService:
                 "in_consultation": 0,
                 "completed": 0,
                 "checked_out": 0,
+                "checkout_pending": 0,
                 "cancelled": 0,
                 "average_wait_time": 0
             }

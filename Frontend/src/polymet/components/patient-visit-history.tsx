@@ -68,6 +68,14 @@ export function PatientVisitHistory({
 
       {/* Stacked Cards with Dynamic Hover Effect */}
       <div className="relative perspective-1000">
+        {visits.length === 0 && (
+          <Card className="border-border shadow-sm">
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No visit history available.
+            </CardContent>
+          </Card>
+        )}
+
         {visits.map((visit, index) => {
           const isExpanded = expandedVisit === visit.id;
           const isHovered = hoveredIndex === index;

@@ -204,11 +204,11 @@ async def get_current_doctor_stats(
             "clinicId": clinic_id
         })
         
-        # Get completed appointments today (fully checked out)
+        # Get completed appointments today (fully checked out or pending checkout)
         completed_today = await get_appointments_collection(db).count_documents({
             "doctorId": doctor_id,
             "date": today,
-            "status": {"$in": ["completed", "checkout_completed"]},
+            "status": {"$in": ["completed", "checkout_completed", "checkout-pending"]},
             "clinicId": clinic_id
         })
         
@@ -276,7 +276,7 @@ async def get_doctor_performance_insights(
 
         total_appointments = await appointments_collection.count_documents(base_query)
         completed_query = base_query.copy()
-        completed_query["status"] = {"$in": ["completed", "checkout_completed"]}
+        completed_query["status"] = {"$in": ["completed", "checkout_completed", "checkout-pending"]}
         total_completed = await appointments_collection.count_documents(completed_query)
 
         follow_up_count = await appointments_collection.count_documents(

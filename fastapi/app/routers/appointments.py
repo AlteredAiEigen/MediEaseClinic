@@ -347,13 +347,13 @@ async def complete_consultation(
         
         # Save consultation details to appointment immediately
         update_data = AppointmentUpdateRequest(
-            status="completed",
-            prescribed_test=prescribed_test,
+            status="checkout-pending",
+            prescribedTest=prescribed_test,
             diagnosis=diagnosis,
-            treatment_plan=treatment_plan,
-            follow_up_instructions=follow_up_instructions,
-            detailed_notes=detailed_notes,
-            ai_recommendations=ai_recommendations,
+            treatmentPlan=treatment_plan,
+            followUpInstructions=follow_up_instructions,
+            detailedNotes=detailed_notes,
+            aiRecommendations=ai_recommendations,
             prescription=prescription
         )
         
@@ -375,10 +375,10 @@ async def complete_consultation(
                     queue_entry_id = queue_entry.get("_id")
             
             if queue_entry_id:
-                # Update queue status to completed (this will also set is_active to False)
+                # Update queue status to checkout-pending (this will keep is_active = True for receptionist checkout)
                 await queue_service.update_queue_status(
                     queue_entry_id, 
-                    QueueStatusUpdate(status="completed")
+                    QueueStatusUpdate(status="checkout-pending")
                 )
         except Exception as e:
             # Log but don't fail the request if queue update fails

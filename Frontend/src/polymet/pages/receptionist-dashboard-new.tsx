@@ -18,6 +18,7 @@ import {
   FileTextIcon,
   Loader2Icon,
   UploadIcon,
+  ArrowLeftIcon,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -41,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { get, post, patch } from "@/lib/api-client";
+import { get, post, patch, put } from "@/lib/api-client";
 import {
   Select,
   SelectContent,
@@ -97,6 +98,8 @@ interface QueueStats {
   in_consultation: number;
   completed: number;
   checked_out: number;
+  checkout_pending?: number;
+  cancelled?: number;
   average_wait_time: number;
 }
 
@@ -405,8 +408,55 @@ export function ReceptionistDashboardNew() {
   const checkedInPatients = queueList.filter((q) => q.status === "waiting").length;
   const waitingPatients = queueList.filter((q) => q.status === "waiting").length;
   const inConsultation = queueList.filter((q) => q.status === "in-consultation").length;
-  const awaitingCheckout = queueList.filter((q) => q.status === "completed").length;
+  const awaitingCheckout = queueList.filter((q) => q.status === "completed" || q.status === "checkout-pending" || q.status === "checkout").length;
   const completedToday = queueStats?.checked_out ?? 0;
+
+  // Move patient from queue back to appointments (persist to backend)
+  const moveBackToAppointments = async (queueEntryId: string, appointmentId?: string) => {
+    try {
+      // Cancel the queue entry
+      const queueResponse = await put(`/api/queue/${queueEntryId}/status`, {
+        status: "cancelled"
+      });
+
+      if (!queueResponse.success) {
+        throw new Error(queueResponse.message || "Failed to remove patient from queue");
+      }
+
+      // Update appointment status back to "scheduled" if appointment exists
+      if (appointmentId) {
+        try {
+          await patch(`/api/appointments/${appointmentId}/status`, {
+            status: "scheduled"
+          });
+        } catch (err) {
+          // Log but don't fail - queue entry is already cancelled
+          console.warn("Failed to update appointment status:", err);
+        }
+      }
+
+      toast({
+        title: "Patient moved back to appointments",
+        description: "The patient has been removed from the queue and moved back to appointments.",
+      });
+
+      // Refresh data to ensure consistency
+      fetchQueueData();
+      fetchQueueStats();
+      fetchTodayAppointments();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to move patient back to appointments";
+
+      toast({
+        title: "Operation failed",
+        description: message,
+        variant: "destructive",
+      });
+    }
+  };
 
   const fetchTodayAppointments = useCallback(async () => {
     try {
@@ -628,7 +678,10 @@ const consultationEntries = queueList.filter(
   (entry) => entry.status === "in-consultation"
 );
 const checkoutEntries = queueList.filter(
-  (entry) => entry.status === "completed" || entry.status === "checkout"
+  (entry) =>
+    entry.status === "completed" ||
+    entry.status === "checkout" ||
+    entry.status === "checkout-pending"
 );
 
 const shouldFilterQueue = normalizedQuery && searchFilter === "patients";
@@ -682,25 +735,51 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
   try {
     setIsCheckingOut(true);
     const queueId = selectedQueueEntry.queue_id;
+    const queueEntryId = selectedQueueEntry._id;
 
+    // Upload prescription if provided (don't fail checkout if upload fails)
     if (prescriptionFile) {
-      const formData = new FormData();
-      formData.append("file", prescriptionFile);
-      if (selectedQueueEntry.reason) {
-        formData.append("notes", selectedQueueEntry.reason);
-      }
+      try {
+        const formData = new FormData();
+        formData.append("file", prescriptionFile);
+        if (selectedQueueEntry.reason) {
+          formData.append("notes", selectedQueueEntry.reason);
+        }
 
-      await post(`/api/appointments/${appointmentId}/prescription-upload`, formData);
+        const uploadResponse = await post(`/api/appointments/${appointmentId}/prescription-upload`, formData);
+        if (!uploadResponse.success) {
+          console.warn("Prescription upload failed, but continuing with checkout:", uploadResponse.message);
+          toast({
+            title: "Prescription upload warning",
+            description: "Prescription upload failed, but checkout will continue.",
+            variant: "default",
+          });
+        }
+      } catch (uploadErr) {
+        console.error("Prescription upload error:", uploadErr);
+        // Continue with checkout even if upload fails
+        toast({
+          title: "Prescription upload failed",
+          description: "Checkout will continue without the prescription file. You can upload it later.",
+          variant: "default",
+        });
+      }
     }
 
+    // Update appointment status to completed
     await patch(`/api/appointments/${appointmentId}/status`, {
       status: "completed",
     });
 
-    if (selectedQueueEntry._id) {
-      await post(`/api/queue/${selectedQueueEntry._id}/check-out`, {});
-    } else if (selectedQueueEntry.queue_id) {
-      await post(`/api/queue/${selectedQueueEntry.queue_id}/check-out`, {});
+    // Check out from queue (this sets status to "checked-out" and is_active to False)
+    // Use _id (MongoDB ObjectId) for the check-out endpoint, not queue_id
+    if (!queueEntryId) {
+      throw new Error("Queue entry ID not found");
+    }
+    
+    const checkOutResponse = await post(`/api/queue/${queueEntryId}/check-out`, {});
+    if (!checkOutResponse.success) {
+      throw new Error(checkOutResponse.message || "Failed to check out patient from queue");
     }
 
     toast({
@@ -708,13 +787,24 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
       description: `${selectedQueueEntry.patient.fullName} has been checked out successfully.`,
     });
 
+    // Close dialog and clear state
     setCheckoutDialog(false);
     setSelectedQueueEntry(null);
     setPrescriptionFile(null);
-    setQueueList((prev) => prev.filter((entry) => entry.queue_id !== queueId));
+    
+    // Remove from local queue list immediately (filter by both _id and queue_id to be safe)
+    setQueueList((prev) => 
+      prev.filter((entry) => {
+        const matchesId = entry._id && entry._id === queueEntryId;
+        const matchesQueueId = entry.queue_id && entry.queue_id === queueId;
+        return !matchesId && !matchesQueueId;
+      })
+    );
  
-     await Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]);
+    // Refresh data to ensure consistency with backend
+    await Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]);
   } catch (err) {
+    console.error("Checkout error:", err);
     toast({
       title: "Checkout failed",
       description: err instanceof Error ? err.message : "Unable to complete checkout. Please try again.",
@@ -1289,6 +1379,7 @@ const confirmCheckoutWithoutPrescription = () => {
                   filteredCheckInEntries.map((entry) => {
                     const appointment = appointmentByPatientId.get(entry.patient._id);
                     const patientMongoId = entry.patient?._id;
+                    const appointmentId = resolveAppointmentIdForEntry(entry);
                     return (
                       <div
                         key={entry.queue_id}
@@ -1319,7 +1410,17 @@ const confirmCheckoutWithoutPrescription = () => {
                           </div>
                         </div>
                         {patientMongoId && (
-                          <div className="mt-2 flex justify-end">
+                          <div className="mt-2 flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              className="h-6 px-2 text-[10px] hover:bg-teal-100 dark:hover:bg-teal-900/30 text-teal-600 dark:text-teal-400"
+                              onClick={() => moveBackToAppointments(entry._id, appointmentId)}
+                              title="Move back to appointments"
+                            >
+                              <ArrowLeftIcon className="w-3 h-3 mr-1" />
+                              Back
+                            </Button>
                             <Button
                               variant="ghost"
                               size="xs"
