@@ -86,7 +86,7 @@ interface Patient {
 
 export function ReceptionistPatients() {
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
+  const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms debounce for better performance
   const [statusFilter, setStatusFilter] = useState("all");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -153,7 +153,9 @@ export function ReceptionistPatients() {
     fetchPatients(page);
   }, [page, fetchPatients]);
 
+  // Load appointment stats in background after patient list loads
   useEffect(() => {
+    if (isLoading) return; // Don't fetch stats while loading patients
     const fetchAppointmentStats = async () => {
       try {
         const response = await get("/api/appointments?limit=100");

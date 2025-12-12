@@ -12,6 +12,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
+import { post } from "@/lib/api-client";
 import {
   BuildingIcon,
   HospitalIcon,
@@ -28,6 +30,9 @@ import {
 } from "lucide-react";
 
 export function SolutionsSection() {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const solutions = [
     {
       icon: BuildingIcon,
@@ -97,6 +102,7 @@ export function SolutionsSection() {
     name: "",
     email: "",
     phone: "",
+    providerName: "",
     query: "",
   });
 
@@ -105,6 +111,7 @@ export function SolutionsSection() {
       name: "",
       email: "",
       phone: "",
+      providerName: "",
       query: "",
     });
 
@@ -121,9 +128,48 @@ export function SolutionsSection() {
     setIsContactOpen(true);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    handleDialogChange(false);
+    
+    if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.phone.trim() || !contactForm.providerName.trim()) {
+      toast({
+        title: "Missing information",
+        description: "Please provide your name, email, phone number, and clinic/hospital name.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      // Include selected solution option in the query
+      const queryText = selectedSolution 
+        ? `Selected Solution: ${selectedSolution}\n\n${contactForm.query.trim() || "No additional details provided."}`
+        : contactForm.query.trim() || "No additional details provided.";
+      
+      await post("/api/contact", {
+        name: contactForm.name.trim(),
+        email: contactForm.email.trim(),
+        phone: contactForm.phone.trim(),
+        providerName: contactForm.providerName.trim(),
+        query: queryText,
+      });
+      
+      // Close the contact form dialog
+      handleDialogChange(false);
+      
+      // Show success acknowledgment dialog
+      setShowSuccessDialog(true);
+    } catch (err) {
+      toast({
+        title: "Unable to send message",
+        description:
+          err instanceof Error ? err.message : "Please try again in a few minutes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const clinicalFeatures = [
@@ -330,6 +376,39 @@ export function SolutionsSection() {
         </div>
 
 
+        {/* Success Acknowledgment Dialog */}
+        <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500">
+                <CheckCircle2Icon className="w-10 h-10 text-white" />
+              </div>
+              <DialogTitle className="text-center text-2xl">Thank You!</DialogTitle>
+              <DialogDescription className="text-center text-base pt-2">
+                We've received your inquiry and our team is excited to connect with you.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-3">
+              <p className="text-center text-muted-foreground leading-relaxed">
+                Please hold tight—we'll be reaching out to you within the next <span className="font-semibold text-teal-600">24 hours</span> to discuss how MediEase can best serve your practice.
+              </p>
+              <div className="bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 rounded-lg p-4 mt-4">
+                <p className="text-sm text-teal-700 dark:text-teal-300 text-center">
+                  <span className="font-semibold">What's next?</span> Our team will review your requirements and prepare a personalized solution for your healthcare setup.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                onClick={() => setShowSuccessDialog(false)}
+                className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600"
+              >
+                Got it, thanks!
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={isContactOpen} onOpenChange={handleDialogChange}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader>
@@ -380,6 +459,18 @@ export function SolutionsSection() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="contact-provider">Clinic/Hospital Name</Label>
+                <Input
+                  id="contact-provider"
+                  value={contactForm.providerName}
+                  onChange={(event) =>
+                    setContactForm((prev) => ({ ...prev, providerName: event.target.value }))
+                  }
+                  required
+                  placeholder="Your clinic or hospital name"
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="contact-query">Query</Label>
                 <Textarea
                   id="contact-query"
@@ -388,15 +479,23 @@ export function SolutionsSection() {
                     setContactForm((prev) => ({ ...prev, query: event.target.value }))
                   }
                   rows={4}
-                  required
                   placeholder="Share your requirements or questions..."
                 />
               </div>
+              {selectedSolution && (
+                <div className="bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 rounded-lg p-3">
+                  <p className="text-sm text-teal-700 dark:text-teal-300">
+                    <span className="font-semibold">Selected Solution:</span> {selectedSolution}
+                  </p>
+                </div>
+              )}
               <DialogFooter className="flex flex-row gap-3">
-                <Button type="button" variant="outline" onClick={() => handleDialogChange(false)}>
+                <Button type="button" variant="outline" onClick={() => handleDialogChange(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
-                <Button type="submit">Submit</Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Sending..." : "Send"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>

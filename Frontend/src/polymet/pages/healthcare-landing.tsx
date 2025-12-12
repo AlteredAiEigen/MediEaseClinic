@@ -154,6 +154,12 @@ export function HealthcareLanding() {
               Features
             </button>
             <button
+              onClick={() => scrollToSection('solutions')}
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              Pricing
+            </button>
+            <button
               onClick={() => scrollToSection('roadmap')}
               className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
             >
@@ -164,19 +170,6 @@ export function HealthcareLanding() {
               className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
             >
               Security
-            </button>
-            <button
-              onClick={() => scrollToSection('pricing')}
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
-            >
-              Pricing
-            </button>
-            <button
-              type="button"
-              onClick={() => setLeadModalOpen(true)}
-              className="text-sm font-medium text-teal-600 hover:text-teal-700 transition-colors"
-            >
-              Book a Demo
             </button>
             <Link to="/role-selection">
               <Button

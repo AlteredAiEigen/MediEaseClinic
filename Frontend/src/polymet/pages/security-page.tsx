@@ -247,6 +247,12 @@ export function SecurityPage() {
                 Features
               </Link>
               <Link
+                to="/pricing"
+                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
+              >
+                Pricing
+              </Link>
+              <Link
                 to="/roadmap"
                 className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
               >
@@ -257,12 +263,6 @@ export function SecurityPage() {
                 className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
               >
                 Security
-              </Link>
-              <Link
-                to="/pricing"
-                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
-              >
-                Pricing
               </Link>
               <Button className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600">
                 Book a Demo

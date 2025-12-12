@@ -1026,18 +1026,23 @@ export function ConsultationSession() {
       let recordingBlob: Blob | null = null;
       let recordingDuration: number | undefined = undefined;
       
+      // Always stop recording if it's active before ending consultation
       if (isRecording) {
         // Stop recording first and get the blob
-        // Wait for recording to stop and blob to be ready
         await stopRecordingWithoutUpload();
-        // Wait a bit for audioBlob to be set
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Wait for blob to be ready with retry logic
+        let attempts = 0;
+        while (!audioBlob && attempts < 10) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+          attempts++;
+        }
         recordingBlob = audioBlob;
         if (finalRecordingDuration) {
           const parts = finalRecordingDuration.split(":");
           recordingDuration = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
         }
       } else if (audioBlob && !uploadedRecordingId) {
+        // Use existing blob if recording was stopped earlier
         recordingBlob = audioBlob;
         if (finalRecordingDuration) {
           const parts = finalRecordingDuration.split(":");
