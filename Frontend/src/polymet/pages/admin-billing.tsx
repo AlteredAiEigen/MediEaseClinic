@@ -57,6 +57,8 @@ export function AdminBilling() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<BillingItem | null>(null);
   const [formState, setFormState] = useState(defaultFormState);
+const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
 
   const loadItems = async () => {
     try {
@@ -122,10 +124,17 @@ export function AdminBilling() {
     }
   };
 
-  const handleDelete = async (item: BillingItem) => {
-    if (!window.confirm(`Delete pricing for "${item.label}"?`)) return;
+  const handleDelete = (item: BillingItem) => {
+    setItemToDelete(item);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await del(`/api/admin/billing-items/${item._id}`);
+      await del(`/api/admin/billing-items/${itemToDelete._id}`);
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
       await loadItems();
     } catch (err) {
       const message =
@@ -397,6 +406,37 @@ export function AdminBilling() {
               className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] text-white"
             >
               Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Delete pricing?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the pricing for{" "}
+              <span className="font-semibold text-foreground">
+                {itemToDelete?.label ?? "this item"}
+              </span>
+              ? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setItemToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-red-500 to-rose-500 text-white"
+              onClick={confirmDelete}
+            >
+              Delete
             </Button>
           </div>
         </DialogContent>

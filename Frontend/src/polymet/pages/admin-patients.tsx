@@ -155,6 +155,7 @@ export function AdminPatients() {
   const [appointmentsToday, setAppointmentsToday] = useState(0);
 
   const [newPatient, setNewPatient] = useState({ ...emptyNewPatientState });
+  const [statsTotalPatients, setStatsTotalPatients] = useState<number | null>(null);
 
   // Helper to extract list from API response
   const extractList = <T,>(rawData: any): T[] => {
@@ -212,7 +213,15 @@ export function AdminPatients() {
           const limitFromApi = pagination.limit ?? pageSize;
           const totalPagesCalc = limitFromApi > 0 ? Math.max(1, Math.ceil(total / limitFromApi)) : 1;
 
-          setTotalPatients(total);
+          if (!debouncedSearchQuery.trim()) {
+            setTotalPatients(total);
+            setStatsTotalPatients(total);
+            // keep existing in-clinic count when searching; avoid undefined reference
+            setInClinicToday((prev) => prev);
+            setNewPatientsThisWeek(newThisWeek);
+            setAppointmentsThisWeek(weekCount);
+            setAppointmentsToday(todayCount);
+          }
           setTotalPages(totalPagesCalc);
           if (currentPage !== page) {
             setPage(currentPage);
@@ -491,7 +500,7 @@ const statusLabels: Record<PatientStatus, string> = {
                   Total Patients
                 </p>
                 <h3 className="text-3xl font-bold text-foreground mt-2">
-                  {totalPatients}
+                  {statsTotalPatients ?? totalPatients}
                 </h3>
               </div>
               <div className="w-12 h-12 rounded-lg bg-teal-500 flex items-center justify-center">
@@ -765,8 +774,15 @@ const statusLabels: Record<PatientStatus, string> = {
           ) : (
             <>
               {/* Patients Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredPatients.map((patient) => (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                {filteredPatients.map((patient) => {
+                  const complaintText =
+                    (patient.chiefComplaint && patient.chiefComplaint.trim()) ||
+                    "No complaint provided";
+                  const phoneText = patient.phone?.trim() || "Not provided";
+                  const emailText = patient.email?.trim() || "Not provided";
+
+                  return (
                   <div
                     key={patient.recordId}
                     role="button"
@@ -780,11 +796,11 @@ const statusLabels: Record<PatientStatus, string> = {
                         navigate(`/patient-overview/${patient.recordId}`);
                       }
                     }}
-                    className="border-border hover:shadow-lg transition-all hover:border-[#00C4B3]/30 cursor-pointer rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00C4B3] bg-card"
+                    className="border border-border/70 bg-white shadow-sm hover:shadow-md transition-all hover:border-[#00C4B3]/40 cursor-pointer rounded-2xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00C4B3] h-full"
                   >
-                    <CardContent className="p-6">
+                    <CardContent className="p-6 flex flex-col h-full space-y-4">
                       <div className="flex items-start gap-4">
-                        <Avatar className="w-16 h-16 border-2 border-[#00C4B3]/20">
+                        <Avatar className="w-14 h-14 border border-[#00C4B3]/30 shadow-xs flex-shrink-0">
                           <AvatarImage src={patient.avatar} alt={patient.name} />
 
                           <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
@@ -795,55 +811,52 @@ const statusLabels: Record<PatientStatus, string> = {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <h3 className="font-semibold text-foreground truncate">
+                              <h3 className="font-semibold text-foreground leading-tight line-clamp-1 break-words">
                                 {patient.name}
                               </h3>
                               <p className="text-xs text-muted-foreground">
                                 ID: {patient.patientId}
                               </p>
                             </div>
-                            <Badge
-                              variant="outline"
-                              className={getStatusBadge(patient.status)}
-                            >
-                              {statusLabels[patient.status]}
-                            </Badge>
+                            <div className="w-auto h-6" />
                           </div>
-                          <div className="mt-3 space-y-2">
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <div className="mt-3 space-y-2 text-xs text-muted-foreground flex-1 min-h-[96px]">
+                            <div className="flex items-center gap-2">
                               <CalendarIcon className="w-3 h-3" />
 
                               <span>Age: {patient.age} years</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
                               <PhoneIcon className="w-3 h-3" />
 
-                              <span className="truncate">{patient.phone}</span>
+                              <span className="break-words line-clamp-1 w-full">
+                                {phoneText}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <div className="flex items-center gap-2">
                               <MailIcon className="w-3 h-3" />
 
-                              <span className="truncate">{patient.email}</span>
+                              <span className="break-words line-clamp-1 w-full">
+                                {emailText}
+                              </span>
                             </div>
-                            {patient.chiefComplaint && (
-                              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <ActivityIcon className="w-3 h-3" />
+                            <div className="flex items-start gap-2">
+                              <ActivityIcon className="w-3 h-3 mt-[2px]" />
 
-                                <span className="truncate">
-                                  Complaint: {patient.chiefComplaint}
-                                </span>
-                              </div>
-                            )}
+                              <span className="line-clamp-2 break-words">
+                                Complaint: {complaintText}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="mt-4 flex items-center gap-2">
+                      <div className="flex items-center gap-3 pt-3 border-t border-border/60 mt-auto">
                         <Button
-                          variant="outline"
+                          variant="default"
                           size="sm"
-                          className="hover:bg-blue-50 dark:hover:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+                          className="min-w-[116px] bg-gradient-to-r from-[#00C4B3] to-[#0ea5e9] text-white hover:from-[#009b8c] hover:to-[#0284c7] shadow-sm"
                           onClick={(event) => {
                             event.stopPropagation();
                             navigate(`/patient-overview/${patient.recordId}`);
@@ -854,7 +867,7 @@ const statusLabels: Record<PatientStatus, string> = {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="hover:bg-emerald-50 dark:hover:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800"
+                          className="min-w-[104px] border-[#00C4B3] text-[#0f766e] hover:bg-[#00C4B3]/10"
                           onClick={(event) => {
                             event.stopPropagation();
                             navigate("/admin-appointments");
@@ -865,7 +878,8 @@ const statusLabels: Record<PatientStatus, string> = {
                       </div>
                     </CardContent>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Pagination */}

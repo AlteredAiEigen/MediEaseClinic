@@ -1,4 +1,5 @@
 """
+from typing import Optional
 Admin management API endpoints.
 """
 
@@ -37,12 +38,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/users/{user_id}", response_model=dict)
+async def get_user_by_id(
+    user_id: str,
+    current_user: dict = Depends(require_roles(["admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Fetch a single user (doctor/receptionist/admin) by id.
+    """
+    try:
+        user = await get_users_collection(db).find_one(
+            {"_id": ObjectId(user_id)},
+            projection={"password": 0},
+        )
+        if not user:
+            return error_response(message="User not found", status_code=status.HTTP_404_NOT_FOUND)
+
+        user["_id"] = str(user["_id"])
+        return success_response(data={"user": user}, message="User fetched successfully")
+    except Exception as exc:
+        logger.exception("Failed to fetch user %s: %s", user_id, exc)
+        return error_response(message="Unable to fetch user", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class ProfileUpdate(BaseModel):
     firstName: Optional[str] = Field(None, min_length=1, max_length=50)
     lastName: Optional[str] = Field(None, min_length=1, max_length=50)
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, pattern=r"^[\d\s\-\+\(\)]+$")
-    profileImage: Optional[str | None] = None
+    profileImage: Optional[str] = None
 
 def get_users_collection(db: AsyncIOMotorDatabase):
     """Get users collection."""
@@ -518,7 +543,7 @@ async def get_system_stats(
     try:
         clinic_id = current_user.get("clinicId")
 
-        def staff_filter(extra: dict | None = None, *, require_active: bool | None = None):
+        def staff_filter(extra: Optional[dict] = None, *, require_active: Optional[bool] = None):
             query = {"role": {"$in": ["doctor", "receptionist"]}}
             if extra:
                 query.update(extra)
@@ -1205,7 +1230,7 @@ async def get_summary_metrics(
     """Provide quick stats for dashboard widgets."""
     clinic_id = current_user.get("clinicId")
 
-    def doctor_filter(extra: dict | None = None):
+    def doctor_filter(extra: Optional[dict] = None):
         query = dict(extra or {})
         if clinic_id:
             query["clinicId"] = clinic_id

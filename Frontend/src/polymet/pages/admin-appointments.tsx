@@ -136,6 +136,7 @@ export function AdminAppointments() {
   const [addAppointmentDialogOpen, setAddAppointmentDialogOpen] = useState(false);
   const [appointmentsList, setAppointmentsList] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientSearchResults, setPatientSearchResults] = useState<Patient[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [billingItems, setBillingItems] = useState<BillingItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -144,6 +145,7 @@ export function AdminAppointments() {
   const [editingAppointment, setEditingAppointment] = useState<Appointment | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [appointmentToCancel, setAppointmentToCancel] = useState<Appointment | null>(null);
+  const [patientSearchQuery, setPatientSearchQuery] = useState("");
 
   const [newAppointment, setNewAppointment] = useState({
     patientId: "",
@@ -162,6 +164,34 @@ export function AdminAppointments() {
       const dateB = new Date(`${b.date}T${b.time}`);
       return dateA.getTime() - dateB.getTime();
     });
+
+  const patientIdToNumber = (pid?: string) => {
+    if (!pid) return 0;
+    const numeric = pid.replace(/\D/g, "");
+    return numeric ? parseInt(numeric, 10) : 0;
+  };
+
+  const patientsSource = patientSearchQuery.trim()
+    ? patientSearchResults
+    : patients;
+
+  const recentPatients = useMemo(
+    () =>
+      [...patientsSource]
+        .sort((a, b) => patientIdToNumber(b.patientId) - patientIdToNumber(a.patientId))
+        .slice(0, 5),
+    [patientsSource]
+  );
+
+  const filteredPatientsForSelect = useMemo(() => {
+    const q = patientSearchQuery.trim().toLowerCase();
+    if (!q) return patientsSource;
+    return patientsSource.filter(
+      (p) =>
+        p.fullName.toLowerCase().includes(q) ||
+        p.patientId.toLowerCase().includes(q)
+    );
+  }, [patientsSource, patientSearchQuery]);
 
   // Fetch all appointments for stats
   useEffect(() => {
@@ -207,6 +237,37 @@ export function AdminAppointments() {
 
     fetchData();
   }, []);
+
+  // Fetch patients by search query (server-side) to support large datasets
+  useEffect(() => {
+    const q = patientSearchQuery.trim();
+    if (!q) {
+      setPatientSearchResults([]);
+      return;
+    }
+    let active = true;
+    const fetchPatients = async () => {
+      try {
+        const response = await get<Patient[]>(
+          `/api/patients?limit=50&search=${encodeURIComponent(q)}`
+        );
+        if (!active) return;
+        if (response.success && Array.isArray(response.data)) {
+          const sorted = [...response.data].sort((a, b) =>
+            a.fullName.localeCompare(b.fullName)
+          );
+          setPatientSearchResults(sorted);
+        }
+      } catch (err) {
+        if (!active) return;
+        // Keep silent failure to avoid interrupting UX
+      }
+    };
+    fetchPatients();
+    return () => {
+      active = false;
+    };
+  }, [patientSearchQuery]);
 
   // Derived billing-based options
   const appointmentPricingItems = useMemo(
@@ -304,6 +365,15 @@ export function AdminAppointments() {
     setError(null);
 
     try {
+      // Prevent scheduling in the past
+      const selectedDateTime = new Date(`${newAppointment.date}T${newAppointment.time || "00:00"}`);
+      const now = new Date();
+      if (isNaN(selectedDateTime.getTime()) || selectedDateTime.getTime() < now.getTime()) {
+        setError("Cannot schedule an appointment in the past. Please choose a future time.");
+        setIsSubmitting(false);
+        return;
+      }
+
       const payload: Record<string, unknown> = {
         patientId: newAppointment.patientId,
         date: newAppointment.date,
@@ -660,8 +730,33 @@ export function AdminAppointments() {
                       </div>
 
                       {/* Patient */}
-                      <div className="space-y-2">
-                        <Label htmlFor="patient">Patient</Label>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="patient">Patient</Label>
+                          {recentPatients.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {recentPatients.map((p) => (
+                                <Button
+                                  key={p._id}
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  onClick={() =>
+                                    setNewAppointment({ ...newAppointment, patientId: p.patientId })
+                                  }
+                                >
+                                  {p.fullName.split(" ")[0]} ({p.patientId})
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <Input
+                          placeholder="Search patient by name or ID..."
+                          value={patientSearchQuery}
+                          onChange={(e) => setPatientSearchQuery(e.target.value)}
+                        />
                         <Select
                           value={newAppointment.patientId}
                           onValueChange={(value) =>
@@ -672,11 +767,16 @@ export function AdminAppointments() {
                             <SelectValue placeholder="Select patient" />
                           </SelectTrigger>
                           <SelectContent>
-                            {patients.map((patient) => (
-                              <SelectItem key={patient._id} value={patient._id}>
+                            {filteredPatientsForSelect.map((patient) => (
+                              <SelectItem key={patient._id} value={patient.patientId}>
                                 {patient.fullName} ({patient.patientId})
                               </SelectItem>
                             ))}
+                            {filteredPatientsForSelect.length === 0 && (
+                              <div className="px-3 py-2 text-xs text-muted-foreground">
+                                No patients found. Try another search.
+                              </div>
+                            )}
                           </SelectContent>
                         </Select>
                       </div>

@@ -27,6 +27,7 @@ import {
   AlertCircleIcon,
 } from "lucide-react";
 import { get, put } from "@/lib/api-client";
+import { useAuth } from "@/context/auth-context";
 
 interface User {
   _id: string;
@@ -46,6 +47,8 @@ interface User {
 
 export function AdminUserProfile() {
   const { userId } = useParams();
+  const { user: authUser } = useAuth();
+  const clinicId = (authUser as any)?.clinicId;
   const [isEditing, setIsEditing] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [editedUser, setEditedUser] = useState<Partial<User>>({});
@@ -61,10 +64,13 @@ export function AdminUserProfile() {
         setIsLoading(true);
         setError(null);
 
-        const response = await get<User>(`/api/admin/users/${userId}`);
-        if (response.success && response.data) {
-          setUser(response.data);
-          setEditedUser(response.data);
+        const response = await get<{ user: User }>(
+          `/api/admin/users/${userId}${clinicId ? `?clinicId=${clinicId}` : ""}`
+        );
+        const payload = (response.data as any)?.user ?? response.data;
+        if (response.success && payload) {
+          setUser(payload);
+          setEditedUser(payload);
         } else {
           setError(response.message ?? "Failed to load user");
         }

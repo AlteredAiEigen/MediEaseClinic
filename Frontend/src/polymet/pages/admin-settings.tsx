@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -24,7 +23,7 @@ import {
   PaletteIcon,
   SaveIcon,
 } from "lucide-react";
-import { put } from "@/lib/api-client";
+import { post, put } from "@/lib/api-client";
 import { useAuth, type User } from "@/context/auth-context";
 import { MediEaseLoader } from "@/components/mediease-loader";
 
@@ -52,13 +51,8 @@ export function AdminSettings() {
     systemAlerts: true,
     weeklyReports: true,
   });
-
-  const [systemSettings, setSystemSettings] = useState({
-    theme: "light",
-    language: "en",
-    timezone: "UTC-5",
-    dateFormat: "MM/DD/YYYY",
-  });
+  const [resetStatus, setResetStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -163,14 +157,32 @@ export function AdminSettings() {
     }
   };
 
-  const handleSaveNotifications = () => {
-    // Save notifications logic
-    console.log("Notifications saved:", notifications);
-  };
-
-  const handleSaveSystemSettings = () => {
-    // Save system settings logic
-    console.log("System settings saved:", systemSettings);
+  const handleSendResetLink = async () => {
+    if (!profileData.email) {
+      setResetStatus({ type: "error", message: "Email is required to send a reset link." });
+      return;
+    }
+    setResetStatus(null);
+    setResetLoading(true);
+    try {
+      await post(
+        "/api/auth/password-reset/request",
+        { email: profileData.email },
+        { auth: false }
+      );
+      setResetStatus({
+        type: "success",
+        message: "Password reset link sent to your email.",
+      });
+    } catch (error: any) {
+      const message =
+        error?.message ||
+        error?.response?.data?.message ||
+        "Failed to send reset link. Please try again.";
+      setResetStatus({ type: "error", message });
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -314,6 +326,7 @@ export function AdminSettings() {
                       type="email"
                       className="pl-10"
                       value={profileData.email}
+                      disabled
                       onChange={(e) =>
                         setProfileData({
                           ...profileData,
@@ -365,142 +378,51 @@ export function AdminSettings() {
             </CardContent>
           </Card>
 
-          {/* Security Settings */}
+          {/* Reset Password */}
           <Card className="border-border shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LockIcon className="w-5 h-5 text-[#00C4B3]" />
-                Security Settings
+                Reset Password
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Current Password</Label>
-                <Input id="current-password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New Password</Label>
-                <Input id="new-password" type="password" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm New Password</Label>
-                <Input id="confirm-password" type="password" />
-              </div>
-              <Button
-                variant="outline"
-                className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-              >
-                Update Password
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* System Settings */}
-          <Card className="border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DatabaseIcon className="w-5 h-5 text-[#00C4B3]" />
-                System Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="theme">Theme</Label>
-                  <Select
-                    value={systemSettings.theme}
-                    onValueChange={(value) =>
-                      setSystemSettings({ ...systemSettings, theme: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select theme" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="light">Light</SelectItem>
-                      <SelectItem value="dark">Dark</SelectItem>
-                      <SelectItem value="system">System</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <p className="text-sm text-muted-foreground">
+                Send a password reset link to your registered email ({profileData.email || "not set"}).
+                The link will be emailed to you (Gmail recommended).
+              </p>
+              {resetStatus && (
+                <div
+                  className={`text-sm px-3 py-2 rounded-md border ${
+                    resetStatus.type === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-red-200 bg-red-50 text-red-700"
+                  }`}
+                >
+                  {resetStatus.message}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="language">Language</Label>
-                  <Select
-                    value={systemSettings.language}
-                    onValueChange={(value) =>
-                      setSystemSettings({ ...systemSettings, language: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select language" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="en">English</SelectItem>
-                      <SelectItem value="es">Spanish</SelectItem>
-                      <SelectItem value="fr">French</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="timezone">Timezone</Label>
-                  <Select
-                    value={systemSettings.timezone}
-                    onValueChange={(value) =>
-                      setSystemSettings({ ...systemSettings, timezone: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select timezone" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="UTC-5">EST (UTC-5)</SelectItem>
-                      <SelectItem value="UTC-6">CST (UTC-6)</SelectItem>
-                      <SelectItem value="UTC-7">MST (UTC-7)</SelectItem>
-                      <SelectItem value="UTC-8">PST (UTC-8)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="dateFormat">Date Format</Label>
-                  <Select
-                    value={systemSettings.dateFormat}
-                    onValueChange={(value) =>
-                      setSystemSettings({
-                        ...systemSettings,
-                        dateFormat: value,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select format" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                      <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                      <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              )}
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSendResetLink}
+                  disabled={resetLoading}
+                  className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] text-white"
+                >
+                  {resetLoading ? "Sending..." : "Send Reset Link"}
+                </Button>
               </div>
-              <Button
-                onClick={handleSaveSystemSettings}
-                className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
-              >
-                <SaveIcon className="w-4 h-4 mr-2" />
-                Save System Settings
-              </Button>
             </CardContent>
           </Card>
         </div>
 
-        {/* Right Column - Notifications */}
+        {/* Right Column - Preferences */}
         <div className="space-y-6">
           {/* Notification Settings */}
           <Card className="border-border shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <BellIcon className="w-5 h-5 text-[#00C4B3]" />
-                Notifications
+                Preferences
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -601,47 +523,6 @@ export function AdminSettings() {
                   }
                 />
               </div>
-
-              <Button
-                onClick={handleSaveNotifications}
-                className="w-full bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
-              >
-                <SaveIcon className="w-4 h-4 mr-2" />
-                Save Preferences
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card className="border-border shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldIcon className="w-5 h-5 text-[#00C4B3]" />
-                Quick Actions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Button
-                variant="outline"
-                className="w-full justify-start border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-              >
-                <DatabaseIcon className="w-4 h-4 mr-2" />
-                Backup Database
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-              >
-                <PaletteIcon className="w-4 h-4 mr-2" />
-                Customize Branding
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full justify-start border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/20"
-              >
-                <ShieldIcon className="w-4 h-4 mr-2" />
-                Clear Cache
-              </Button>
             </CardContent>
           </Card>
         </div>

@@ -141,6 +141,7 @@ export function AdminDashboard() {
   const [receptionists, setReceptionists] = useState<Receptionist[]>([]);
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverview | null>(null);
   const [revenuePeriod, setRevenuePeriod] = useState<RevenuePeriod>("month");
+  const [revenueLoading, setRevenueLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -175,10 +176,9 @@ export function AdminDashboard() {
         }
 
         // Fetch less critical data in background (reduced limits for speed)
-        const [doctorsResponse, receptionistsResponse, revenueResponse] = await Promise.all([
+        const [doctorsResponse, receptionistsResponse] = await Promise.all([
           get<Doctor[]>("/api/doctors?limit=6"),
           get<Receptionist[]>("/api/admin/users?role=receptionist&isActive=true&limit=6"),
-          get<RevenueOverview>(`/api/admin/metrics/revenue?period=${revenuePeriod}`),
         ]);
 
         if (!mounted) return;
@@ -205,12 +205,6 @@ export function AdminDashboard() {
         } else {
           setReceptionists([]);
         }
-
-        if (revenueResponse.success && revenueResponse.data) {
-          setRevenueOverview(revenueResponse.data);
-        } else {
-          setRevenueOverview(null);
-        }
       } catch (err) {
         if (!mounted) return;
         const message = err instanceof Error ? err.message : "Failed to load dashboard data";
@@ -224,6 +218,35 @@ export function AdminDashboard() {
 
     fetchDashboardData();
     
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchRevenue = async () => {
+      try {
+        setRevenueLoading(true);
+        const revenueResponse = await get<RevenueOverview>(`/api/admin/metrics/revenue?period=${revenuePeriod}`);
+        if (!mounted) return;
+        if (revenueResponse.success && revenueResponse.data) {
+          setRevenueOverview(revenueResponse.data);
+        } else {
+          setRevenueOverview(null);
+        }
+      } catch (err) {
+        if (!mounted) return;
+        // Keep the rest of the dashboard intact; surface error message
+        const message = err instanceof Error ? err.message : "Failed to load revenue data";
+        setError((prev) => prev ?? message);
+      } finally {
+        if (mounted) {
+          setRevenueLoading(false);
+        }
+      }
+    };
+    fetchRevenue();
     return () => {
       mounted = false;
     };

@@ -1,4 +1,5 @@
 """
+from typing import Optional
 Doctor-specific API endpoints.
 """
 
@@ -29,7 +30,7 @@ class DoctorProfileUpdate(BaseModel):
     speciality: Optional[str] = None
     licenseNumber: Optional[str] = None
     experience: Optional[int] = Field(None, ge=0)
-    profileImage: Optional[str | None] = None
+    profileImage: Optional[str] = None
 
 
 class AvailabilityUpdate(BaseModel):
