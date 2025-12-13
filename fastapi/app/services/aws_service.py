@@ -379,6 +379,7 @@ class AWSService:
             PLAN: Treatment plan and recommendations
             MEDICATIONS: Any medications prescribed or discussed (extract full structure)
             ALLERGIES: Any allergies mentioned by the patient or doctor (extract specific allergy names)
+            PRESCRIBED TESTS: Any lab tests, imaging studies, or diagnostic tests mentioned or ordered (e.g., "CBC", "Blood Sugar Test", "X-Ray Chest", "ECG", "Ultrasound", "CT Scan")
             FOLLOW-UP INSTRUCTIONS: Follow-up care instructions
             DIFFERENTIAL DIAGNOSIS: Alternative diagnoses considered
             CLINICAL IMPRESSION: Overall clinical impression
@@ -407,6 +408,7 @@ class AWSService:
                   }}
                 ],
                 "allergies": ["allergy name 1", "allergy name 2"],
+                "prescribedTests": ["test name 1", "test name 2"],
                 "followUpInstructions": "...",
                 "differentialDiagnosis": ["dx1", "dx2"],
                 "clinicalImpression": "..."
@@ -416,7 +418,8 @@ class AWSService:
             - Return ONLY a valid JSON object with the keys above. No prose, no code fences.
             - Extract medications as objects with name, dosage, frequency, duration, and instructions whenever possible.
             - Extract specific allergy names mentioned (e.g., "Penicillin", "Peanuts", "Latex").
-            - If no medications or allergies are mentioned, use empty arrays [].
+            - Extract all test names mentioned or ordered (e.g., "CBC", "Blood Sugar", "X-Ray", "ECG", "Ultrasound", "CT Scan", "MRI").
+            - If no medications, allergies, or tests are mentioned, use empty arrays [].
             - If any category is not mentioned or not applicable, use null or empty array.
             """
 

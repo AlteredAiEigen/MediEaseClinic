@@ -402,6 +402,8 @@ async def complete_consultation(
                         file_filename = recording_file.filename or "consultation-recording.wav"
                         file_content_type = recording_file.content_type or "audio/wav"
                         
+                        # Upload recording and process transcription in background
+                        # This includes transcription and structured notes extraction
                         background_tasks.add_task(
                             _upload_recording_background,
                             db,
@@ -438,9 +440,10 @@ async def _upload_recording_background(
     doctor_id: str,
     duration: int
 ):
-    """Background task to upload recording to S3."""
+    """Background task to upload recording to S3 and process transcription."""
     import logging
     from io import BytesIO
+    from bson import ObjectId
     logger = logging.getLogger(__name__)
     try:
         # Create a file-like object from bytes
@@ -462,7 +465,7 @@ async def _upload_recording_background(
         wrapped_file = FileWrapper(file_obj, filename, content_type)
         
         recording_service = RecordingService(db)
-        await recording_service.upload_recording(
+        recording = await recording_service.upload_recording(
             file=wrapped_file,
             patient_id=patient_id,
             appointment_id=appointment_id,
@@ -471,9 +474,37 @@ async def _upload_recording_background(
             retention_policy="standard"
         )
         logger.info(f"Successfully uploaded recording for appointment {appointment_id}")
+        
+        # Process structured notes in background after transcription completes
+        if recording and recording.get("recordingId"):
+            # Find recording by recordingId to get MongoDB _id
+            recording_doc = await db.recordings.find_one({"recordingId": recording["recordingId"]})
+            if recording_doc and recording_doc.get("transcription"):
+                # Process structured notes asynchronously
+                await recording_service.process_structured_notes(recording_doc["_id"])
+                logger.info(f"Successfully processed structured notes for recording {recording['recordingId']}")
     except Exception as e:
         # Log error but don't raise - this is a background task
-        logger.error(f"Background recording upload failed for appointment {appointment_id}: {e}", exc_info=True)
+        logger.error(f"Background recording upload/processing failed for appointment {appointment_id}: {e}", exc_info=True)
+
+
+async def _process_recording_transcription_background(
+    db: AsyncIOMotorDatabase,
+    appointment_id: str
+):
+    """Background task to process transcription and structured notes for a recording."""
+    import logging
+    from bson import ObjectId
+    logger = logging.getLogger(__name__)
+    try:
+        # Find recording by appointment_id
+        recording = await db.recordings.find_one({"appointmentId": appointment_id})
+        if recording and recording.get("transcription") and recording.get("_id"):
+            recording_service = RecordingService(db)
+            await recording_service.process_structured_notes(recording["_id"])
+            logger.info(f"Successfully processed transcription for appointment {appointment_id}")
+    except Exception as e:
+        logger.error(f"Background transcription processing failed for appointment {appointment_id}: {e}", exc_info=True)
 
 
 @router.delete("/{appointment_id}")

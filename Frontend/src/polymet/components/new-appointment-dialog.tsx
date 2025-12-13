@@ -89,7 +89,7 @@ export function NewAppointmentDialog({
   const [error, setError] = useState<string | null>(null);
   
   // Debounce search query for API calls
-  const debouncedSearchQuery = useDebounce(searchQuery, 200);
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient._id === selectedPatientId) ?? null,
@@ -193,7 +193,8 @@ export function NewAppointmentDialog({
 
   // Search patients from API when query changes
   useEffect(() => {
-    if (!debouncedSearchQuery || debouncedSearchQuery.length < 1) {
+    // Require minimum 2 characters before searching to prevent expensive queries
+    if (!debouncedSearchQuery || debouncedSearchQuery.length < 2) {
       setSearchResults([]);
       setIsSearching(false);
       return;

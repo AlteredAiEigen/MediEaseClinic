@@ -988,11 +988,39 @@ export function PatientOverview() {
       setError(null);
 
       try {
+        // Check sessionStorage cache first for faster re-navigation
+        const cacheKey = `patient_${patientId}`;
+        const cachedData = sessionStorage.getItem(cacheKey);
+        if (cachedData) {
+          try {
+            const parsed = JSON.parse(cachedData);
+            const cacheAge = Date.now() - (parsed.timestamp || 0);
+            // Use cache if less than 5 minutes old
+            if (cacheAge < 5 * 60 * 1000) {
+              setPatient(parsed.data);
+              setHasAnyData(true);
+              setIsLoading(false);
+              // Still fetch fresh data in background
+            }
+          } catch (e) {
+            // Invalid cache, continue with fetch
+          }
+        }
+
         // Fetch patient details (supports Mongo _id or friendly ID)
         const patientData = await fetchPatientDetails(patientId);
         if (patientData) {
           setPatient(patientData);
           setHasAnyData(true);
+          // Cache patient data for faster re-navigation
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify({
+              data: patientData,
+              timestamp: Date.now()
+            }));
+          } catch (e) {
+            // Ignore cache errors
+          }
           // Set loading to false immediately after patient data is loaded
           setIsLoading(false);
         } else {
@@ -1008,12 +1036,12 @@ export function PatientOverview() {
         const fetchRelatedData = async () => {
           const tasks: Promise<void>[] = [];
 
-        // Patient vitals
+        // Patient vitals (reduced initial limit for faster loading)
         tasks.push(
           (async () => {
             try {
               const vitalsResponse = await get<PatientVitals[]>(
-                `/api/patient-vitals/${patientId}?limit=20`
+                `/api/patient-vitals/${patientId}?limit=10`
               );
               if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
                 setVitals(vitalsResponse.data);
@@ -1027,12 +1055,12 @@ export function PatientOverview() {
           })()
         );
 
-        // Lab reports
+        // Lab reports (reduced initial limit for faster loading)
         tasks.push(
           (async () => {
             try {
               const labReportsResponse = await get<LabReport[] | { data: LabReport[] }>(
-                `/api/lab-reports?patientId=${patientId}&limit=20`
+                `/api/lab-reports?patientId=${patientId}&limit=10`
               );
               if (labReportsResponse.success) {
                 const reports = Array.isArray(labReportsResponse.data)
@@ -1129,12 +1157,12 @@ export function PatientOverview() {
           })()
         );
 
-        // Appointment history (limit to recent set)
+        // Appointment history (reduced initial limit for faster loading, pagination added)
         tasks.push(
           (async () => {
             try {
               const appointmentsResponse = await get<any>(
-                `/api/appointments?patient_id=${patientId}&limit=25`
+                `/api/appointments?patient_id=${patientId}&limit=10`
               );
               console.log("🔍 Appointments API Response:", {
                 success: appointmentsResponse.success,

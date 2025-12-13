@@ -202,9 +202,8 @@ class RecordingService:
         result = await self.recordings_collection.insert_one(recording_dict)
         created_recording = await self.recordings_collection.find_one({"_id": result.inserted_id})
 
-        # If transcription succeeded, extract structured notes and update patient/appointment
-        if transcription_result["success"] and transcription_result.get("transcript"):
-            await self.process_structured_notes(created_recording["_id"])
+        # Note: Structured notes processing happens in background task for async processing
+        # This allows the API to return immediately while processing continues
 
         return await recording_helper(created_recording)
 
@@ -277,6 +276,14 @@ class RecordingService:
                             appointment_updates["reason"] = structured_notes["chiefComplaint"]
                         if structured_notes.get("historyOfPresentIllness"):
                             appointment_updates["notes"] = structured_notes["historyOfPresentIllness"]
+                        # Extract and save prescribed tests from structured notes
+                        if structured_notes.get("prescribedTests"):
+                            tests = structured_notes["prescribedTests"]
+                            if isinstance(tests, list) and tests:
+                                # Join test names with comma and space
+                                prescribed_test_str = ", ".join([str(t).strip() for t in tests if t])
+                                if prescribed_test_str:
+                                    appointment_updates["prescribedTest"] = prescribed_test_str
                     await self.appointments_collection.update_one(
                         {"_id": ObjectId(recording["appointmentId"])},
                         {"$set": appointment_updates}

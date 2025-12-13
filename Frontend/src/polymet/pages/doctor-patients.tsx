@@ -141,7 +141,7 @@ const isWithinRange = (target: Date, start: Date, end: Date) =>
 export function DoctorPatients() {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
+  const debouncedSearchQuery = useDebounce(searchQuery, 300); // 300ms debounce for better performance
   const [statusFilter, setStatusFilter] = useState("all");
   const [addPatientOpen, setAddPatientOpen] = useState(false);
   const [scheduleAppointmentOpen, setScheduleAppointmentOpen] = useState(false);

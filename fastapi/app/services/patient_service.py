@@ -724,17 +724,21 @@ class PatientService:
         clinic_id parameter is kept for backward compatibility but not used.
         
         Args:
-            query: Search query
+            query: Search query (minimum 2 characters required for performance)
         
         Returns:
             List of matching patients
         """
-        # Optimize regex pattern for better performance
-        # For single characters, use word boundary or start-of-string matching
-        if len(query) == 1:
-            regex_pattern = f"^{query}"
-        else:
-            regex_pattern = query
+        import re
+        
+        # Require minimum 2 characters for search to prevent expensive single-char queries
+        if len(query) < 2:
+            return []
+        
+        # Optimize regex pattern for better performance using prefix matching
+        # Escape special regex characters and use prefix match for index usage
+        escaped_query = re.escape(query)
+        regex_pattern = f"^{escaped_query}"  # Prefix match with escaping
 
         search_query = {
             "$or": [

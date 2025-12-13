@@ -27,7 +27,8 @@ export function PatientSearchWidget({
     const controller = new AbortController();
 
     async function runSearch() {
-      if (!searchQuery || searchQuery.length < 1) {
+      // Require minimum 2 characters before searching to prevent expensive queries
+      if (!searchQuery || searchQuery.length < 2) {
         setResults([]);
         setIsSearching(false);
         setError(null);
@@ -55,7 +56,8 @@ export function PatientSearchWidget({
       }
     }
 
-    const timeout = setTimeout(runSearch, 150);
+    // Increased debounce to 300ms for better performance
+    const timeout = setTimeout(runSearch, 300);
 
     return () => {
       ignore = true;
