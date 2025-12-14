@@ -151,12 +151,11 @@ export function AdminUserProfile() {
   return (
     <div className="space-y-6">
       {/* Header Card */}
-      <Card className="border-border shadow-sm overflow-hidden">
-        <div className="h-32 bg-gradient-to-r from-[#00C4B3] to-[#10b981]" />
-
-        <CardContent className="relative pt-0 pb-6">
-          <div className="flex flex-col md:flex-row gap-6 items-start -mt-16">
-            <Avatar className="w-32 h-32 border-4 border-white dark:border-gray-900 shadow-xl flex-shrink-0">
+      <Card className="border-none shadow-xl overflow-hidden bg-gradient-to-r from-[#00C4B3]/12 via-white to-[#0ea5e9]/12 relative">
+        <div className="absolute inset-x-0 -top-10 h-32 bg-gradient-to-r from-[#00C4B3] via-[#10b981] to-[#0ea5e9] opacity-70 blur-2xl" />
+        <CardContent className="relative pt-10 pb-6">
+          <div className="flex flex-col md:flex-row gap-6 items-start">
+            <Avatar className="w-32 h-32 border-4 border-white/90 dark:border-gray-900 shadow-2xl flex-shrink-0">
               <AvatarImage src={user.profileImage} alt={userName} />
 
               <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white text-3xl">
@@ -168,7 +167,7 @@ export function AdminUserProfile() {
                   .slice(0, 2)}
               </AvatarFallback>
             </Avatar>
-            <div className="flex-1 md:mb-4 min-w-0">
+            <div className="flex-1 md:mb-2 min-w-0">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
                   {isEditing ? (
@@ -198,20 +197,20 @@ export function AdminUserProfile() {
                   <p className="text-lg text-muted-foreground mt-1">
                     {user.speciality || user.role}
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
                     <Badge
                       variant="outline"
-                      className={
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         user.isActive
-                          ? "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400"
-                          : "bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-950/30 dark:text-gray-400"
-                      }
+                          ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                          : "bg-gray-100 text-gray-700 border-gray-200"
+                      }`}
                     >
                       {user.isActive ? "Active" : "Inactive"}
                     </Badge>
                     <Badge
                       variant="outline"
-                      className="bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 capitalize"
+                      className="rounded-full px-3 py-1 text-xs font-semibold bg-blue-100 text-blue-700 border-blue-200 capitalize"
                     >
                       {userType}
                     </Badge>

@@ -711,27 +711,28 @@ export function AdminDashboard() {
               </Link>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {doctors.map((doctor) => (
-                  <Link
-                    key={doctor._id}
-                    to={`/admin/user-profile/${doctor._id}`}
-                    className="block"
-                  >
-                    <DoctorCard
-                      name={`${doctor.firstName} ${doctor.lastName}`}
-                      specialization={doctor.speciality || "General Medicine"}
-                      email={doctor.email}
-                      phone={doctor.phone || ""}
-                      patients={0} // TODO: Add patient count API
-                      experience="5+ years" // TODO: Add experience field
-                      avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctor.firstName} ${doctor.lastName}`)}&background=random&color=ffffff`}
-                      status="available" // TODO: Add status field
-                      onViewProfile={() => {}}
-                    />
-                  </Link>
-                ))}
-              </div>
+          <div className="overflow-x-auto pb-2">
+            <div className="flex gap-3 min-w-full">
+              {doctors.map((doctor) => (
+                <Link
+                  key={doctor._id}
+                  to={`/admin/user-profile/${doctor._id}`}
+                  className="block w-72 flex-shrink-0"
+                >
+                  <DoctorCard
+                    name={`${doctor.firstName} ${doctor.lastName}`}
+                    specialization={doctor.speciality || "General Medicine"}
+                    email={doctor.email}
+                    phone={doctor.phone || ""}
+                    experience="5+ years"
+                    avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctor.firstName} ${doctor.lastName}`)}&background=random&color=ffffff`}
+                    status="available"
+                    onViewProfile={() => {}}
+                  />
+                </Link>
+              ))}
+            </div>
+          </div>
               {doctors.length === 0 && (
                 <div className="text-center py-8">
                   <UsersIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -756,24 +757,26 @@ export function AdminDashboard() {
               </Link>
             </CardHeader>
             <CardContent>
-              <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {receptionists.map((receptionist) => (
-                  <Link
-                    key={receptionist._id}
-                    to={`/admin/user-profile/${receptionist._id}`}
-                    className="block"
-                  >
-                    <ReceptionistCard
-                      name={`${receptionist.firstName} ${receptionist.lastName}`}
-                      email={receptionist.email}
-                      phone={receptionist.phone || "N/A"}
-                      avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${receptionist.firstName} ${receptionist.lastName}`)}&background=random&color=ffffff`}
-                      status="available"
-                      onViewProfile={() => {}}
-                    />
-                  </Link>
-                ))}
-              </div>
+          <div className="overflow-x-auto pb-2">
+            <div className="flex gap-3 min-w-full">
+              {receptionists.map((receptionist) => (
+                <Link
+                  key={receptionist._id}
+                  to={`/admin/user-profile/${receptionist._id}`}
+                  className="block w-72 flex-shrink-0"
+                >
+                  <ReceptionistCard
+                    name={`${receptionist.firstName} ${receptionist.lastName}`}
+                    email={receptionist.email}
+                    phone={receptionist.phone || "N/A"}
+                    avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${receptionist.firstName} ${receptionist.lastName}`)}&background=random&color=ffffff`}
+                    status="available"
+                    onViewProfile={() => {}}
+                  />
+                </Link>
+              ))}
+            </div>
+          </div>
               {receptionists.length === 0 && (
                 <div className="text-center py-8">
                   <UserPlusIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />

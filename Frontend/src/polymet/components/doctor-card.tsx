@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MailIcon, PhoneIcon, UsersIcon, BriefcaseIcon } from "lucide-react";
+import { MailIcon, PhoneIcon, BriefcaseIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface DoctorCardProps {
@@ -9,7 +9,6 @@ interface DoctorCardProps {
   specialization: string;
   email: string;
   phone: string;
-  patients: number;
   experience: string;
   avatar: string;
   status: "available" | "busy" | "off-duty";
@@ -22,7 +21,6 @@ export function DoctorCard({
   specialization,
   email,
   phone,
-  patients,
   experience,
   avatar,
   status,
@@ -86,13 +84,7 @@ export function DoctorCard({
 
         <div className="w-full space-y-1 text-[10px]">
           <div className="flex items-center justify-center gap-1 text-muted-foreground">
-            <UsersIcon className="w-2.5 h-2.5" />
-
-            <span>{patients} Patients</span>
-          </div>
-          <div className="flex items-center justify-center gap-1 text-muted-foreground">
             <BriefcaseIcon className="w-2.5 h-2.5" />
-
             <span className="truncate">{experience}</span>
           </div>
         </div>
