@@ -64,6 +64,8 @@ export function HealthcareLanding() {
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [leadForm, setLeadForm] = useState<LeadFormState>(emptyLeadForm);
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
+  const [subscribeEmail, setSubscribeEmail] = useState("");
+  const [isSubmittingSubscribe, setIsSubmittingSubscribe] = useState(false);
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
@@ -134,6 +136,40 @@ export function HealthcareLanding() {
       });
     } finally {
       setIsSubmittingLead(false);
+    }
+  };
+
+  const handleSubscribeSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!subscribeEmail.trim()) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmittingSubscribe(true);
+      await post("/api/subscribe", {
+        email: subscribeEmail.trim(),
+        source: "landing_page_footer",
+      });
+      toast({
+        title: "Subscribed successfully!",
+        description: "Thank you for subscribing to our newsletter.",
+      });
+      setSubscribeEmail("");
+    } catch (err) {
+      toast({
+        title: "Subscription failed",
+        description:
+          err instanceof Error ? err.message : "Please try again in a few minutes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingSubscribe(false);
     }
   };
 
@@ -514,15 +550,6 @@ export function HealthcareLanding() {
             </div>
           </div>
 
-          <div className="text-center mt-12">
-            <Button
-              size="lg"
-              className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-3 text-lg"
-            >
-              See the Complete Workflow{" "}
-              <ArrowRightIcon className="w-5 h-5 ml-2" />
-            </Button>
-          </div>
         </div>
       </section>
 
@@ -885,14 +912,6 @@ export function HealthcareLanding() {
             </div>
           </div>
 
-          <div className="text-center mt-12">
-            <Button
-              size="lg"
-              className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-3 text-lg"
-            >
-              <SparklesIcon className="w-5 h-5 mr-2" /> Experience AI in Action
-            </Button>
-          </div>
         </div>
       </section>
 
@@ -1320,17 +1339,26 @@ export function HealthcareLanding() {
               <p className="text-muted-foreground mb-6">
                 Be the first to know when new features launch
               </p>
-              <div className="flex gap-2">
+              <form onSubmit={handleSubscribeSubmit} className="flex gap-2">
                 <input
                   type="email"
+                  value={subscribeEmail}
+                  onChange={(e) => setSubscribeEmail(e.target.value)}
                   placeholder="Enter your email"
                   className="flex-1 px-4 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  required
+                  disabled={isSubmittingSubscribe}
                 />
 
-                <Button size="lg" className="bg-teal-500 hover:bg-teal-600 text-white">
-                  Subscribe
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="bg-teal-500 hover:bg-teal-600 text-white"
+                  disabled={isSubmittingSubscribe}
+                >
+                  {isSubmittingSubscribe ? "Subscribing..." : "Subscribe"}
                 </Button>
-              </div>
+              </form>
             </Card>
           </div>
         </div>
@@ -1418,44 +1446,9 @@ export function HealthcareLanding() {
                   </Link>
                 </li>
                 <li>
-                  <a href="#" className="hover:text-teal-400">
-                    Careers
-                  </a>
-                </li>
-                <li>
                   <Link to="/contact" className="hover:text-teal-400">
                     Contact
                   </Link>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-teal-400">
-                    Blog
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold mb-4">Legal & Security</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
-                <li>
-                  <a href="#" className="hover:text-teal-400">
-                    Privacy Policy
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-teal-400">
-                    Terms of Service
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-teal-400">
-                    HIPAA Compliance
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-teal-400">
-                    Security
-                  </a>
                 </li>
               </ul>
             </div>

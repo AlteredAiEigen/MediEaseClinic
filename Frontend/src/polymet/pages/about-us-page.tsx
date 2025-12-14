@@ -246,13 +246,13 @@ export function AboutUsPage() {
                 Get in Touch <ArrowRightIcon className="w-5 h-5 ml-2" />
               </Button>
             </Link>
-            <Link to="/pricing">
+            <Link to="/features">
               <Button
                 size="lg"
                 variant="outline"
                 className="border-white text-white hover:bg-white hover:text-teal-600"
               >
-                View Pricing
+                Explore Features
               </Button>
             </Link>
           </div>

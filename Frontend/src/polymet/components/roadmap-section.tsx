@@ -1,5 +1,15 @@
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
+import { post } from "@/lib/api-client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   SmartphoneIcon,
   BarChart3Icon,
@@ -16,13 +26,51 @@ import {
 } from "lucide-react";
 
 export function RoadmapSection() {
+  const { toast } = useToast();
+  const [subscribeEmail, setSubscribeEmail] = useState("");
+  const [isSubmittingSubscribe, setIsSubmittingSubscribe] = useState(false);
+  const [initiativeDialogOpen, setInitiativeDialogOpen] = useState(false);
+
+  const handleSubscribeSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!subscribeEmail.trim()) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmittingSubscribe(true);
+      await post("/api/subscribe", {
+        email: subscribeEmail.trim(),
+        source: "roadmap_section",
+      });
+      toast({
+        title: "Subscribed successfully!",
+        description: "Thank you for subscribing to our newsletter.",
+      });
+      setSubscribeEmail("");
+    } catch (err) {
+      toast({
+        title: "Subscription failed",
+        description:
+          err instanceof Error ? err.message : "Please try again in a few minutes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmittingSubscribe(false);
+    }
+  };
   const upcomingFeatures = [
     {
       icon: CreditCardIcon,
       title: "Integration with Ayushman Card",
       description:
         "Allow patients to directly check if tests or medicines are covered under the Ayushman card scheme along with coverage limits, improving transparency and cost management.",
-      timeline: "Q4 2024",
+      timeline: "Q4 2026",
       status: "Planned",
       features: [
         "Real-time Ayushman card eligibility verification",
@@ -38,7 +86,7 @@ export function RoadmapSection() {
       title: "Linkage to Private Insurance",
       description:
         "Enable seamless integration with private insurance providers for better patient benefits and billing processing.",
-      timeline: "Q4 2024",
+      timeline: "Q4 2026",
       status: "Planned",
       features: [
         "Direct integration with major private insurers",
@@ -70,7 +118,7 @@ export function RoadmapSection() {
       title: "Medical Student Training with Simulated Cases",
       description:
         "Use recorded patient cases to create simulated diagnosis scenarios for medical students, enriching their learning experience with diverse clinical cases.",
-      timeline: "Q2 2025",
+      timeline: "Q1 2026",
       status: "Research",
       features: [
         "Anonymized patient case simulations",
@@ -207,7 +255,7 @@ export function RoadmapSection() {
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-white/80 uppercase tracking-wider">
-                    Coming 2025
+                    Coming Q1 2026
                   </div>
                   <h3 className="text-2xl font-bold">
                     {educationInitiative.title}
@@ -234,6 +282,7 @@ export function RoadmapSection() {
                 size="lg"
                 variant="secondary"
                 className="bg-white text-teal-600 hover:bg-gray-100"
+                onClick={() => setInitiativeDialogOpen(true)}
               >
                 Learn More About This Initiative{" "}
                 <ArrowRightIcon className="w-4 h-4 ml-2" />
@@ -269,7 +318,7 @@ export function RoadmapSection() {
         </div>
 
         {/* Stay Updated CTA */}
-        <div className="text-center">
+        <div id="roadmap-subscribe" className="text-center">
           <Card className="max-w-2xl mx-auto p-12">
             <SparklesIcon className="w-12 h-12 text-teal-600 mx-auto mb-6" />
 
@@ -278,26 +327,151 @@ export function RoadmapSection() {
               Be the first to know when new features launch. Subscribe to our
               product updates and get early access to beta features.
             </p>
-            <div className="flex gap-3 max-w-md mx-auto">
+            <form onSubmit={handleSubscribeSubmit} className="flex gap-3 max-w-md mx-auto">
               <input
                 type="email"
+                value={subscribeEmail}
+                onChange={(e) => setSubscribeEmail(e.target.value)}
                 placeholder="Enter your email"
                 className="flex-1 px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 bg-background"
+                required
+                disabled={isSubmittingSubscribe}
               />
 
               <Button
+                type="submit"
                 size="lg"
                 className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
+                disabled={isSubmittingSubscribe}
               >
-                Subscribe
+                {isSubmittingSubscribe ? "Subscribing..." : "Subscribe"}
               </Button>
-            </div>
+            </form>
             <p className="text-xs text-muted-foreground mt-4">
               Join 5,000+ healthcare providers already subscribed
             </p>
           </Card>
         </div>
       </div>
+
+      {/* Medical Education Initiative Details Dialog */}
+      <Dialog open={initiativeDialogOpen} onOpenChange={setInitiativeDialogOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3 text-2xl">
+              <GraduationCapIcon className="w-8 h-8 text-teal-600" />
+              Medical Student Training Initiative
+            </DialogTitle>
+            <DialogDescription className="text-base">
+              Transforming medical education through AI-powered clinical simulations
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Overview */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-teal-700">Overview</h3>
+              <p className="text-muted-foreground leading-relaxed">
+                Our Medical Student Training Initiative leverages anonymized patient cases from MediEase clinics
+                to create realistic clinical scenarios. This program bridges the gap between theoretical knowledge
+                and practical application, providing medical students with hands-on diagnostic experience in a
+                safe, controlled environment.
+              </p>
+            </div>
+
+            {/* Key Features */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-teal-700">Key Features</h3>
+              <div className="grid gap-4">
+                <div className="flex gap-4 p-4 bg-teal-50 rounded-lg">
+                  <BrainIcon className="w-8 h-8 text-teal-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-semibold">AI-Powered Case Generation</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Advanced algorithms create diverse clinical scenarios based on real patient data,
+                      ensuring comprehensive coverage of medical conditions.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-4 p-4 bg-emerald-50 rounded-lg">
+                  <SparklesIcon className="w-8 h-8 text-emerald-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-semibold">Interactive Learning Platform</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Students can interact with virtual patients, order tests, and receive
+                      AI-powered feedback on their diagnostic reasoning.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-4 p-4 bg-blue-50 rounded-lg">
+                  <GraduationCapIcon className="w-8 h-8 text-blue-600 flex-shrink-0 mt-1" />
+                  <div>
+                    <h4 className="font-semibold">Progressive Difficulty Levels</h4>
+                    <p className="text-sm text-muted-foreground">
+                      From basic symptom recognition to complex multi-system disorders,
+                      accommodating students at all levels of training.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Benefits */}
+            <div>
+              <h3 className="text-lg font-semibold mb-3 text-teal-700">Benefits for Medical Education</h3>
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <CheckCircle2Icon className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Access to thousands of anonymized real-world cases</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2Icon className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Safe learning environment without patient risk</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2Icon className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Immediate AI feedback on clinical decision-making</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2Icon className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Cost-effective alternative to traditional clinical rotations</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2Icon className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm">Scalable solution for institutions with limited clinical sites</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="bg-gradient-to-r from-teal-50 to-emerald-50 p-4 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <ClockIcon className="w-5 h-5 text-teal-600" />
+                <span className="font-semibold text-teal-700">Expected Launch: Q1 2026</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Pilot program with select medical colleges, expanding to nationwide availability.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={() => setInitiativeDialogOpen(false)}>
+              Close
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600"
+              onClick={() => {
+                setInitiativeDialogOpen(false);
+                // Scroll to subscribe section
+                document.getElementById('roadmap-subscribe')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
+              Get Notified When Available
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

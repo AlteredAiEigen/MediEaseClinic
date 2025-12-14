@@ -293,17 +293,19 @@ export function SecurityPage() {
             <div className="flex items-center justify-center gap-4">
               <Button
                 size="lg"
-                className="bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 gap-2"
+                disabled
+                className="bg-gradient-to-r from-blue-500 to-indigo-500 opacity-50 cursor-not-allowed gap-2"
               >
-                View Security Report
+                View Security Report (Coming Soon)
                 <ArrowRightIcon className="w-4 h-4" />
               </Button>
               <Button
                 size="lg"
                 variant="outline"
-                className="border-blue-500 text-blue-600 hover:bg-blue-50"
+                disabled
+                className="border-blue-500 text-blue-600 opacity-50 cursor-not-allowed"
               >
-                Contact Security Team
+                Contact Security Team (Coming Soon)
               </Button>
             </div>
           </div>
@@ -510,17 +512,19 @@ export function SecurityPage() {
               <div className="flex items-center justify-center gap-4">
                 <Button
                   size="lg"
-                  className="bg-white text-blue-600 hover:bg-gray-100 gap-2"
+                  disabled
+                  className="bg-white text-blue-600 opacity-50 cursor-not-allowed gap-2"
                 >
-                  Download Security Whitepaper
+                  Download Security Whitepaper (Coming Soon)
                   <ArrowRightIcon className="w-4 h-4" />
                 </Button>
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border-white text-white hover:bg-white/10"
+                  disabled
+                  className="border-white text-white opacity-50 cursor-not-allowed"
                 >
-                  Talk to Security Expert
+                  Talk to Security Expert (Coming Soon)
                 </Button>
               </div>
               <p className="text-sm opacity-75 mt-6">

@@ -30,7 +30,7 @@ export function RoadmapPage() {
     {
       icon: CreditCardIcon,
       title: "Integration with Ayushman Card",
-      quarter: "Q4 2024",
+      quarter: "Q4 2026",
       status: "Planning",
       description:
         "Allow patients to directly check if tests or medicines are covered under the Ayushman card scheme along with coverage limits, improving transparency and cost management.",
@@ -57,7 +57,7 @@ export function RoadmapPage() {
     {
       icon: CreditCardIcon,
       title: "Linkage to Private Insurance",
-      quarter: "Q4 2024",
+      quarter: "Q4 2026",
       status: "Planning",
       description:
         "Enable seamless integration with private insurance providers for better patient benefits and billing processing.",
@@ -206,7 +206,7 @@ export function RoadmapPage() {
 
   const timeline = [
     {
-      quarter: "Q4 2024",
+      quarter: "Q4 2026",
       month: "Oct - Dec 2024",
       items: [
         { title: "Integration with Ayushman Card", status: "planned" },

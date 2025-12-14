@@ -46,7 +46,7 @@ export function RoadmapMegaMenu() {
       title: "Insurance Integrations",
       description:
         "Direct integration with major Indian insurance providers for real-time eligibility checks and automated claim processing.",
-      timeline: "Q4 2024",
+      timeline: "Q4 2026",
       status: "Planning",
       color: "from-cyan-500 to-blue-500",
       features: [
