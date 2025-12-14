@@ -213,15 +213,6 @@ export function AdminPatients() {
           const limitFromApi = pagination.limit ?? pageSize;
           const totalPagesCalc = limitFromApi > 0 ? Math.max(1, Math.ceil(total / limitFromApi)) : 1;
 
-          if (!debouncedSearchQuery.trim()) {
-            setTotalPatients(total);
-            setStatsTotalPatients(total);
-            // keep existing in-clinic count when searching; avoid undefined reference
-            setInClinicToday((prev) => prev);
-            setNewPatientsThisWeek(newThisWeek);
-            setAppointmentsThisWeek(weekCount);
-            setAppointmentsToday(todayCount);
-          }
           setTotalPages(totalPagesCalc);
           if (currentPage !== page) {
             setPage(currentPage);
@@ -249,6 +240,10 @@ export function AdminPatients() {
           }).length;
 
           setNewPatientsThisWeek(newThisWeek);
+          if (!debouncedSearchQuery.trim()) {
+            setTotalPatients(total);
+            setStatsTotalPatients(total);
+          }
         } else {
           console.error("🔍 AdminPatients: API call failed:", response.message);
           setFetchError(response.message ?? "Unable to load patients right now.");
