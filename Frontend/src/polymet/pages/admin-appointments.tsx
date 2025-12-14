@@ -63,6 +63,7 @@ interface Doctor {
   firstName: string;
   lastName: string;
   speciality?: string;
+  availability?: Record<string, { startTime: string; endTime: string; enabled: boolean }>;
 }
 
 // Helper function to format date in YYYY-MM-DD using local timezone (not UTC)
@@ -795,11 +796,15 @@ export function AdminAppointments() {
                               <SelectValue placeholder="Select doctor" />
                             </SelectTrigger>
                             <SelectContent>
-                              {doctors.map((doctor) => (
-                                <SelectItem key={doctor._id} value={doctor._id}>
-                                  {doctor.firstName} {doctor.lastName} - {doctor.speciality || "General Medicine"}
-                                </SelectItem>
-                              ))}
+                              {doctors.map((doctor) => {
+                                const availability = checkCurrentAvailability(doctor.availability);
+                                const statusIcon = availability === "available" ? "🟢" : "⚫";
+                                return (
+                                  <SelectItem key={doctor._id} value={doctor._id}>
+                                    {statusIcon} {doctor.firstName} {doctor.lastName} - {doctor.speciality || "General Medicine"}
+                                  </SelectItem>
+                                );
+                              })}
                             </SelectContent>
                           </Select>
                         </div>

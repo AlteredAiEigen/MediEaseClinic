@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/chart";
 import { get } from "@/lib/api-client";
 import { MediEaseLoader } from "@/components/mediease-loader";
+import { checkCurrentAvailability } from "@/lib/availability-utils";
 
 interface DashboardStats {
   totalPatients: number;
@@ -69,6 +70,7 @@ interface Doctor {
   email: string;
   speciality?: string;
   phone?: string;
+  availability?: Record<string, { startTime: string; endTime: string; enabled: boolean }>;
 }
 
 interface Receptionist {
@@ -78,6 +80,7 @@ interface Receptionist {
   email: string;
   phone?: string;
   isActive?: boolean;
+  availability?: Record<string, { startTime: string; endTime: string; enabled: boolean }>;
 }
 
 type RevenuePeriod = "day" | "week" | "month" | "year";
@@ -713,24 +716,27 @@ export function AdminDashboard() {
             <CardContent>
           <div className="overflow-x-auto pb-2">
             <div className="flex gap-3 min-w-full">
-              {doctors.map((doctor) => (
-                <Link
-                  key={doctor._id}
-                  to={`/admin/user-profile/${doctor._id}`}
-                  className="block w-72 flex-shrink-0"
-                >
-                  <DoctorCard
-                    name={`${doctor.firstName} ${doctor.lastName}`}
-                    specialization={doctor.speciality || "General Medicine"}
-                    email={doctor.email}
-                    phone={doctor.phone || ""}
-                    experience="5+ years"
-                    avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctor.firstName} ${doctor.lastName}`)}&background=random&color=ffffff`}
-                    status="available"
-                    onViewProfile={() => {}}
-                  />
-                </Link>
-              ))}
+              {doctors.map((doctor) => {
+                const availability = checkCurrentAvailability(doctor.availability);
+                return (
+                  <Link
+                    key={doctor._id}
+                    to={`/admin/user-profile/${doctor._id}`}
+                    className="block w-72 flex-shrink-0"
+                  >
+                    <DoctorCard
+                      name={`${doctor.firstName} ${doctor.lastName}`}
+                      specialization={doctor.speciality || "General Medicine"}
+                      email={doctor.email}
+                      phone={doctor.phone || ""}
+                      experience="5+ years"
+                      avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${doctor.firstName} ${doctor.lastName}`)}&background=random&color=ffffff`}
+                      status={availability}
+                      onViewProfile={() => {}}
+                    />
+                  </Link>
+                );
+              })}
             </div>
           </div>
               {doctors.length === 0 && (
@@ -759,22 +765,25 @@ export function AdminDashboard() {
             <CardContent>
           <div className="overflow-x-auto pb-2">
             <div className="flex gap-3 min-w-full">
-              {receptionists.map((receptionist) => (
-                <Link
-                  key={receptionist._id}
-                  to={`/admin/user-profile/${receptionist._id}`}
-                  className="block w-72 flex-shrink-0"
-                >
-                  <ReceptionistCard
-                    name={`${receptionist.firstName} ${receptionist.lastName}`}
-                    email={receptionist.email}
-                    phone={receptionist.phone || "N/A"}
-                    avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${receptionist.firstName} ${receptionist.lastName}`)}&background=random&color=ffffff`}
-                    status="available"
-                    onViewProfile={() => {}}
-                  />
-                </Link>
-              ))}
+              {receptionists.map((receptionist) => {
+                const availability = checkCurrentAvailability(receptionist.availability);
+                return (
+                  <Link
+                    key={receptionist._id}
+                    to={`/admin/user-profile/${receptionist._id}`}
+                    className="block w-72 flex-shrink-0"
+                  >
+                    <ReceptionistCard
+                      name={`${receptionist.firstName} ${receptionist.lastName}`}
+                      email={receptionist.email}
+                      phone={receptionist.phone || "N/A"}
+                      avatar={`https://ui-avatars.com/api/?name=${encodeURIComponent(`${receptionist.firstName} ${receptionist.lastName}`)}&background=random&color=ffffff`}
+                      status={availability}
+                      onViewProfile={() => {}}
+                    />
+                  </Link>
+                );
+              })}
             </div>
           </div>
               {receptionists.length === 0 && (

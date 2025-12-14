@@ -36,6 +36,7 @@ export function ReceptionistSettings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<{ profile?: boolean; availability?: boolean; notifications?: boolean }>({});
   
   const [profile, setProfile] = useState<ReceptionistProfile>({
     _id: "",
@@ -235,8 +236,10 @@ export function ReceptionistSettings() {
       );
 
       if (response.success) {
+        setSaveSuccess({ ...saveSuccess, availability: true });
+        setTimeout(() => setSaveSuccess(prev => ({ ...prev, availability: false })), 3000);
         toast({
-          title: "Availability updated",
+          title: "✓ Availability updated",
           description: "Your availability schedule has been updated successfully.",
         });
       } else {
@@ -266,8 +269,10 @@ export function ReceptionistSettings() {
       );
 
       if (response.success) {
+        setSaveSuccess({ ...saveSuccess, notifications: true });
+        setTimeout(() => setSaveSuccess(prev => ({ ...prev, notifications: false })), 3000);
         toast({
-          title: "Preferences updated",
+          title: "✓ Preferences updated",
           description: "Your notification preferences have been updated successfully.",
         });
       } else {
@@ -396,12 +401,17 @@ export function ReceptionistSettings() {
             <Button
               onClick={handleSaveProfile}
               disabled={isSaving}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+              className={`${saveSuccess.profile ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'} text-white`}
             >
               {isSaving ? (
                 <>
                   <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
                   Saving...
+                </>
+              ) : saveSuccess.profile ? (
+                <>
+                  <CheckCircleIcon className="w-4 h-4 mr-2" />
+                  Saved!
                 </>
               ) : (
                 <>
@@ -478,12 +488,17 @@ export function ReceptionistSettings() {
             <Button
               onClick={handleSaveAvailability}
               disabled={isSaving}
-              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 text-white"
+              className={`${saveSuccess.availability ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700'} text-white`}
             >
               {isSaving ? (
                 <>
                   <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
                   Saving...
+                </>
+              ) : saveSuccess.availability ? (
+                <>
+                  <CheckCircleIcon className="w-4 h-4 mr-2" />
+                  Saved!
                 </>
               ) : (
                 <>
@@ -594,12 +609,17 @@ export function ReceptionistSettings() {
             <Button
               onClick={handleSaveNotificationPreferences}
               disabled={isSaving}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+              className={`${saveSuccess.notifications ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'} text-white`}
             >
               {isSaving ? (
                 <>
                   <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
                   Saving...
+                </>
+              ) : saveSuccess.notifications ? (
+                <>
+                  <CheckCircleIcon className="w-4 h-4 mr-2" />
+                  Saved!
                 </>
               ) : (
                 <>
