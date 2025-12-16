@@ -116,6 +116,7 @@ export function ConsultationSession() {
   const audioChunksRef = useRef<Blob[]>([]);
   const pendingUploadIdRef = useRef<string | null>(null);
   const isMountedRef = useRef(true);
+  const recordingBlobRef = useRef<Blob | null>(null);
 
   // Clinical notes
   const [notes, setNotes] = useState("");
@@ -591,6 +592,7 @@ export function ConsultationSession() {
 
       mediaRecorder.onstop = () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        recordingBlobRef.current = audioBlob; // Store in ref for immediate access
         setAudioBlob(audioBlob);
         const audioUrl = URL.createObjectURL(audioBlob);
         setRecordingUrl(audioUrl);
@@ -1142,29 +1144,94 @@ export function ConsultationSession() {
 
       // Prepare recording blob if available
       let recordingBlob: Blob | null = null;
-      let recordingDuration: number | undefined = undefined;
+      let recordingDurationSeconds: number | undefined = undefined;
       
       // Always stop recording if it's active before ending consultation
-      if (isRecording) {
-        // Stop recording first and get the blob
-        await stopRecordingWithoutUpload();
-        // Wait for blob to be ready with retry logic
-        let attempts = 0;
-        while (!audioBlob && attempts < 10) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-          attempts++;
+      if (isRecording && mediaRecorderRef.current) {
+        console.log("🛑 Stopping recording before ending consultation...");
+        
+        const recorder = mediaRecorderRef.current;
+        
+        // Create promise that resolves when recording stops and blob is ready
+        const stopPromise = new Promise<Blob | null>((resolve) => {
+          const originalOnStop = recorder.onstop;
+          
+          recorder.onstop = async (event: Event) => {
+            // Call original handler to clean up state
+            if (originalOnStop) {
+              originalOnStop.call(recorder, event);
+            }
+            
+            // Clear interval
+            if (recordingInterval) {
+              clearInterval(recordingInterval);
+              setRecordingInterval(null);
+            }
+            
+            setIsRecording(false);
+            setFinalRecordingDuration(recordingDuration);
+            
+            // Wait a moment for state updates
+            await new Promise(r => setTimeout(r, 100));
+            
+            // Get blob from ref (set by original handler) or create from chunks
+            let blob = recordingBlobRef.current;
+            if (!blob && audioChunksRef.current.length > 0) {
+              blob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+              recordingBlobRef.current = blob;
+              setAudioBlob(blob);
+            }
+            
+            resolve(blob);
+          };
+          
+          // Stop the recorder
+          try {
+            recorder.stop();
+          } catch (err) {
+            console.error("Error stopping recorder:", err);
+            resolve(null);
+          }
+        });
+        
+        // Wait for recording to stop and blob to be ready
+        recordingBlob = await stopPromise;
+        
+        // Final check - try ref and state again
+        if (!recordingBlob) {
+          recordingBlob = recordingBlobRef.current || audioBlob;
         }
-        recordingBlob = audioBlob;
-        if (finalRecordingDuration) {
-          const parts = finalRecordingDuration.split(":");
-          recordingDuration = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+        
+        // Last resort: create from chunks if still no blob
+        if (!recordingBlob && audioChunksRef.current.length > 0) {
+          recordingBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+          recordingBlobRef.current = recordingBlob;
+          setAudioBlob(recordingBlob);
+          console.log("✅ Created blob from chunks as fallback");
         }
+        
+        if (recordingBlob) {
+          console.log("✅ Recording blob available, size:", recordingBlob.size, "bytes");
+        } else {
+          console.error("❌ Recording blob not available after stopping recording");
+        }
+        
+        // Calculate duration
+        const durationStringToUse = finalRecordingDuration || recordingDuration || "00:00";
+        const parts = durationStringToUse.split(":");
+        recordingDurationSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+        
+        console.log("📊 Recording stopped - Blob:", recordingBlob ? "Available" : "Not available", "Duration:", recordingDurationSeconds, "seconds");
       } else if (audioBlob && !uploadedRecordingId) {
         // Use existing blob if recording was stopped earlier
-        recordingBlob = audioBlob;
+        recordingBlob = recordingBlobRef.current || audioBlob;
         if (finalRecordingDuration) {
           const parts = finalRecordingDuration.split(":");
-          recordingDuration = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+          recordingDurationSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1] || "0");
+        } else if (recordingDuration) {
+          // Use current recordingDuration state if finalRecordingDuration not yet set
+          const durationParts = recordingDuration.split(":");
+          recordingDurationSeconds = parseInt(durationParts[0]) * 60 + parseInt(durationParts[1] || "0");
         }
       }
 
@@ -1193,9 +1260,12 @@ export function ConsultationSession() {
         formData.append("prescription", prescription || "");
         
         // Add recording if available
-        if (recordingBlob && recordingDuration) {
+        if (recordingBlob && recordingDurationSeconds && recordingDurationSeconds > 0) {
+          console.log("📤 Adding recording to formData - Size:", recordingBlob.size, "bytes, Duration:", recordingDurationSeconds, "seconds");
           formData.append("recording_file", recordingBlob, "consultation-recording.wav");
-          formData.append("recording_duration", recordingDuration.toString());
+          formData.append("recording_duration", recordingDurationSeconds.toString());
+        } else {
+          console.warn("⚠️ Recording not included - Blob:", !!recordingBlob, "Duration:", recordingDurationSeconds);
         }
 
         try {
@@ -1348,30 +1418,22 @@ export function ConsultationSession() {
 
         {/* Recording Controls */}
         <div className="flex items-center gap-3">
-          <Button
-            variant={isRecording ? "destructive" : "default"}
-            onClick={isRecording ? stopRecording : startRecording}
-            className="gap-2"
-            disabled={isUploading}
-          >
-            {isRecording ? (
-              <>
-                <MicOffIcon className="w-4 h-4" />
-                Stop Recording
-              </>
-            ) : (
-              <>
-                <MicIcon className="w-4 h-4" />
-                Start Recording
-              </>
-            )}
-          </Button>
+          {!isRecording && !audioBlob && (
+            <Button
+              onClick={startRecording}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={isUploading}
+            >
+              <CheckCircleIcon className="w-4 h-4" />
+              Start Consultation
+            </Button>
+          )}
 
           {isRecording && (
             <div className="flex items-center gap-2 px-3 py-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg">
               <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
               <span className="text-sm font-mono text-red-700 dark:text-red-400">
-                {recordingDuration}
+                Recording: {recordingDuration}
               </span>
             </div>
           )}
@@ -1460,17 +1522,19 @@ export function ConsultationSession() {
             </div>
           )}
 
-          <Button
-            onClick={async (e) => {
-              e.preventDefault();
-              await handleEndConsultation();
-              navigate("/doctor-workstation");
-            }}
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-          >
-            <CheckCircleIcon className="w-4 h-4" />
-            End Consultation
-          </Button>
+          {(isRecording || audioBlob) && (
+            <Button
+              onClick={async (e) => {
+                e.preventDefault();
+                await handleEndConsultation();
+                navigate("/doctor-workstation");
+              }}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <CheckCircleIcon className="w-4 h-4" />
+              End Consultation
+            </Button>
+          )}
           {!isRecording && !audioBlob && recordingUrl && (
             <div className="flex items-center gap-2">
               <Button

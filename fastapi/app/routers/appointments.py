@@ -434,9 +434,26 @@ async def complete_consultation(
         
         appointment_service = AppointmentService(db)
         
+        # Check if prescription file already exists (uploaded by doctor during consultation)
+        appointment_obj_id = ObjectId(appointment_id)
+        existing_appointment = await db.appointments.find_one({"_id": appointment_obj_id})
+        prescription_exists = existing_appointment and (
+            existing_appointment.get("prescriptionFileUrl") or 
+            existing_appointment.get("prescriptionFileKey")
+        )
+        
+        # Set status based on whether prescription file exists
+        # If prescription uploaded → "completed", else → "checkout-pending" (receptionist needs to upload)
+        consultation_status = "completed" if prescription_exists else "checkout-pending"
+        
+        # Log for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Complete consultation for appointment {appointment_id}: prescription_exists={prescription_exists}, setting status to {consultation_status}")
+        
         # Save consultation details to appointment immediately
         update_data = AppointmentUpdateRequest(
-            status="checkout-pending",
+            status=consultation_status,
             prescribedTest=prescribed_test,
             diagnosis=diagnosis,
             treatmentPlan=treatment_plan,
@@ -451,28 +468,8 @@ async def complete_consultation(
             update_data
         )
         
-        # Update queue status - find queue entry by appointment if queue_id not provided
-        try:
-            from app.schemas.queue import QueueStatusUpdate
-            queue_service = QueueService(db)
-            
-            # If queue_id provided, use it; otherwise find by appointment
-            queue_entry_id = queue_id
-            if not queue_entry_id:
-                queue_entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
-                if queue_entry:
-                    queue_entry_id = queue_entry.get("_id")
-            
-            if queue_entry_id:
-                # Update queue status to checkout-pending (this will keep is_active = True for receptionist checkout)
-                await queue_service.update_queue_status(
-                    queue_entry_id, 
-                    QueueStatusUpdate(status="checkout-pending")
-                )
-        except Exception as e:
-            # Log but don't fail the request if queue update fails
-            import logging
-            logging.warning(f"Failed to update queue status: {e}", exc_info=True)
+        # Note: Queue status is now automatically synced in update_appointment method
+        # This ensures queue status stays in sync with appointment status
         
         # If recording is provided, upload it in the background
         if recording_file and recording_duration:

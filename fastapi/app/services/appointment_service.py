@@ -396,6 +396,32 @@ class AppointmentService:
             {"$set": update_dict}
         )
         
+        # Sync queue status if appointment status changed to completed or checkout-pending
+        if "status" in update_dict:
+            appointment_status = update_dict["status"]
+            if appointment_status in ["completed", "checkout-pending"]:
+                try:
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    from app.services.queue_service import QueueService
+                    queue_service = QueueService(self.db)
+                    queue_entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
+                    if queue_entry:
+                        queue_entry_id = str(queue_entry.get("_id"))
+                        logger.info(f"Syncing queue status for appointment {appointment_id}: queue_entry_id={queue_entry_id}, status={appointment_status}")
+                        from app.schemas.queue import QueueStatusUpdate
+                        await queue_service.update_queue_status(
+                            queue_entry_id,
+                            QueueStatusUpdate(status=appointment_status)
+                        )
+                        logger.info(f"Successfully synced queue status to {appointment_status}")
+                    else:
+                        logger.warning(f"No queue entry found for appointment {appointment_id}")
+                except Exception as e:
+                    # Log but don't fail if queue update fails
+                    import logging
+                    logging.error(f"Failed to sync queue status in update_appointment for appointment {appointment_id}: {e}", exc_info=True)
+        
         # Retrieve updated appointment
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         
@@ -583,6 +609,28 @@ class AppointmentService:
         s3_prescriptions_collection = self.db.s3_prescriptions
         await s3_prescriptions_collection.insert_one(s3_prescription_entry)
 
+        # Update appointment status to "completed" since prescription is now uploaded
+        await self.appointments_collection.update_one(
+            {"_id": ObjectId(appointment_id)},
+            {"$set": {"status": "completed", "completedAt": timestamp, "updatedAt": timestamp}}
+        )
+
+        # Also update queue status to "completed" if queue entry exists
+        try:
+            from app.services.queue_service import QueueService
+            queue_service = QueueService(self.db)
+            queue_entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
+            if queue_entry:
+                from app.schemas.queue import QueueStatusUpdate
+                await queue_service.update_queue_status(
+                    str(queue_entry.get("_id")),
+                    QueueStatusUpdate(status="completed")
+                )
+        except Exception as e:
+            # Log but don't fail if queue update fails
+            import logging
+            logging.warning(f"Failed to update queue status after prescription upload: {e}", exc_info=True)
+
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         return await appointment_helper(updated_appointment)
     
@@ -620,22 +668,43 @@ class AppointmentService:
                 print(f"Failed to delete prescription file from S3: {e}")
 
         # Clear prescription file fields from appointment
+        # Also revert status to "checkout-pending" since prescription is now removed
         timestamp = datetime.utcnow()
-        update_fields = {
-            "prescriptionFileUrl": None,
-            "prescriptionFileKey": None,
-            "prescriptionFileName": None,
-            "prescriptionFileType": None,
-            "prescriptionUploadedAt": None,
-            "prescriptionUploadedBy": None,
-            "prescriptionUploadedByName": None,
-            "updatedAt": timestamp,
+        
+        # Use $set for status and $unset for prescription fields
+        unset_fields = {
+            "prescriptionFileUrl": "",
+            "prescriptionFileKey": "",
+            "prescriptionFileName": "",
+            "prescriptionFileType": "",
+            "prescriptionUploadedAt": "",
+            "prescriptionUploadedBy": "",
+            "prescriptionUploadedByName": ""
         }
-
+        
         await self.appointments_collection.update_one(
             {"_id": ObjectId(appointment_id)},
-            {"$unset": {"prescriptionFileUrl": "", "prescriptionFileKey": "", "prescriptionFileName": "", "prescriptionFileType": "", "prescriptionUploadedAt": "", "prescriptionUploadedBy": "", "prescriptionUploadedByName": ""}}
+            {
+                "$set": {"status": "checkout-pending", "updatedAt": timestamp},
+                "$unset": unset_fields
+            }
         )
+        
+        # Also update queue status to "checkout-pending" if queue entry exists
+        try:
+            from app.services.queue_service import QueueService
+            queue_service = QueueService(self.db)
+            queue_entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
+            if queue_entry:
+                from app.schemas.queue import QueueStatusUpdate
+                await queue_service.update_queue_status(
+                    str(queue_entry.get("_id")),
+                    QueueStatusUpdate(status="checkout-pending")
+                )
+        except Exception as e:
+            # Log but don't fail if queue update fails
+            import logging
+            logging.warning(f"Failed to update queue status after prescription deletion: {e}", exc_info=True)
 
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         return await appointment_helper(updated_appointment)
@@ -692,10 +761,10 @@ class AppointmentService:
         # Retrieve updated appointment
         updated_appointment = await self.appointments_collection.find_one({"_id": appointment_object_id})
 
-        # Keep queue entries in sync with appointment status for checkout-pending / checkout
+        # Keep queue entries in sync with appointment status for checkout-pending / completed
         try:
             queue_collection = self.db.queue
-            if normalized_status in ["checkout-pending", "checkout"]:
+            if normalized_status in ["checkout-pending", "completed"]:
                 queue_update: Dict = {
                     "status": normalized_status,
                     "updated_at": datetime.utcnow(),
@@ -703,9 +772,9 @@ class AppointmentService:
                 if normalized_status == "checkout-pending":
                     queue_update["consultation_ended_at"] = datetime.utcnow()
                     queue_update["is_active"] = True  # keep visible for receptionist
-                if normalized_status == "checkout":
+                if normalized_status == "completed":
                     queue_update["consultation_ended_at"] = datetime.utcnow()
-                    queue_update["is_active"] = False
+                    queue_update["is_active"] = False  # mark as inactive when completed
 
                 await queue_collection.update_many(
                     {
