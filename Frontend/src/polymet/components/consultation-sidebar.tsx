@@ -6,11 +6,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
   FileTextIcon,
   PillIcon,
   FlaskConicalIcon,
+  UploadIcon,
+  Loader2Icon,
+  AlertCircleIcon,
+  CheckCircleIcon,
+  XIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 type MedicationLike =
   | string
@@ -45,6 +59,14 @@ interface ConsultationSidebarProps {
   onFollowUpChange: (followUp: string) => void;
   onPrescriptionChange: (prescription: string) => void;
   onPrescribedTestChange?: (prescribedTest: string) => void;
+  onPrescriptionFileUpload?: (file: File) => void;
+  isUploadingPrescription?: boolean;
+  appointmentId?: string | null;
+  patientName?: string;
+  patientId?: string;
+  prescriptionFileName?: string | null;
+  onDeletePrescriptionFile?: () => void;
+  isDeletingPrescription?: boolean;
   className?: string;
 }
 
@@ -69,10 +91,82 @@ export function ConsultationSidebar({
   onFollowUpChange,
   onPrescriptionChange,
   onPrescribedTestChange,
+  onPrescriptionFileUpload,
+  isUploadingPrescription = false,
+  appointmentId,
+  patientName,
+  patientId,
+  prescriptionFileName = null,
+  onDeletePrescriptionFile,
+  isDeletingPrescription = false,
   className = "",
 }: ConsultationSidebarProps) {
   const [prescriptionOpen, setPrescriptionOpen] = useState(false);
   const [testsOpen, setTestsOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file size (10MB limit)
+      const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+      if (file.size > maxSizeBytes) {
+        alert("File size must be less than 10MB. Please select a smaller file.");
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        return;
+      }
+      
+      // Allow file selection even if one exists (will replace it)
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (selectedFile && onPrescriptionFileUpload) {
+      const fileToUpload = selectedFile;
+      
+      // Upload the file - this will update prescriptionFileName in parent
+      await onPrescriptionFileUpload(fileToUpload);
+      
+      // Clear selected file and close dialog after successful upload
+      setSelectedFile(null);
+      setUploadDialogOpen(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleCancel = () => {
+    setSelectedFile(null);
+    setUploadDialogOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleCloseDialog = (open: boolean) => {
+    if (!open) {
+      // Clear selected file when closing
+      setSelectedFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+    setUploadDialogOpen(open);
+  };
+
+  const handleRemovePendingFile = () => {
+    // Clear selected file (cancel selection before upload)
+    setSelectedFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className={`space-y-6 ${className}`}>
@@ -170,7 +264,39 @@ export function ConsultationSidebar({
       {/* Prescription and Tests Section */}
       <Card className="border-border shadow-md">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Consultation Actions</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm">Consultation Actions</CardTitle>
+            {/* Common Upload Button for Prescription and Tests */}
+            {appointmentId && onPrescriptionFileUpload && (
+                <div className="flex flex-col items-end gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setUploadDialogOpen(true)}
+                    disabled={isUploadingPrescription}
+                    className="border-purple-200 text-purple-700 hover:bg-purple-50 dark:border-purple-800 dark:text-purple-400 dark:hover:bg-purple-950/40"
+                  >
+                    {isUploadingPrescription ? (
+                      <>
+                        <Loader2Icon className="w-3 h-3 mr-1.5 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <UploadIcon className="w-3 h-3 mr-1.5" />
+                        Upload Prescription
+                      </>
+                    )}
+                  </Button>
+                  {prescriptionFileName && (
+                    <span className="text-xs text-muted-foreground font-normal">
+                      1 file uploaded
+                    </span>
+                  )}
+                </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Buttons Side by Side */}
@@ -360,6 +486,158 @@ export function ConsultationSidebar({
           </div>
         </CardContent>
       </Card>
+
+      {/* Upload Prescription Dialog */}
+      <Dialog open={uploadDialogOpen} onOpenChange={handleCloseDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upload Prescription</DialogTitle>
+            <DialogDescription>
+              Upload the prescription file (if available) for this patient.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {(patientName || patientId) && (
+              <div className="rounded-lg bg-muted p-3">
+                <p className="font-medium text-sm">
+                  {patientName || "Patient"}
+                </p>
+                {patientId && (
+                  <p className="text-xs text-muted-foreground">
+                    ID: {patientId}
+                  </p>
+                )}
+              </div>
+            )}
+            <Alert className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+              <AlertCircleIcon className="h-5 w-5" />
+              <AlertTitle>Upload the prescription if possible</AlertTitle>
+              <AlertDescription>
+                Keeping a copy of the prescription ensures better continuity of care. Maximum 1 file, 10MB. The file will be saved securely.
+              </AlertDescription>
+            </Alert>
+
+            {/* Show existing uploaded file */}
+            {prescriptionFileName && (
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Uploaded File</Label>
+                <div className="relative p-3 rounded-lg border-2 border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-700">
+                  <button
+                    type="button"
+                    onClick={onDeletePrescriptionFile}
+                    disabled={isDeletingPrescription || isUploadingPrescription}
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-100 hover:bg-red-200 dark:bg-red-900/50 dark:hover:bg-red-900 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold z-10"
+                    title="Remove file"
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </button>
+                  <div className="flex items-center gap-2 pr-6">
+                    <FileTextIcon className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-green-700 dark:text-green-400 truncate">
+                        {prescriptionFileName}
+                      </p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">
+                        ✓ File uploaded
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <Separator />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label>Select Prescription File</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleFileSelect}
+                disabled={isUploadingPrescription}
+                className="hidden"
+                id="prescription-upload-input"
+              />
+              <label htmlFor="prescription-upload-input">
+                <div className="cursor-pointer">
+                  {selectedFile ? (
+                    <div className="p-4 rounded-lg border-2 border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FileTextIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                          File Selected
+                        </span>
+                      </div>
+                      <p className="text-xs text-green-600 dark:text-green-400 truncate">
+                        {selectedFile.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {(selectedFile.size / 1024).toFixed(2)} KB
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="w-full h-auto py-6 px-4 rounded-lg border-2 border-dashed border-purple-300 hover:border-purple-400 hover:bg-purple-50 dark:border-purple-700 dark:hover:border-purple-600 dark:hover:bg-purple-950/30 transition-colors flex flex-col items-center justify-center gap-2">
+                      <UploadIcon className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                      <div className="text-center">
+                        <span className="text-sm font-semibold text-purple-700 dark:text-purple-400 block">
+                          Select Prescription File
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Click to upload or scan prescription file
+                        </span>
+                      </div>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        PDF, JPG, PNG supported (Max 10MB)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </label>
+              {selectedFile && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRemovePendingFile}
+                  disabled={isUploadingPrescription}
+                  className="w-full text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                >
+                  Cancel selection
+                </Button>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Accepted formats: PDF, JPG, PNG (Max 1 file, 10MB)
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={isUploadingPrescription}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpload}
+              disabled={!selectedFile || isUploadingPrescription}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {isUploadingPrescription ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <UploadIcon className="h-4 w-4 mr-2" />
+                  Upload Prescription
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

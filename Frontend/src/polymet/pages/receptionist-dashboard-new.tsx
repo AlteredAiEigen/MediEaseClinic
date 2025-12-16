@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -177,8 +177,10 @@ export function ReceptionistDashboardNew() {
   const [checkoutDialog, setCheckoutDialog] = useState(false);
   const [selectedQueueEntry, setSelectedQueueEntry] = useState<QueueEntry | null>(null);
   const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
+  const [selectedPrescriptionFile, setSelectedPrescriptionFile] = useState<File | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [showNoPrescriptionConfirm, setShowNoPrescriptionConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Add WebSocket for real-time updates
   const { lastMessage, isConnected } = useQueueWebSocket();
@@ -191,7 +193,11 @@ export function ReceptionistDashboardNew() {
   useEffect(() => {
     if (!checkoutDialog) {
       setPrescriptionFile(null);
+      setSelectedPrescriptionFile(null);
       setShowNoPrescriptionConfirm(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }, [checkoutDialog]);
 
@@ -465,16 +471,19 @@ export function ReceptionistDashboardNew() {
       if (response.success) {
         const rawAppointments = extractList<any>(response.data);
         const mappedAppointments = rawAppointments.map((apt: any) => {
-          const mongoId =
-            normalizeId(apt._id) ?? normalizeId(apt.id) ?? normalizeId(apt.appointmentId);
+          // Extract valid MongoDB ObjectId (must be 24 hex characters)
+          const mongoId = extractMongoObjectId(apt);
           const appointmentIdentifier = normalizeId(apt.appointmentId);
-          const fallbackId =
-            mongoId ?? appointmentIdentifier ?? Math.random().toString(36).slice(2);
+          
+          // Use mongoId if available, otherwise fallback (but log warning)
+          if (!mongoId) {
+            console.warn("⚠️ No valid MongoDB _id found for appointment:", apt);
+          }
 
           return {
-            id: fallbackId,
-            mongoId: mongoId ?? fallbackId,
-            appointmentId: appointmentIdentifier ?? fallbackId,
+            id: mongoId ?? appointmentIdentifier ?? Math.random().toString(36).slice(2),
+            mongoId: mongoId ?? undefined, // Only set if valid ObjectId
+            appointmentId: appointmentIdentifier,
             patientId: normalizeId(apt.patientId) ?? apt.patientId,
             patientName: apt.patientName || apt.patient?.fullName || "Unknown Patient",
             time: apt.time ?? "—",
@@ -696,20 +705,71 @@ const filteredCheckoutEntries = shouldFilterQueue
   ? checkoutEntries.filter(matchesQueueEntry)
   : checkoutEntries;
 
-const resolveAppointmentIdForEntry = (entry: QueueEntry): string | undefined => {
-  const direct = normalizeId(entry.appointment);
-  if (direct) return direct;
+// Helper to check if a string is a valid MongoDB ObjectId (24 hex characters)
+const isValidObjectId = (id: string | undefined | null): boolean => {
+  if (!id) return false;
+  return /^[0-9a-fA-F]{24}$/.test(id);
+};
 
+// Helper to extract valid MongoDB ObjectId from appointment data
+const extractMongoObjectId = (apt: any): string | undefined => {
+  // Try _id first (most reliable)
+  const id = normalizeId(apt._id);
+  if (id && isValidObjectId(id)) return id;
+  
+  // Try id field
+  const idField = normalizeId(apt.id);
+  if (idField && isValidObjectId(idField)) return idField;
+  
+  return undefined;
+};
+
+const resolveAppointmentIdForEntry = (entry: QueueEntry): string | undefined => {
+  // First try direct appointment field (should be MongoDB _id)
+  const direct = normalizeId(entry.appointment);
+  if (direct && isValidObjectId(direct)) {
+    console.log("✅ Using direct appointment ID (MongoDB _id):", direct);
+    return direct;
+  }
+
+  // Try to find appointment by patient
   const patientKey =
     entry.patient?.patientId ??
     normalizeId(entry.patient?._id) ??
     normalizeId((entry as any)?.patientId);
 
-  if (!patientKey) return undefined;
+  if (!patientKey) {
+    console.warn("⚠️ No patient key found for queue entry");
+    return undefined;
+  }
+  
   const appointment = appointmentByPatientId.get(patientKey);
-  if (appointment?.mongoId) return appointment.mongoId;
-  if (appointment?.id) return appointment.id;
-  if (appointment?.appointmentId) return appointment.appointmentId;
+  if (!appointment) {
+    console.warn("⚠️ No appointment found for patient:", patientKey);
+    return undefined;
+  }
+
+  // Prioritize mongoId (should be MongoDB _id)
+  if (appointment?.mongoId && isValidObjectId(appointment.mongoId)) {
+    console.log("✅ Using appointment.mongoId (MongoDB _id):", appointment.mongoId);
+    return appointment.mongoId;
+  }
+  
+  // Fallback to id if it's a valid ObjectId
+  if (appointment?.id && isValidObjectId(appointment.id)) {
+    console.log("✅ Using appointment.id (MongoDB _id):", appointment.id);
+    return appointment.id;
+  }
+  
+  // Last resort: appointmentId (human-readable), but we need MongoDB _id
+  // This is a problem - we need to fetch the appointment to get _id
+  if (appointment?.appointmentId) {
+    console.warn("⚠️ Only appointmentId found (not MongoDB _id):", appointment.appointmentId);
+    // Return undefined to force error, as we need MongoDB _id
+    return undefined;
+  }
+  
+  console.warn("⚠️ No valid appointment ID found");
   return undefined;
 };
 
@@ -740,6 +800,7 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
     // Upload prescription if provided (don't fail checkout if upload fails)
     if (prescriptionFile) {
       try {
+        console.log("📤 Uploading prescription file for appointment:", appointmentId);
         const formData = new FormData();
         formData.append("file", prescriptionFile);
         if (selectedQueueEntry.reason) {
@@ -747,21 +808,34 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
         }
 
         const uploadResponse = await post(`/api/appointments/${appointmentId}/prescription-upload`, formData);
+        console.log("📤 Prescription upload response:", uploadResponse);
+        
         if (!uploadResponse.success) {
-          console.warn("Prescription upload failed, but continuing with checkout:", uploadResponse.message);
+          console.error("❌ Prescription upload failed:", {
+            message: uploadResponse.message,
+            data: uploadResponse.data,
+            appointmentId: appointmentId,
+          });
           toast({
             title: "Prescription upload warning",
-            description: "Prescription upload failed, but checkout will continue.",
-            variant: "default",
+            description: `Prescription upload failed: ${uploadResponse.message || "Unknown error"}. Checkout will continue.`,
+            variant: "destructive",
           });
+        } else {
+          console.log("✅ Prescription uploaded successfully:", uploadResponse.data);
         }
-      } catch (uploadErr) {
-        console.error("Prescription upload error:", uploadErr);
+      } catch (uploadErr: any) {
+        console.error("❌ Prescription upload error:", {
+          error: uploadErr,
+          message: uploadErr?.message,
+          response: uploadErr?.response?.data,
+          appointmentId: appointmentId,
+        });
         // Continue with checkout even if upload fails
         toast({
           title: "Prescription upload failed",
-          description: "Checkout will continue without the prescription file. You can upload it later.",
-          variant: "default",
+          description: `Upload error: ${uploadErr?.message || "Unknown error"}. Checkout will continue without the prescription file.`,
+          variant: "destructive",
         });
       }
     }
@@ -791,6 +865,10 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
     setCheckoutDialog(false);
     setSelectedQueueEntry(null);
     setPrescriptionFile(null);
+    setSelectedPrescriptionFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     
     // Remove from local queue list immediately (filter by both _id and queue_id to be safe)
     setQueueList((prev) => 
@@ -1595,6 +1673,11 @@ const confirmCheckoutWithoutPrescription = () => {
           setCheckoutDialog(open);
           if (!open) {
             setSelectedQueueEntry(null);
+            setSelectedPrescriptionFile(null);
+            setPrescriptionFile(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = "";
+            }
           }
         }}
       >
@@ -1622,19 +1705,94 @@ const confirmCheckoutWithoutPrescription = () => {
                 <AlertCircleIcon className="h-5 w-5" />
                 <AlertTitle>Upload the prescription if possible</AlertTitle>
                 <AlertDescription>
-                  Keeping a copy of the prescription ensures better continuity of care. You can still complete checkout without a file, but please try to attach it when available.
+                  Keeping a copy of the prescription ensures better continuity of care. Maximum 1 file, 10MB. The file will be saved securely. You can still complete checkout without a file, but please try to attach it when available.
                 </AlertDescription>
               </Alert>
               <div className="space-y-2">
-                <Label>Prescription File</Label>
-                <Input
+                <Label>Select Prescription File</Label>
+                <input
+                  ref={fileInputRef}
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
-                  onChange={(e) => setPrescriptionFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    if (file) {
+                      // Validate file size (10MB limit)
+                      const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+                      if (file.size > maxSizeBytes) {
+                        toast({
+                          title: "File too large",
+                          description: "File size must be less than 10MB. Please select a smaller file.",
+                          variant: "destructive",
+                        });
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = "";
+                        }
+                        return;
+                      }
+                    }
+                    setSelectedPrescriptionFile(file);
+                    setPrescriptionFile(file);
+                  }}
                   disabled={isCheckingOut}
+                  className="hidden"
+                  id="prescription-upload-input-checkout"
                 />
+                <label htmlFor="prescription-upload-input-checkout">
+                  <div className="cursor-pointer">
+                    {selectedPrescriptionFile ? (
+                      <div className="p-4 rounded-lg border-2 border-green-300 bg-green-50 dark:bg-green-950/30 dark:border-green-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <FileTextIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
+                          <span className="text-sm font-medium text-green-700 dark:text-green-400">
+                            File Selected
+                          </span>
+                        </div>
+                        <p className="text-xs text-green-600 dark:text-green-400 truncate">
+                          {selectedPrescriptionFile.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(selectedPrescriptionFile.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="w-full h-auto py-6 px-4 rounded-lg border-2 border-dashed border-purple-300 hover:border-purple-400 hover:bg-purple-50 dark:border-purple-700 dark:hover:border-purple-600 dark:hover:bg-purple-950/30 transition-colors flex flex-col items-center justify-center gap-2">
+                        <UploadIcon className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                        <div className="text-center">
+                          <span className="text-sm font-semibold text-purple-700 dark:text-purple-400 block">
+                            Select Prescription File
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Click to upload or scan prescription file
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground mt-1">
+                          PDF, JPG, PNG supported (Max 10MB)
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </label>
+                {selectedPrescriptionFile && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedPrescriptionFile(null);
+                      setPrescriptionFile(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                      }
+                    }}
+                    disabled={isCheckingOut}
+                    className="w-full text-xs text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                  >
+                    Cancel selection
+                  </Button>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  Accepted formats: PDF, JPG, PNG
+                  Accepted formats: PDF, JPG, PNG (Max 1 file, 10MB)
                 </p>
               </div>
             </div>
@@ -1645,6 +1803,11 @@ const confirmCheckoutWithoutPrescription = () => {
               onClick={() => {
                 setCheckoutDialog(false);
                 setSelectedQueueEntry(null);
+                setSelectedPrescriptionFile(null);
+                setPrescriptionFile(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = "";
+                }
               }}
               disabled={isCheckingOut}
             >

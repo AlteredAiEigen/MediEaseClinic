@@ -20,9 +20,11 @@ from app.services.appointment_service import AppointmentService
 from app.services.recording_service import RecordingService
 from app.services.queue_service import QueueService
 from app.services.patient_insights_service import patient_insights_service
+from app.services.s3_service import s3_service
 from app.middleware.auth import get_current_active_user, require_any_role, require_roles
 from app.utils.response import success_response, paginated_response
 from app.utils.cache import cache
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -266,6 +268,93 @@ async def upload_prescription(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Prescription upload failed: {str(e)}"
+        )
+
+
+@router.delete("/{appointment_id}/prescription")
+async def delete_prescription(
+    appointment_id: str,
+    current_user: dict = Depends(require_roles(["receptionist", "admin", "doctor"])),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Delete prescription file from S3 and database."""
+    try:
+        appointment_service = AppointmentService(db)
+        appointment = await appointment_service.delete_prescription_file(
+            appointment_id=appointment_id
+        )
+
+        return success_response(
+            message="Prescription deleted successfully",
+            data={"appointment": appointment}
+        )
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prescription deletion failed: {str(e)}"
+        )
+
+
+@router.get("/{appointment_id}/prescription/presigned-url")
+async def get_prescription_presigned_url(
+    appointment_id: str,
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Get a presigned URL for the prescription file associated with an appointment.
+    
+    Args:
+        appointment_id: Appointment ID
+        
+    Returns:
+        Presigned URL for accessing the prescription file in S3
+    """
+    try:
+        if not ObjectId.is_valid(appointment_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid appointment ID format"
+            )
+        
+        appointment_service = AppointmentService(db)
+        appointment = await appointment_service.get_appointment(appointment_id)
+        
+        if not appointment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found"
+            )
+        
+        prescription_file_key = appointment.get("prescriptionFileKey")
+        if not prescription_file_key:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No prescription file found for this appointment"
+            )
+        
+        # Generate presigned URL
+        presigned_url = await s3_service.generate_presigned_url(prescription_file_key)
+        
+        return success_response(
+            message="Presigned URL generated successfully",
+            data={
+                "appointmentId": appointment_id,
+                "presignedUrl": presigned_url,
+                "fileName": appointment.get("prescriptionFileName"),
+                "fileType": appointment.get("prescriptionFileType"),
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate presigned URL: {str(e)}"
         )
 
 

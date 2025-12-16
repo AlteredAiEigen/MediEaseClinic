@@ -1,4 +1,5 @@
 import ReactMarkdown from "react-markdown";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +22,13 @@ import {
   ActivityIcon,
   CheckCircleIcon,
   SparklesIcon,
+  ExternalLinkIcon,
+  DownloadIcon,
+  Loader2Icon,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { get } from "@/lib/api-client";
+import { useToast } from "@/components/ui/use-toast";
 
 interface StructuredNotes {
   chiefComplaint?: string;
@@ -79,6 +86,8 @@ interface AppointmentDetailsDialogProps {
     diagnosis?: string;
     treatmentPlan?: string;
     followUpInstructions?: string;
+    prescriptionFileUrl?: string;
+    prescriptionFileName?: string;
     structuredNotes?: StructuredNotes;
     consultationNotes?: string;
     transcription?: string;
@@ -96,7 +105,57 @@ export function AppointmentDetailsDialog({
   onOpenChange,
   appointment,
 }: AppointmentDetailsDialogProps) {
+  const { toast } = useToast();
+  const [isLoadingPresignedUrl, setIsLoadingPresignedUrl] = useState(false);
+  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
+
   if (!appointment) return null;
+
+  const handleViewFile = async () => {
+    if (!appointment._id || !appointment.appointmentId) {
+      toast({
+        title: "Error",
+        description: "Appointment ID is missing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // If we already have a presigned URL, use it
+    if (presignedUrl) {
+      window.open(presignedUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setIsLoadingPresignedUrl(true);
+    try {
+      const appointmentId = appointment._id || appointment.appointmentId;
+      const response = await get(
+        `/api/appointments/${appointmentId}/prescription/presigned-url`
+      );
+
+      if (response.success && response.data?.presignedUrl) {
+        const url = response.data.presignedUrl;
+        setPresignedUrl(url);
+        window.open(url, "_blank", "noopener,noreferrer");
+      } else {
+        toast({
+          title: "Error",
+          description: response.message || "Failed to generate file access URL",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error getting presigned URL:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to access file",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingPresignedUrl(false);
+    }
+  };
 
   const structuredNotes = appointment.structuredNotes;
   const consultationSummary = appointment.consultationSummary;
@@ -351,6 +410,45 @@ export function AppointmentDetailsDialog({
                 </CardContent>
               </Card>
             </div>
+
+            {/* Prescription File Section */}
+            {appointment.prescriptionFileUrl && (
+              <Card className="border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <PillIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                      Prescription File
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileTextIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span className="text-sm text-foreground flex-1 truncate">
+                      {appointment.prescriptionFileName || "Prescription File"}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleViewFile}
+                      disabled={isLoadingPresignedUrl}
+                      className="border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40"
+                    >
+                      {isLoadingPresignedUrl ? (
+                        <>
+                          <Loader2Icon className="w-3.5 h-3.5 animate-spin mr-1" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <ExternalLinkIcon className="w-3.5 h-3.5 mr-1" />
+                          View File
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Chief Complaint */}
             {(structuredNotes?.chiefComplaint || consultationSummary?.chiefComplaint) && (

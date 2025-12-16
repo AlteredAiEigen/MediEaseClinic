@@ -493,6 +493,17 @@ class AppointmentService:
                 detail=f"File size exceeds {max_upload_size_mb}MB limit"
             )
 
+        # Check existing prescription files count (max 1 per appointment)
+        s3_prescriptions_collection = self.db.s3_prescriptions
+        existing_count = await s3_prescriptions_collection.count_documents({
+            "appointmentId": appointment_id
+        })
+        if existing_count >= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Only 1 prescription file allowed per appointment. Please remove the existing file before uploading another."
+            )
+
         content_type = file.content_type or mimetypes.guess_type(filename)[0] or ""
         if not content_type:
             if file_extension == "pdf":
@@ -534,6 +545,96 @@ class AppointmentService:
         await self.appointments_collection.update_one(
             {"_id": ObjectId(appointment_id)},
             {"$set": update_fields}
+        )
+
+        # Convert patient_id to ObjectId for patientMongoId
+        patient_mongo_id = None
+        if ObjectId.is_valid(patient_id):
+            patient_mongo_id = ObjectId(patient_id)
+        else:
+            # If patient_id is not a valid ObjectId, try to find patient by patientId
+            patient = await self.patients_collection.find_one({"patientId": patient_id})
+            if patient:
+                patient_mongo_id = patient["_id"]
+
+        # Create entry in s3_prescriptions collection (matching s3_reports structure)
+        s3_prescription_entry = {
+            "patientId": patient_id,
+            "patientMongoId": patient_mongo_id,
+            "appointmentId": appointment_id,
+            "documentName": filename,  # Changed from fileName to documentName
+            "s3Key": upload_result.get("s3_key"),
+            "s3Url": upload_result.get("file_url"),
+            "fileType": content_type,
+            "fileSize": len(file_bytes),
+            "uploadedBy": uploaded_by if uploaded_by else None,
+            "uploadedByName": uploader_name,
+            "uploadedAt": timestamp,
+            "notes": notes,
+            "emailSentToPatient": False,
+            "emailSentAt": None,
+            "lastAccessedAt": None,
+            "metadata": {},
+            "clinicId": clinic_id,
+            "createdAt": timestamp,
+            "updatedAt": timestamp,
+        }
+        
+        s3_prescriptions_collection = self.db.s3_prescriptions
+        await s3_prescriptions_collection.insert_one(s3_prescription_entry)
+
+        updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
+        return await appointment_helper(updated_appointment)
+    
+    async def delete_prescription_file(
+        self,
+        appointment_id: str
+    ) -> dict:
+        """Delete prescription file from S3 and s3_prescriptions collection."""
+        if not ObjectId.is_valid(appointment_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found"
+            )
+
+        appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
+        if not appointment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found"
+            )
+
+        # Get prescription file info from appointment
+        s3_key = appointment.get("prescriptionFileKey")
+        
+        # Delete from s3_prescriptions collection
+        s3_prescriptions_collection = self.db.s3_prescriptions
+        await s3_prescriptions_collection.delete_many({"appointmentId": appointment_id})
+        
+        # Delete from S3 if key exists
+        if s3_key:
+            try:
+                await s3_service.delete_file(s3_key)
+            except Exception as e:
+                # Log but don't fail if S3 delete fails
+                print(f"Failed to delete prescription file from S3: {e}")
+
+        # Clear prescription file fields from appointment
+        timestamp = datetime.utcnow()
+        update_fields = {
+            "prescriptionFileUrl": None,
+            "prescriptionFileKey": None,
+            "prescriptionFileName": None,
+            "prescriptionFileType": None,
+            "prescriptionUploadedAt": None,
+            "prescriptionUploadedBy": None,
+            "prescriptionUploadedByName": None,
+            "updatedAt": timestamp,
+        }
+
+        await self.appointments_collection.update_one(
+            {"_id": ObjectId(appointment_id)},
+            {"$unset": {"prescriptionFileUrl": "", "prescriptionFileKey": "", "prescriptionFileName": "", "prescriptionFileType": "", "prescriptionUploadedAt": "", "prescriptionUploadedBy": "", "prescriptionUploadedByName": ""}}
         )
 
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})

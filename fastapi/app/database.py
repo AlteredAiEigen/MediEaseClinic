@@ -185,6 +185,13 @@ class Database:
             await cls.database.s3_reports.create_index("s3Key", unique=True)
             await cls.database.s3_reports.create_index("mailgunMessageId")
             
+            # S3 prescriptions collection (same structure as s3_reports)
+            await cls.database.s3_prescriptions.create_index("patientId")
+            await cls.database.s3_prescriptions.create_index("patientMongoId")
+            await cls.database.s3_prescriptions.create_index("appointmentId")
+            await cls.database.s3_prescriptions.create_index("clinicId")
+            await cls.database.s3_prescriptions.create_index("s3Key", unique=True)
+            
             logger.info("Database indexes created successfully")
             
         except Exception as e:

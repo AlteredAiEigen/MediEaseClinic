@@ -20,11 +20,12 @@ import {
   Loader2Icon,
   FileAudioIcon,
   EyeIcon,
+  UploadIcon,
 } from "lucide-react";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
-import { get, post, put, patch } from "@/lib/api-client";
+import { get, post, put, patch, del } from "@/lib/api-client";
 import { MedicalHistoryRecord } from "@/lib/api/patients";
 import {
   addPendingConsultationUpload,
@@ -32,6 +33,7 @@ import {
   updatePendingConsultationUpload,
 } from "@/polymet/utils/pending-consultation-uploads";
 import { useAuth } from "@/context/auth-context";
+import { toast } from "@/components/ui/use-toast";
 
 interface Patient {
   _id: string;
@@ -123,6 +125,9 @@ export function ConsultationSession() {
   const [prescription, setPrescription] = useState("");
   const [prescribedTest, setPrescribedTest] = useState("");
   const [aiRecommendations, setAiRecommendations] = useState<any>(null);
+  const [prescriptionFileName, setPrescriptionFileName] = useState<string | null>(null); // Track uploaded file name
+  const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
+  const [isDeletingPrescription, setIsDeletingPrescription] = useState(false);
 
   // AI Chat
   const [aiChatOpen, setAiChatOpen] = useState(false);
@@ -318,6 +323,19 @@ export function ConsultationSession() {
         setResolvedPatientObjectId(resolvedPatientId);
         if (localAppointmentId) {
           setAppointmentId(localAppointmentId);
+          
+          // Fetch appointment to check for existing prescription file
+          try {
+            const appointmentResponse = await get<any>(`/api/appointments/${localAppointmentId}`);
+            if (appointmentResponse.success && appointmentResponse.data?.appointment) {
+              const appointment = appointmentResponse.data.appointment;
+              if (appointment.prescriptionFileName) {
+                setPrescriptionFileName(appointment.prescriptionFileName);
+              }
+            }
+          } catch (err) {
+            console.warn("Failed to fetch appointment for prescription file:", err);
+          }
         }
         if (localQueueEntryId) {
           setQueueEntryId(localQueueEntryId);
@@ -945,6 +963,106 @@ export function ConsultationSession() {
     }
   };
 
+  // Upload prescription file
+  const handlePrescriptionUpload = async (file: File) => {
+    if (!appointmentId) {
+      console.warn("No appointment ID available for prescription upload");
+      return;
+    }
+
+    // Check file size (10MB limit)
+    const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+    if (file.size > maxSizeBytes) {
+      toast({
+        title: "File too large",
+        description: "File size must be less than 10MB. Please select a smaller file.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsUploadingPrescription(true);
+      
+      // If there's an existing file, delete it first (replace operation)
+      if (prescriptionFileName) {
+        try {
+          await del(`/api/appointments/${appointmentId}/prescription`);
+        } catch (deleteErr) {
+          console.warn("Failed to delete existing prescription file:", deleteErr);
+          // Continue with upload even if delete fails
+        }
+      }
+      
+      const formData = new FormData();
+      formData.append("file", file);
+      if (prescription) {
+        formData.append("notes", prescription);
+      }
+
+      const response = await post(`/api/appointments/${appointmentId}/prescription-upload`, formData);
+      
+      if (response.success) {
+        // Update prescription file name
+        setPrescriptionFileName(file.name);
+        toast({
+          title: "Prescription uploaded successfully",
+          description: prescriptionFileName ? "File replaced successfully." : "File uploaded and saved.",
+        });
+      } else {
+        console.error("Prescription upload failed:", response.message);
+        toast({
+          title: "Upload failed",
+          description: response.message || "Failed to upload prescription. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      console.error("Error uploading prescription:", err);
+      toast({
+        title: "Upload failed",
+        description: err instanceof Error ? err.message : "Failed to upload prescription. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingPrescription(false);
+    }
+  };
+
+  // Delete prescription file from backend
+  const handleDeletePrescriptionFile = async () => {
+    if (!appointmentId || !prescriptionFileName) return;
+
+    try {
+      setIsDeletingPrescription(true);
+      const response = await del(`/api/appointments/${appointmentId}/prescription`);
+      
+      if (response.success) {
+        setPrescriptionFileName(null);
+        toast({
+          title: "Prescription deleted successfully",
+          description: "File removed from records.",
+        });
+      } else {
+        toast({
+          title: "Delete failed",
+          description: response.message || "Failed to delete prescription. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      console.error("Error deleting prescription:", err);
+      toast({
+        title: "Delete failed",
+        description: err instanceof Error ? err.message : "Failed to delete prescription. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingPrescription(false);
+    }
+  };
+
+
   // Debounced autosave for consultation details
   const isInitialMount = useRef(true);
   useEffect(() => {
@@ -1482,6 +1600,14 @@ export function ConsultationSession() {
           onFollowUpChange={setFollowUp}
           onPrescriptionChange={setPrescription}
           onPrescribedTestChange={setPrescribedTest}
+          onPrescriptionFileUpload={handlePrescriptionUpload}
+          isUploadingPrescription={isUploadingPrescription}
+          appointmentId={appointmentId}
+          patientName={displayPatient.fullName}
+          patientId={displayPatient.patientId}
+          prescriptionFileName={prescriptionFileName}
+          onDeletePrescriptionFile={handleDeletePrescriptionFile}
+          isDeletingPrescription={isDeletingPrescription}
         />
       </div>
 

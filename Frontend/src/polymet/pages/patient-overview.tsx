@@ -238,6 +238,9 @@ interface Appointment {
   createdAt?: string;
   created_at?: string;
   prescription?: string;
+  prescriptionFileUrl?: string;
+  prescriptionFileName?: string;
+  prescriptionFileKey?: string;
   tests?: string;
   prescribedTest?: string;
   diagnosis?: string;
@@ -1205,6 +1208,9 @@ export function PatientOverview() {
                     createdAt: apt.createdAt || apt.created_at,
                     created_at: apt.created_at || apt.createdAt,
                     prescription: apt.prescription,
+                    prescriptionFileUrl: apt.prescriptionFileUrl,
+                    prescriptionFileName: apt.prescriptionFileName,
+                    prescriptionFileKey: apt.prescriptionFileKey,
                     tests: apt.tests,
                     prescribedTest: apt.prescribedTest,
                     diagnosis: apt.diagnosis,
@@ -5205,6 +5211,7 @@ export function PatientOverview() {
 
                     const hasDetails =
                       appointment.prescription ||
+                      appointment.prescriptionFileUrl ||
                       appointment.tests ||
                       appointment.prescribedTest ||
                       appointment.diagnosis ||
@@ -5260,10 +5267,12 @@ export function PatientOverview() {
                                         <span className="text-xs font-medium text-red-700 dark:text-red-400">Diagnosis</span>
                                       </div>
                                     )}
-                                    {appointment.prescription && (
+                                    {(appointment.prescription || appointment.prescriptionFileUrl) && (
                                       <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
                                         <PillIcon className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                                        <span className="text-xs font-medium text-purple-700 dark:text-purple-400">Prescription</span>
+                                        <span className="text-xs font-medium text-purple-700 dark:text-purple-400">
+                                          {appointment.prescriptionFileUrl ? "Prescription File" : "Prescription"}
+                                        </span>
                                       </div>
                                     )}
                                     {(appointment.tests || appointment.prescribedTest) && (
@@ -5344,7 +5353,7 @@ export function PatientOverview() {
                             ) : null}
 
                             {/* Prescription Section */}
-                            {appointment.prescription ? (
+                            {(appointment.prescription || appointment.prescriptionFileUrl) ? (
                               <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 p-3">
                                 <div className="flex items-center gap-2 mb-2">
                                   <PillIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
@@ -5352,9 +5361,24 @@ export function PatientOverview() {
                                     Prescription
                                   </p>
                                 </div>
-                                <p className="text-sm text-foreground whitespace-pre-wrap">
-                                  {appointment.prescription}
-                                </p>
+                                {appointment.prescription && (
+                                  <p className="text-sm text-foreground whitespace-pre-wrap mb-2">
+                                    {appointment.prescription}
+                                  </p>
+                                )}
+                                {appointment.prescriptionFileUrl && (
+                                  <div className="mt-2">
+                                    <a
+                                      href={appointment.prescriptionFileUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-purple-700 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded-md border border-purple-300 dark:border-purple-700 transition-colors"
+                                    >
+                                      <FileTextIcon className="w-4 h-4" />
+                                      {appointment.prescriptionFileName || "View Prescription File"}
+                                    </a>
+                                  </div>
+                                )}
                               </div>
                             ) : null}
 
