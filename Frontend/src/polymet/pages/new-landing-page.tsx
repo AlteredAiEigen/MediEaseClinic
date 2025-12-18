@@ -363,7 +363,7 @@ export function NewLandingPage() {
             </div>
           </div>
           <div className="border-t border-slate-800 mt-8 pt-8 text-center text-sm text-slate-400">
-            © 2024 MediEase Clinic. All rights reserved.
+            © 2025 MediEase Clinic. All rights reserved.
           </div>
         </div>
       </footer>

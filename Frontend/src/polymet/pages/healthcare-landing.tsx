@@ -190,7 +190,7 @@ export function HealthcareLanding() {
               Features
             </button>
             <button
-              onClick={() => scrollToSection('solutions')}
+              onClick={() => scrollToSection('pricing')}
               className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
             >
               Pricing
@@ -207,6 +207,12 @@ export function HealthcareLanding() {
             >
               Security
             </button>
+            <Link
+              to="/about-us#founders"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              About Us
+            </Link>
             <Link to="/role-selection">
               <Button
                 variant="ghost"
@@ -232,7 +238,7 @@ export function HealthcareLanding() {
         <div className="grid lg:grid-cols-2 gap-16 items-center">
           <div className="space-y-8">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-600 text-sm">
-              <RocketIcon className="w-4 h-4" />✨ Launching Soon - Transform
+              <RocketIcon className="w-4 h-4" />✨ Live Now - Transform
               Your Healthcare Practice
             </div>
             <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
@@ -248,6 +254,16 @@ export function HealthcareLanding() {
               solutions for appointments, EHR, e-prescriptions, and AI-powered
               consultations
             </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-sm font-semibold">
+                <MicIcon className="w-4 h-4" />
+                Multilingual AI Transcription (15+ Indian languages)
+              </div>
+              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold">
+                <FileTextIcon className="w-4 h-4" />
+                Generates structured clinical notes & patient updates
+              </div>
+            </div>
             <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-2xl p-6 border border-teal-100 dark:border-teal-900">
               <p className="text-base text-foreground">
                 Streamline your clinic operations with{" "}
@@ -1051,10 +1067,10 @@ export function HealthcareLanding() {
             <h3 className="text-2xl font-bold text-center mb-4">
               Certified & Compliant
             </h3>
-            <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-              Meeting global standards for healthcare data security
+            <p className="text-center text-muted-foreground mb-8 max-w-2xl mx-auto">
+              We keep patient data protected with HIPAA-grade security across the platform.
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            <div className="flex items-center justify-center">
               <div className="text-center">
                 <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mx-auto mb-4">
                   <ShieldCheckIcon className="w-10 h-10 text-teal-600" />
@@ -1062,33 +1078,6 @@ export function HealthcareLanding() {
                 <div className="font-bold text-lg mb-1">HIPAA</div>
                 <div className="text-xs text-muted-foreground">
                   Health Insurance Portability and Accountability Act
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheckIcon className="w-10 h-10 text-emerald-600" />
-                </div>
-                <div className="font-bold text-lg mb-1">SOC 2</div>
-                <div className="text-xs text-muted-foreground">
-                  Service Organization Control 2
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheckIcon className="w-10 h-10 text-cyan-600" />
-                </div>
-                <div className="font-bold text-lg mb-1">GDPR</div>
-                <div className="text-xs text-muted-foreground">
-                  General Data Protection Regulation
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheckIcon className="w-10 h-10 text-purple-600" />
-                </div>
-                <div className="font-bold text-lg mb-1">ISO 27001</div>
-                <div className="text-xs text-muted-foreground">
-                  Information Security Management
                 </div>
               </div>
             </div>
@@ -1388,7 +1377,7 @@ export function HealthcareLanding() {
       </section>
 
       {/* Footer */}
-      <footer id="pricing" className="bg-slate-900 text-white py-12">
+      <footer className="bg-slate-900 text-white py-12">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
@@ -1441,7 +1430,7 @@ export function HealthcareLanding() {
               <h4 className="font-bold mb-4">Company</h4>
               <ul className="space-y-2 text-sm text-slate-400">
                 <li>
-                  <Link to="/about-us" className="hover:text-teal-400">
+                  <Link to="/about-us#founders" className="hover:text-teal-400">
                     About Us
                   </Link>
                 </li>
@@ -1455,17 +1444,16 @@ export function HealthcareLanding() {
           </div>
           <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-sm text-slate-400">
-              © 2024 MediEase. All rights reserved.
+              © 2025 MediEase. All rights reserved.
             </p>
             <div className="flex gap-6 text-sm text-slate-400">
-              <a href="#" className="hover:text-teal-400">
-                Twitter
-              </a>
-              <a href="#" className="hover:text-teal-400">
+              <a
+                href="https://www.linkedin.com/company/medieaseclinic/?lipi=urn%3Ali%3Apage%3Ad_flagship3_company%3Bm0xjg1BkQ9K62D64DBOqfQ%3D%3D"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-teal-400"
+              >
                 LinkedIn
-              </a>
-              <a href="#" className="hover:text-teal-400">
-                Facebook
               </a>
             </div>
           </div>

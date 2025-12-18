@@ -559,16 +559,11 @@ async def _upload_recording_background(
             duration=duration,
             retention_policy="standard"
         )
-        logger.info(f"Successfully uploaded recording for appointment {appointment_id}")
+        logger.info(f"Successfully uploaded recording for appointment {appointment_id}. Transcription and AI extraction will be handled by cron job server.")
         
-        # Process structured notes in background after transcription completes
-        if recording and recording.get("recordingId"):
-            # Find recording by recordingId to get MongoDB _id
-            recording_doc = await db.recordings.find_one({"recordingId": recording["recordingId"]})
-            if recording_doc and recording_doc.get("transcription"):
-                # Process structured notes asynchronously
-                await recording_service.process_structured_notes(recording_doc["_id"])
-                logger.info(f"Successfully processed structured notes for recording {recording['recordingId']}")
+        # Note: Transcription and AI extraction are now handled by a separate cron job server
+        # The recording is marked with transcriptionStatus="pending" and notesExtractionStatus="pending"
+        # The cron job server will pick up pending recordings and process them
     except Exception as e:
         # Log error but don't raise - this is a background task
         logger.error(f"Background recording upload/processing failed for appointment {appointment_id}: {e}", exc_info=True)

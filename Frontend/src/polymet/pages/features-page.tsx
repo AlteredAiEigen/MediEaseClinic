@@ -435,7 +435,7 @@ export function FeaturesPage() {
             </Link>
           </div>
           <p className="text-slate-500 text-sm mt-8">
-            © 2024 MediEase. All rights reserved.
+            © 2025 MediEase. All rights reserved.
           </p>
         </div>
       </footer>

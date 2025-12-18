@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -13,53 +14,86 @@ import {
 import { MediEaseLogo } from "@/polymet/components/mediease-logo";
 
 export function AboutUsPage() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // Check if we should scroll to founders section
+    if (location.hash === '#founders') {
+      const element = document.getElementById('founders');
+      if (element) {
+        element.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }
+    }
+  }, [location]);
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50/30 to-white">
       {/* Navigation */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-border sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-3">
-              <MediEaseLogo size="md" />
+      <header className="border-b border-border sticky top-0 z-50 bg-white/80 backdrop-blur-sm">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3">
+            <MediEaseLogo size="md" />
+          </Link>
+
+          <nav className="hidden md:flex items-center gap-8">
+            <button
+              onClick={() => {
+                window.location.href = '/#features';
+              }}
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              Features
+            </button>
+            <button
+              onClick={() => {
+                window.location.href = '/#pricing';
+              }}
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              Pricing
+            </button>
+            <button
+              onClick={() => {
+                window.location.href = '/#roadmap';
+              }}
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              Roadmap
+            </button>
+            <button
+              onClick={() => {
+                window.location.href = '/#security';
+              }}
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              Security
+            </button>
+            <Link
+              to="/about-us#founders"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+            >
+              About Us
             </Link>
-            <div className="flex items-center gap-6">
-              <Link
-                to="/"
-                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
+            <Link to="/role-selection">
+              <Button
+                variant="ghost"
+                size="default"
+                className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 font-medium px-4 py-2"
               >
-                Home
-              </Link>
-              <Link
-                to="/features"
-                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
-              >
-                Features
-              </Link>
-              <Link
-                to="/roadmap"
-                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
-              >
-                Roadmap
-              </Link>
-              <Link
-                to="/security"
-                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
-              >
-                Security
-              </Link>
-              <Link
-                to="/pricing"
-                className="text-sm font-medium text-muted-foreground hover:text-teal-600 transition-colors"
-              >
-                Pricing
-              </Link>
-              <Button className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600">
-                Book a Demo
+                Sign In
               </Button>
-            </div>
-          </div>
+            </Link>
+            <Button
+              size="default"
+              className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-medium px-6 py-2"
+            >
+              Book a Demo
+            </Button>
+          </nav>
         </div>
-      </nav>
+      </header>
 
       {/* Hero Section */}
       <section className="relative overflow-hidden py-20 px-6">
@@ -112,7 +146,7 @@ export function AboutUsPage() {
       </section>
 
       {/* Founders Section */}
-      <section className="py-16 px-6 bg-white">
+      <section id="founders" className="py-16 px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-teal-100 to-emerald-100 border border-teal-200 text-teal-700 text-sm font-semibold mb-6">

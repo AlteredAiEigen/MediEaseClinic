@@ -15,6 +15,7 @@ from app.services.aws_service import aws_service
 from app.services.patient_medical_history_service import PatientMedicalHistoryService
 from app.models.patient_medical_history import PatientMedicalHistoryCreate
 from app.config import settings
+from app.services.transcribe_service import transcribe_service
 
 
 class RecordingService:
@@ -90,6 +91,9 @@ class RecordingService:
         if not doctor:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
         
+        # Get transcription language from doctor settings (default: "hi" for Hindi)
+        transcription_language = doctor.get("transcriptionLanguage", "hi")
+        
         appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         if not appointment:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
@@ -130,15 +134,11 @@ class RecordingService:
         # Calculate expiration
         expires_at = await self.calculate_expiration_date(retention_policy)
 
-        # Start transcription job and wait for completion
-        job_name = f"{recording_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+        # Build S3 URL
         s3_url = f"https://{settings.s3_bucket_name}.s3.{settings.aws_region}.amazonaws.com/{s3_result['file_path']}"
-        transcription_result = aws_service.start_transcription_job_and_wait(
-            recording_url=s3_url,
-            job_name=job_name
-        )
 
-        # Create recording document based on transcription result
+        # Create recording document with pending transcription and AI extraction status
+        # Transcription and AI extraction will be handled by separate cron job server
         recording_dict = {
             "recordingId": recording_id,
             "patientId": patient_id,
@@ -149,40 +149,28 @@ class RecordingService:
             "fileName": s3_result["file_name"],
             "fileSize": s3_result["file_size"],
             "mimeType": "audio/wav",  # Converted to WAV during amplification
-            "transcriptionJobName": job_name,
             "s3Url": s3_url,
             "isEncrypted": True,
             "retentionPolicy": retention_policy,
             "expiresAt": expires_at,
+            "status": "pending",
+            "transcriptionStatus": "pending",
+            "transcriptionLanguage": transcription_language,
+            "transcription": "",
+            "transcriptionConfidence": None,
             "processingStartedAt": datetime.utcnow(),
             "createdAt": datetime.utcnow(),
-            "updatedAt": datetime.utcnow()
+            "updatedAt": datetime.utcnow(),
+            "aiProcessing": {
+                "model": "gpt-4",
+                "version": "1.0",
+                "language": "en-US",
+                "transcriptionModel": None,  # Will be set by cron job
+                "notesExtractionModel": "GPT-4",
+                "notesExtractionStatus": "pending",
+                "notesExtractionError": None
+            }
         }
-
-        if transcription_result["success"]:
-            # Transcription completed successfully
-            recording_dict.update({
-                "status": "processed",
-                "transcription": transcription_result["transcript"],
-                "transcriptionConfidence": transcription_result.get("confidence", 0.0),
-                "processingCompletedAt": datetime.utcnow(),
-                "aiProcessing": {
-                    "model": "gpt-4",
-                    "version": "1.0",
-                    "language": "en-US",
-                    "transcriptionModel": "AWS Transcribe",
-                    "notesExtractionModel": "GPT-4",
-                    "notesExtractionStatus": "pending",
-                    "notesExtractionError": None
-                }
-            })
-        else:
-            # Transcription failed
-            recording_dict.update({
-                "status": "error",
-                "errorMessage": transcription_result.get("error", "Transcription failed"),
-                "transcription": ""
-            })
         
         # Update appointment with S3 URL
         if appointment_id:
@@ -808,22 +796,8 @@ class RecordingService:
         if not recording:
             return None
 
-        # If transcription is available but structured notes are missing or failed, trigger extraction
-        try:
-            ai_proc = recording.get("aiProcessing") or {}
-            needs_notes = (
-                recording.get("transcription")
-                and recording.get("status") == "processed"
-                and not ai_proc.get("structuredNotes")
-                and ai_proc.get("notesExtractionStatus") != "success"
-            )
-            if needs_notes:
-                # Kick off extraction and refresh the record
-                await self.process_structured_notes(recording["_id"])
-                recording = await self.recordings_collection.find_one({"_id": recording["_id"]})
-        except Exception as e:  # pragma: no cover
-            # Do not block retrieval on extraction failures
-            print(f"Warning: auto-extract structured notes failed: {e}")
+        # Note: Transcription and AI extraction are now handled by a separate cron job server
+        # No automatic processing is triggered here
         
         result = await recording_helper(recording)
         

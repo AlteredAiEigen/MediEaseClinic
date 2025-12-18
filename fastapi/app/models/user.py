@@ -47,6 +47,7 @@ class UserBase(BaseModel):
     licenseNumber: Optional[str] = None
     experience: Optional[int] = Field(0, ge=0)
     availability: Optional[Dict[str, Dict[str, str]]] = None  # {day: {startTime: "09:00", endTime: "17:00", enabled: true}}
+    transcriptionLanguage: Optional[str] = Field("hi", pattern="^(hi|en|hi-en|en-hi|auto)$")  # Default: Hindi, options: hi, en, hi-en, en-hi, auto
 
     # Admin specific fields
     permissions: Optional[List[str]] = []
@@ -100,6 +101,7 @@ class UserUpdate(BaseModel):
     isActive: Optional[bool] = None
     availability: Optional[Dict[str, Dict[str, Any]]] = None
     notificationPreferences: Optional[Dict[str, bool]] = None
+    transcriptionLanguage: Optional[str] = Field(None, pattern="^(hi|en|hi-en|en-hi|auto)$")
 
 
 async def user_helper(user: dict) -> dict:
@@ -128,6 +130,7 @@ async def user_helper(user: dict) -> dict:
         "experience": user.get("experience", 0),
         "availability": user.get("availability"),
         "notificationPreferences": user.get("notificationPreferences"),
+        "transcriptionLanguage": user.get("transcriptionLanguage", "hi"),
         "permissions": user.get("permissions", []),
         "createdAt": user.get("createdAt"),
         "updatedAt": user.get("updatedAt"),

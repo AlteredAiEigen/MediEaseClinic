@@ -60,4 +60,7 @@ pydub
 ffmpeg-python
 numpy>=2.0.0
 Pillow==10.4.0
+indic-asr-onnx==0.1.0
+imageio-ffmpeg==0.5.1
+soundfile==0.13.1
 

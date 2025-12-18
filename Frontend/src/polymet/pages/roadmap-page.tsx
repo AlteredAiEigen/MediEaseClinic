@@ -644,33 +644,17 @@ export function RoadmapPage() {
             Innovating the future of Indian healthcare
           </p>
           <div className="flex items-center justify-center gap-6 mt-6">
-            <Link
-              to="/"
+            <a
+              href="https://www.linkedin.com/company/medieaseclinic/?lipi=urn%3Ali%3Apage%3Ad_flagship3_company%3Bm0xjg1BkQ9K62D64DBOqfQ%3D%3D"
+              target="_blank"
+              rel="noreferrer"
               className="text-slate-400 hover:text-white transition-colors"
             >
-              Home
-            </Link>
-            <Link
-              to="/features"
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              Features
-            </Link>
-            <Link
-              to="/solutions"
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              Solutions
-            </Link>
-            <Link
-              to="/security"
-              className="text-slate-400 hover:text-white transition-colors"
-            >
-              Security
-            </Link>
+              LinkedIn
+            </a>
           </div>
           <p className="text-slate-500 text-sm mt-8">
-            © 2024 MediEase. All rights reserved.
+            © 2025 MediEase. All rights reserved.
           </p>
         </div>
       </footer>

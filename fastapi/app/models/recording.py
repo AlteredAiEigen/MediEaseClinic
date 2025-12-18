@@ -74,8 +74,10 @@ class RecordingBase(BaseModel):
     fileName: str
     fileSize: int
     mimeType: str = "audio/mpeg"
-    status: str = Field("recording", pattern="^(recording|processing|completed|failed|archived|error|processed)$")
+    status: str = Field("recording", pattern="^(recording|processing|completed|failed|archived|error|processed|pending)$")
     transcription: Optional[str] = ""
+    transcriptionStatus: Optional[str] = Field(None, pattern="^(pending|completed|failed)$")
+    transcriptionLanguage: Optional[str] = Field("hi", pattern="^(hi|en|hi-en|en-hi|auto)$")  # Language for transcription (default: Hindi)
     transcriptionConfidence: Optional[float] = Field(None, ge=0, le=1)
     audioQuality: Optional[AudioQuality] = None
     aiProcessing: Optional[AIProcessing] = None
@@ -124,6 +126,8 @@ class RecordingResponse(BaseModel):
     mimeType: str
     status: str
     transcription: Optional[str] = None
+    transcriptionStatus: Optional[str] = None
+    transcriptionLanguage: Optional[str] = None
     transcriptionConfidence: Optional[float] = None
     processingStartedAt: Optional[datetime] = None
     processingCompletedAt: Optional[datetime] = None
@@ -143,7 +147,7 @@ class RecordingResponse(BaseModel):
 
 class RecordingUpdate(BaseModel):
     """Schema for updating recording."""
-    status: Optional[str] = Field(None, pattern="^(recording|processing|completed|failed|archived|error|processed)$")
+    status: Optional[str] = Field(None, pattern="^(recording|processing|completed|failed|archived|error|processed|pending)$")
     transcription: Optional[str] = None
     transcriptionConfidence: Optional[float] = Field(None, ge=0, le=1)
     errorMessage: Optional[str] = None
@@ -172,6 +176,8 @@ async def recording_helper(recording: dict) -> dict:
         "mimeType": recording.get("mimeType", "audio/mpeg"),
         "status": recording.get("status", "recording"),
         "transcription": recording.get("transcription", ""),
+        "transcriptionStatus": recording.get("transcriptionStatus"),
+        "transcriptionLanguage": recording.get("transcriptionLanguage", "hi"),
         "transcriptionJobName": recording.get("transcriptionJobName"),  # Added for polling
         "s3Url": recording.get("s3Url"),  # Added for appointment reference
         "transcriptionConfidence": recording.get("transcriptionConfidence"),

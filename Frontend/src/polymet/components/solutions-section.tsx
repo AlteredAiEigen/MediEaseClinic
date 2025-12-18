@@ -214,7 +214,7 @@ export function SolutionsSection() {
 
   return (
     <section
-      id="solutions"
+      id="pricing"
       className="relative bg-gradient-to-b from-teal-50/30 to-white dark:from-teal-950/20 dark:to-slate-950 py-20"
     >
       <div className="container mx-auto px-6">
@@ -230,9 +230,7 @@ export function SolutionsSection() {
             </span>
           </h2>
           <p className="text-muted-foreground text-lg max-w-3xl mx-auto">
-            Whether you're a solo practitioner or a multi-specialty hospital,
-            MediEase adapts to your needs with flexible modules and scalable
-            pricing.
+            AI transcription for consultations in 15+ Indian languages, turning voice into structured clinical notes and updating patient records automatically.
           </p>
         </div>
 
@@ -289,7 +287,7 @@ export function SolutionsSection() {
           ))}
         </div>
 
-        {/* Bilingual Support Banner */}
+        {/* Multilingual Transcription Banner */}
         <div className="bg-gradient-to-r from-purple-50 to-teal-50 dark:from-purple-950/30 dark:to-teal-950/30 rounded-3xl p-12 mb-20 border border-purple-100 dark:border-purple-900">
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
@@ -297,11 +295,10 @@ export function SolutionsSection() {
                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-teal-500 flex items-center justify-center">
                   <LanguagesIcon className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="text-2xl font-bold">Bilingual Interface</h3>
+                <h3 className="text-2xl font-bold">Multilingual Transcription</h3>
               </div>
               <p className="text-muted-foreground mb-6 leading-relaxed">
-                Full support for English and Hindi interfaces. Switch languages
-                seamlessly to serve diverse patient populations across India.
+                Real-time consultation transcription across India’s major languages. We generate structured clinical notes and update patient information automatically after every visit.
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                 {languages.map((lang) => (
