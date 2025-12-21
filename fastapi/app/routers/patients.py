@@ -52,8 +52,19 @@ async def create_patient(
         # Now validate the remaining fields with Pydantic
         patient_data = PatientCreateRequest(**body_copy)
         
-        patient_service = PatientService(db)
+        # Validate data storage consent - must be True to create patient
+        if not patient_data.agreedToDataStorage:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Patient consent for data storage is required. agreedToDataStorage must be True."
+            )
+        
+        # Convert camelCase to snake_case for backend model
         patient_payload = patient_data.model_dump(exclude_none=True)
+        if "agreedToDataStorage" in patient_payload:
+            patient_payload["agreed_to_data_storage"] = patient_payload.pop("agreedToDataStorage")
+        
+        patient_service = PatientService(db)
         logger.info("patient_payload for creating patient %s", patient_payload)
 
         # Get clinic info for reference (which clinic created this patient)

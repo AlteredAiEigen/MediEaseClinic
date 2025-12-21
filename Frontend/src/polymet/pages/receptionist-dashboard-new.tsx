@@ -19,6 +19,7 @@ import {
   Loader2Icon,
   UploadIcon,
   ArrowLeftIcon,
+  ShieldCheckIcon,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -32,6 +33,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,6 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { get, post, patch, put } from "@/lib/api-client";
+import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 import {
   Select,
   SelectContent,
@@ -157,6 +160,9 @@ export function ReceptionistDashboardNew() {
   const [appointmentsList, setAppointmentsList] = useState<any[]>([]);
   const [addPatientDialog, setAddPatientDialog] = useState(false);
   const [isAddingPatient, setIsAddingPatient] = useState(false);
+  const [agreedToTermsReceptionist, setAgreedToTermsReceptionist] = useState(false);
+  const [scheduleAppointmentDialog, setScheduleAppointmentDialog] = useState(false);
+  const [selectedPatientForAppointment, setSelectedPatientForAppointment] = useState<string>("");
   const [newPatient, setNewPatient] = useState({
     firstName: "",
     lastName: "",
@@ -262,29 +268,67 @@ export function ReceptionistDashboardNew() {
     }
   }, []);
 
+  const formatPhoneNumber = (value: string): string => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '');
+    // Limit to 10 digits
+    const limitedDigits = digits.slice(0, 10);
+    // Format as: 98765 43210 (5 digits space 5 digits)
+    if (limitedDigits.length <= 5) {
+      return limitedDigits;
+    }
+    return `${limitedDigits.slice(0, 5)} ${limitedDigits.slice(5)}`;
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const formatted = formatPhoneNumber(value);
+    setNewPatient((prev) => ({ ...prev, phone: formatted }));
+  };
+
   const handleAddPatient = async () => {
     if (!newPatient.firstName || !newPatient.lastName || !newPatient.email || !newPatient.phone) {
       alert("Please fill in all required fields (First Name, Last Name, Email, Phone)");
       return;
     }
 
+    if (!agreedToTermsReceptionist) {
+      alert("Please confirm that the patient has been informed about data security terms before registering.");
+      return;
+    }
+
     try {
       setIsAddingPatient(true);
+      
+      // Calculate age from date of birth
+      const calculateAge = (dateOfBirth: string) => {
+        if (!dateOfBirth) return "0";
+        const birthDate = new Date(dateOfBirth);
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        return age.toString();
+      };
+
       const payload = {
         firstName: newPatient.firstName,
         lastName: newPatient.lastName,
         email: newPatient.email,
-        phone: newPatient.phone,
+        phone: `+91 ${newPatient.phone.replace(/\s/g, '')}`.trim(),
         dateOfBirth: newPatient.dateOfBirth || undefined,
+        age: newPatient.dateOfBirth ? calculateAge(newPatient.dateOfBirth) : "0",
         gender: newPatient.gender || undefined,
         address: newPatient.address || undefined,
         bloodGroup: newPatient.bloodGroup || undefined,
+        agreedToDataStorage: true, // Patient has agreed via checkbox
       };
 
       const response = await post<{ patient: any }>("/api/patients", payload);
 
       if (response.success && response.data?.patient) {
-        setSelectedPatientId(response.data.patient._id);
+        const newPatientId = response.data.patient._id;
         setAddPatientDialog(false);
         setNewPatient({
           firstName: "",
@@ -296,7 +340,10 @@ export function ReceptionistDashboardNew() {
           address: "",
           bloodGroup: "",
         });
-        setCheckInDialog(true);
+        setAgreedToTermsReceptionist(false);
+        // Open schedule appointment dialog with the newly created patient pre-selected
+        setSelectedPatientForAppointment(newPatientId);
+        setScheduleAppointmentDialog(true);
       } else {
         alert(response.message || "Failed to add patient");
       }
@@ -1427,7 +1474,7 @@ const confirmCheckoutWithoutPrescription = () => {
                 }`}
                 onClick={() => setQueueDetailTab("checked-in")}
               >
-                Checked In
+                Waiting
               </button>
               <button
                 type="button"
@@ -1447,7 +1494,7 @@ const confirmCheckoutWithoutPrescription = () => {
                   <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-200 bg-white/80 p-6 text-center dark:border-sky-800/60 dark:bg-slate-900/50">
                     <CheckCircleIcon className="mb-3 h-8 w-8 text-sky-300" />
                     <p className="text-sm font-semibold text-sky-700">
-                      No checked-in patients
+                      No patients waiting
                     </p>
                     <p className="mt-1 text-xs text-sky-600/80">
                       Use the search to find more appointments.
@@ -1946,12 +1993,19 @@ const confirmCheckoutWithoutPrescription = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone *</Label>
-                <Input
-                  id="phone"
-                  value={newPatient.phone}
-                  onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
-                  placeholder="+1-555-0123"
-                />
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-medium text-muted-foreground px-3 py-2 border border-input rounded-md bg-muted">
+                    +91
+                  </span>
+                  <Input
+                    id="phone"
+                    value={newPatient.phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    placeholder="98765 43210"
+                    maxLength={11}
+                    className="flex-1"
+                  />
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -2011,6 +2065,42 @@ const confirmCheckoutWithoutPrescription = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Data Security Confirmation */}
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div className="bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <ShieldCheckIcon className="h-5 w-5 text-teal-600 dark:text-teal-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <h4 className="font-semibold text-teal-900 dark:text-teal-100 text-sm">
+                      Data Security Confirmation
+                    </h4>
+                    <p className="text-xs text-teal-800 dark:text-teal-200">
+                      We protect your information by:
+                    </p>
+                    <ul className="space-y-1 text-xs text-teal-700 dark:text-teal-300 ml-4 list-disc">
+                      <li>Encrypting all personal and medical data in our secure, all-in-one platform.</li>
+                      <li>Enabling instant doctor access to your history for better, faster care.</li>
+                      <li>Keeping everything internal—no external sharing or integrations.</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 pt-2">
+                  <Checkbox
+                    id="agreeToTermsReceptionist"
+                    checked={agreedToTermsReceptionist}
+                    onCheckedChange={(checked) => setAgreedToTermsReceptionist(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <label
+                    htmlFor="agreeToTermsReceptionist"
+                    className="text-xs font-medium text-teal-900 dark:text-teal-100 cursor-pointer leading-tight"
+                  >
+                    I confirm that the patient has been informed about how we protect their data and agrees to the terms above.
+                  </label>
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -2027,13 +2117,14 @@ const confirmCheckoutWithoutPrescription = () => {
                   address: "",
                   bloodGroup: "",
                 });
+                setAgreedToTermsReceptionist(false);
               }}
             >
               Cancel
             </Button>
             <Button
               onClick={handleAddPatient}
-              disabled={isAddingPatient}
+              disabled={isAddingPatient || !agreedToTermsReceptionist}
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               {isAddingPatient ? (
@@ -2044,13 +2135,29 @@ const confirmCheckoutWithoutPrescription = () => {
               ) : (
                 <>
                   <UserPlusIcon className="h-4 w-4 mr-2" />
-                  Add Patient & Check In
+                  Add Patient
                 </>
               )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Schedule Appointment Dialog */}
+      <NewAppointmentDialog
+        open={scheduleAppointmentDialog}
+        onOpenChange={(open) => {
+          setScheduleAppointmentDialog(open);
+          if (!open) {
+            setSelectedPatientForAppointment("");
+          }
+        }}
+        initialPatientId={selectedPatientForAppointment}
+        onAppointmentUpdated={() => {
+          // Refresh appointments list if needed
+          fetchQueueData();
+        }}
+      />
 
       {/* Check In Dialog - Appointment-based */}
       <Dialog open={checkInDialog} onOpenChange={setCheckInDialog}>

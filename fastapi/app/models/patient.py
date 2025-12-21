@@ -102,11 +102,14 @@ class PatientBase(BaseModel):
     # Note: Patients are universal - clinic info is for reference only (which clinic created the patient)
     createdByClinicId: Optional[str] = None
     createdByClinicName: Optional[str] = None
+    
+    # Data storage consent - required for patient creation
+    agreed_to_data_storage: bool = Field(default=False, description="Patient consent for data storage")
 
 
 class PatientCreate(PatientBase):
     """Schema for creating a new patient."""
-    pass
+    agreed_to_data_storage: bool = Field(..., description="Patient consent for data storage (must be True)")
 
 
 class PatientInDB(PatientBase):
@@ -155,6 +158,7 @@ class PatientResponse(BaseModel):
     carePlanSummary: Optional[str] = None
     followUpPlan: Optional[str] = None
     insights: Optional[PatientInsights] = None
+    agreed_to_data_storage: bool
     createdAt: datetime
     updatedAt: datetime
     
@@ -277,6 +281,7 @@ async def patient_helper(patient: dict) -> dict:
         "insuranceNumber": patient.get("insuranceNumber"),
         "medieaseClinicEmail": patient.get("medieaseClinicEmail"),
         "currentMedications": patient.get("currentMedications", []),
+        "agreed_to_data_storage": patient.get("agreed_to_data_storage", False),
         "createdAt": patient.get("createdAt"),
         "updatedAt": patient.get("updatedAt"),
     }

@@ -357,6 +357,23 @@ const [, setPatients] = useState<Patient[]>([]);
     }
   };
 
+  const formatPhoneNumber = (value: string): string => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '');
+    // Limit to 10 digits
+    const limitedDigits = digits.slice(0, 10);
+    // Format as: 98765 43210 (5 digits space 5 digits)
+    if (limitedDigits.length <= 5) {
+      return limitedDigits;
+    }
+    return `${limitedDigits.slice(0, 5)} ${limitedDigits.slice(5)}`;
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const formatted = formatPhoneNumber(value);
+    setNewPatient((prev) => ({ ...prev, phone: formatted }));
+  };
+
   // Handle register patient
   const handleRegisterPatient = async () => {
     if (!newPatient.firstName || !newPatient.lastName || !newPatient.phone) {
@@ -388,10 +405,11 @@ const [, setPatients] = useState<Patient[]>([]);
         gender: newPatient.gender || "Other",
         dateOfBirth: newPatient.dateOfBirth || undefined,
         age: newPatient.dateOfBirth ? calculateAge(newPatient.dateOfBirth) : undefined,
-        phone: newPatient.phone,
+        phone: `+91 ${newPatient.phone.replace(/\s/g, '')}`.trim(),
         email: newPatient.email || `${newPatient.firstName.toLowerCase()}.${newPatient.lastName.toLowerCase()}@example.com`,
         address: newPatient.address || "",
         bloodGroup: newPatient.bloodGroup || "A+",
+        agreedToDataStorage: true, // Patient has agreed via checkbox
       };
 
       const response = await post("/api/patients", patientData);
@@ -963,13 +981,18 @@ const [, setPatients] = useState<Patient[]>([]);
               </div>
               <div className="space-y-2">
                 <Label>Phone *</Label>
-                <Input
-                  value={newPatient.phone}
-                  onChange={(e) =>
-                    setNewPatient({ ...newPatient, phone: e.target.value })
-                  }
-                  placeholder="+1-555-000-0000"
-                />
+                <div className="flex items-center gap-1">
+                  <span className="text-sm font-medium text-muted-foreground px-3 py-2 border border-input rounded-md bg-muted">
+                    +91
+                  </span>
+                  <Input
+                    value={newPatient.phone}
+                    onChange={(e) => handlePhoneChange(e.target.value)}
+                    placeholder="98765 43210"
+                    maxLength={11}
+                    className="flex-1"
+                  />
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Email</Label>

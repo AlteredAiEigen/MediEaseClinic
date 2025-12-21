@@ -2,7 +2,7 @@
 Pydantic schemas for patient endpoints.
 """
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Union, Dict
 from app.models.patient import Lifestyle, MedicalHistoryEntry
 
@@ -41,6 +41,16 @@ class PatientCreateRequest(BaseModel):
     # Insurance
     insuranceProvider: Optional[str] = None
     insuranceNumber: Optional[str] = None
+    
+    # Data storage consent - required for patient creation
+    agreedToDataStorage: bool = Field(..., description="Patient consent for data storage (must be True)")
+    
+    @field_validator('agreedToDataStorage')
+    @classmethod
+    def validate_agreed_to_data_storage(cls, v):
+        if v is not True:
+            raise ValueError('Patient consent for data storage is required. agreedToDataStorage must be True.')
+        return v
     
     # Note: Patients are universal. Clinic info is stored for reference only (which clinic created the patient)
     # This is injected server-side and not used for filtering

@@ -16,10 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserIcon, PhoneIcon, MailIcon, MapPinIcon, Loader2Icon } from "lucide-react";
+import { UserIcon, PhoneIcon, MailIcon, MapPinIcon, Loader2Icon, ShieldCheckIcon } from "lucide-react";
 import { post } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { MediEaseLoader } from "@/polymet/components/mediease-loader";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface AddPatientDialogProps {
   open: boolean;
@@ -44,8 +45,10 @@ export function AddPatientDialog({
     bloodGroup: "",
     emergencyContact: "",
     emergencyPhone: "",
+    medicalHistory: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (field: string, value: string) => {
@@ -58,6 +61,28 @@ export function AddPatientDialog({
         return newErrors;
       });
     }
+  };
+
+  const formatPhoneNumber = (value: string): string => {
+    // Remove all non-digit characters
+    const digits = value.replace(/\D/g, '');
+    // Limit to 10 digits
+    const limitedDigits = digits.slice(0, 10);
+    // Format as: 98765 43210 (5 digits space 5 digits)
+    if (limitedDigits.length <= 5) {
+      return limitedDigits;
+    }
+    return `${limitedDigits.slice(0, 5)} ${limitedDigits.slice(5)}`;
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const formatted = formatPhoneNumber(value);
+    handleChange("phone", formatted);
+  };
+
+  const handleEmergencyPhoneChange = (value: string) => {
+    const formatted = formatPhoneNumber(value);
+    handleChange("emergencyPhone", formatted);
   };
 
   const validateForm = (): boolean => {
@@ -136,6 +161,16 @@ export function AddPatientDialog({
       return;
     }
 
+    // Check if terms are agreed
+    if (!agreedToTerms) {
+      toast({
+        title: "Confirmation Required",
+        description: "Please confirm that the patient has been informed about data security terms",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -154,12 +189,15 @@ export function AddPatientDialog({
         gender: capitalizedGender,
         dateOfBirth: formData.dateOfBirth,
         age: calculateAge(formData.dateOfBirth),
-        phone: formData.phone.trim(),
+        phone: `+91 ${formData.phone.replace(/\s/g, '')}`.trim(),
         email: formData.email.trim(),
         address: formData.address.trim(),
         bloodGroup: formData.bloodGroup,
         emergencyContact: formData.emergencyContact.trim() || undefined,
-        emergencyContactPhone: formData.emergencyPhone.trim() || undefined,
+        emergencyContactPhone: formData.emergencyPhone.trim() 
+          ? `+91 ${formData.emergencyPhone.replace(/\s/g, '')}`.trim()
+          : undefined,
+        agreedToDataStorage: true, // Patient has agreed via checkbox
       };
 
       // Call the backend API
@@ -183,8 +221,10 @@ export function AddPatientDialog({
           bloodGroup: "",
           emergencyContact: "",
           emergencyPhone: "",
+          medicalHistory: "",
         });
         setErrors({});
+        setAgreedToTerms(false);
 
         // Close dialog
         onOpenChange(false);
@@ -228,8 +268,10 @@ export function AddPatientDialog({
         bloodGroup: "",
         emergencyContact: "",
         emergencyPhone: "",
+        medicalHistory: "",
       });
       setErrors({});
+      setAgreedToTerms(false);
     }
     onOpenChange(isOpen);
   };
@@ -356,15 +398,20 @@ export function AddPatientDialog({
                   <Label className="text-sm font-medium mb-2 block">
                     Phone Number <span className="text-red-500">*</span>
                   </Label>
-                  <div className="relative">
-                    <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-
-                    <Input
-                      placeholder="+1 (555) 000-0000"
-                      value={formData.phone}
-                      onChange={(e) => handleChange("phone", e.target.value)}
-                      className={`pl-9 ${errors.phone ? "border-red-500" : ""}`}
-                    />
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium text-muted-foreground px-3 py-2 border border-input rounded-md bg-muted">
+                      +91
+                    </span>
+                    <div className="relative flex-1">
+                      <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        placeholder="98765 43210"
+                        value={formData.phone}
+                        onChange={(e) => handlePhoneChange(e.target.value)}
+                        maxLength={11}
+                        className={`pl-9 ${errors.phone ? "border-red-500" : ""}`}
+                      />
+                    </div>
                   </div>
                   {errors.phone && (
                     <p className="text-xs text-red-500 mt-1">{errors.phone}</p>
@@ -463,18 +510,21 @@ export function AddPatientDialog({
                 <Label className="text-sm font-medium mb-2 block">
                   Contact Phone
                 </Label>
-                <div className="relative">
-                  <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-
-                  <Input
-                    placeholder="+1 (555) 000-0000"
-                    value={formData.emergencyPhone}
-                    onChange={(e) =>
-                      handleChange("emergencyPhone", e.target.value)
-                    }
-                    className="pl-9"
-                  />
-                </div>
+                 <div className="flex items-center gap-1">
+                   <span className="text-sm font-medium text-muted-foreground px-3 py-2 border border-input rounded-md bg-muted">
+                     +91
+                   </span>
+                   <div className="relative flex-1">
+                     <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                     <Input
+                       placeholder="98765 43210"
+                       value={formData.emergencyPhone}
+                       onChange={(e) => handleEmergencyPhoneChange(e.target.value)}
+                       maxLength={11}
+                       className="pl-9"
+                     />
+                   </div>
+                 </div>
               </div>
 
               <div>
@@ -489,6 +539,42 @@ export function AddPatientDialog({
                   }
                   rows={6}
                 />
+              </div>
+            </div>
+
+            {/* Data Security Confirmation */}
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <ShieldCheckIcon className="h-5 w-5 text-teal-600 dark:text-teal-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <h4 className="font-semibold text-teal-900 dark:text-teal-100 text-sm">
+                      Data Security Confirmation
+                    </h4>
+                    <p className="text-xs text-teal-800 dark:text-teal-200">
+                      We protect your information by:
+                    </p>
+                    <ul className="space-y-1 text-xs text-teal-700 dark:text-teal-300 ml-4 list-disc">
+                      <li>Encrypting all personal and medical data in our secure, all-in-one platform.</li>
+                      <li>Enabling instant doctor access to your history for better, faster care.</li>
+                      <li>Keeping everything internal—no external sharing or integrations.</li>
+                    </ul>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2 pt-2">
+                  <Checkbox
+                    id="agreeToTermsDialog"
+                    checked={agreedToTerms}
+                    onCheckedChange={(checked) => setAgreedToTerms(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <label
+                    htmlFor="agreeToTermsDialog"
+                    className="text-xs font-medium text-teal-900 dark:text-teal-100 cursor-pointer leading-tight"
+                  >
+                    I confirm that the patient has been informed about how we protect their data and agrees to the terms above.
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -512,7 +598,8 @@ export function AddPatientDialog({
                   !formData.phone ||
                   !formData.email ||
                   !formData.address ||
-                  !formData.bloodGroup
+                  !formData.bloodGroup ||
+                  !agreedToTerms
                 }
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
               >

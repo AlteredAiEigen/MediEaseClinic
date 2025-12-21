@@ -62,6 +62,7 @@ interface NewAppointmentDialogProps {
   onOpenChange: (open: boolean) => void;
   editingAppointment?: any;
   onAppointmentUpdated?: () => void;
+  initialPatientId?: string; // Pre-select a patient when dialog opens
 }
 
 export function NewAppointmentDialog({
@@ -69,6 +70,7 @@ export function NewAppointmentDialog({
   onOpenChange,
   editingAppointment,
   onAppointmentUpdated,
+  initialPatientId,
 }: NewAppointmentDialogProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPatientId, setSelectedPatientId] = useState("");
@@ -155,8 +157,10 @@ export function NewAppointmentDialog({
 
       fetchData();
     } else {
-      // Reset form when dialog closes
-      setSelectedPatientId("");
+      // Reset form when dialog closes (unless we have initialPatientId)
+      if (!initialPatientId) {
+        setSelectedPatientId("");
+      }
       setSelectedDoctorId("");
       setAppointmentDate("");
       setAppointmentTime("");
@@ -166,9 +170,9 @@ export function NewAppointmentDialog({
       setSearchQuery("");
       setError(null);
     }
-  }, [open]);
+  }, [open, initialPatientId]);
 
-  // Populate form when editing
+  // Populate form when editing or when initialPatientId is provided
   useEffect(() => {
     if (editingAppointment && open) {
       setSelectedPatientId(editingAppointment.patientId || "");
@@ -178,8 +182,11 @@ export function NewAppointmentDialog({
       setBookingKind(editingAppointment.doctorId ? "doctor" : "lab-test");
       setAppointmentType(editingAppointment.type || "");
       setNotes(editingAppointment.notes || editingAppointment.reason || "");
+    } else if (initialPatientId && open && !editingAppointment) {
+      // Pre-select patient if initialPatientId is provided (but not when editing)
+      setSelectedPatientId(initialPatientId);
     }
-  }, [editingAppointment, open]);
+  }, [editingAppointment, initialPatientId, open]);
 
   const appointmentPricingItems = useMemo(
     () => billingItems.filter((item) => item.category === "appointmentType" && item.isActive),
