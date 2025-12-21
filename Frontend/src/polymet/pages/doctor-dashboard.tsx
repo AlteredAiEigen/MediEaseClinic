@@ -994,16 +994,6 @@ export function DoctorDashboard() {
                           <p className="text-sm font-semibold text-foreground leading-tight">
                             {appointment.name}
                           </p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-[10px] flex-shrink-0"
-                            asChild
-                          >
-                            <Link to={`/patient-overview/${appointment.patientId || appointment.id}`}>
-                              View
-                            </Link>
-                          </Button>
                         </div>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -1119,16 +1109,21 @@ export function DoctorDashboard() {
                           <p className="text-sm font-semibold text-foreground leading-tight">
                             {patient.name}
                           </p>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-[10px] flex-shrink-0"
-                            asChild
-                          >
-                            <Link to={`/patient-overview/${patient.id}`}>
-                              View
-                            </Link>
-                          </Button>
+                          {patient.status === "waiting" ? (
+                            <Button
+                              size="sm"
+                              className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
+                              asChild
+                            >
+                              <Link to="/doctor-workstation">
+                                Open Workstation
+                              </Link>
+                            </Button>
+                          ) : (
+                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0.5 flex-shrink-0">
+                              Active
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
@@ -1145,21 +1140,6 @@ export function DoctorDashboard() {
                               <ArrowLeftIcon className="w-3 h-3" />
                             </Button>
                           </div>
-                          {patient.status === "waiting" ? (
-                            <Button
-                              size="sm"
-                              className="h-6 px-2 text-[10px] bg-blue-600 hover:bg-blue-700 text-white flex-shrink-0"
-                              asChild
-                            >
-                              <Link to="/doctor-workstation">
-                                Open Workstation
-                              </Link>
-                            </Button>
-                          ) : (
-                            <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[10px] px-1.5 py-0.5 flex-shrink-0">
-                              Active
-                            </Badge>
-                          )}
                         </div>
                       </div>
                     </div>

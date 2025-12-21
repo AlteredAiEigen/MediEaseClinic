@@ -996,6 +996,7 @@ export function DoctorPatients() {
                         variant="outline"
                         size="sm"
                         className="hover:bg-blue-50 dark:hover:bg-blue-950/20 border-blue-200 dark:border-blue-800"
+                        disabled
                       >
                         <FileTextIcon className="w-4 h-4 mr-2" />
                         View Details

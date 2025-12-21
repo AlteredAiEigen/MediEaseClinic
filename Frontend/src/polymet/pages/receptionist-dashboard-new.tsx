@@ -1238,14 +1238,6 @@ const confirmCheckoutWithoutPrescription = () => {
             </div>
                     <div className="flex items-center gap-2">
                       <Button
-                        variant="link"
-                        size="sm"
-                        className="px-0 text-xs font-medium text-teal-600 hover:text-teal-500"
-                        onClick={() => navigate(`/patient-overview/${patient._id}`)}
-                      >
-                        View details
-              </Button>
-                      <Button
                         variant="ghost"
                         size="sm"
                         className="text-xs font-medium text-slate-600 hover:text-slate-900"
@@ -1546,14 +1538,6 @@ const confirmCheckoutWithoutPrescription = () => {
                               <ArrowLeftIcon className="w-3 h-3 mr-1" />
                               Back
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              className="text-[11px] px-2 py-1 text-sky-700 hover:text-sky-900"
-                              onClick={() => navigate(`/patient-overview/${patientMongoId}`)}
-                            >
-                              View details
-                            </Button>
                           </div>
                         )}
                       </div>
@@ -1578,7 +1562,6 @@ const confirmCheckoutWithoutPrescription = () => {
                       .filter(Boolean)
                       .join(" ") ||
                     "Assigned doctor";
-                  const patientMongoId = entry.patient?._id;
                   return (
                     <div
                       key={entry.queue_id}
@@ -1603,18 +1586,6 @@ const confirmCheckoutWithoutPrescription = () => {
                       <p className="mt-2 text-xs text-muted-foreground">
                         {entry.reason || "Consultation in progress"}
                       </p>
-                      {patientMongoId && (
-                        <div className="mt-2 flex justify-end">
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            className="text-[11px] px-2 py-1 text-sky-700 hover:text-sky-900"
-                            onClick={() => navigate(`/patient-overview/${patientMongoId}`)}
-                          >
-                            View details
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   );
                 })
@@ -2081,7 +2052,7 @@ const confirmCheckoutWithoutPrescription = () => {
                     <ul className="space-y-1 text-xs text-teal-700 dark:text-teal-300 ml-4 list-disc">
                       <li>Encrypting all personal and medical data in our secure, all-in-one platform.</li>
                       <li>Enabling instant doctor access to your history for better, faster care.</li>
-                      <li>Keeping everything internal—no external sharing or integrations.</li>
+                      <li>Storing data securely with controlled sharing options as per regulations.</li>
                     </ul>
                   </div>
                 </div>

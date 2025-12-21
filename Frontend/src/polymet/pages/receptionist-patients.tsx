@@ -20,7 +20,6 @@ import {
   MailIcon,
   CalendarIcon,
   FilterIcon,
-  FileTextIcon,
   UserIcon,
   ActivityIcon,
   AlertCircleIcon,
@@ -756,16 +755,6 @@ export function ReceptionistPatients() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Link to={`/patient-overview/${patient._id}`}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="hover:bg-teal-50 dark:hover:bg-teal-950/20 border-teal-200 dark:border-teal-800"
-                      >
-                        <FileTextIcon className="w-4 h-4 mr-2" />
-                        View Details
-                      </Button>
-                    </Link>
                     <Link to="/receptionist-appointments">
                       <Button
                         variant="outline"

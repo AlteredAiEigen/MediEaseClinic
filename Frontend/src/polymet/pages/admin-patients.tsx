@@ -963,18 +963,7 @@ const statusLabels: Record<PatientStatus, string> = {
                   return (
                   <div
                     key={patient.recordId}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() =>
-                      navigate(`/patient-overview/${patient.recordId}`)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        navigate(`/patient-overview/${patient.recordId}`);
-                      }
-                    }}
-                    className="border border-border/70 bg-white shadow-sm hover:shadow-md transition-all hover:border-[#00C4B3]/40 cursor-pointer rounded-2xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#00C4B3] h-full"
+                    className="border border-border/70 bg-white shadow-sm hover:shadow-md transition-all hover:border-[#00C4B3]/40 rounded-2xl h-full"
                   >
                     <CardContent className="p-6 flex flex-col h-full space-y-4">
                       <div className="flex items-start gap-4">
@@ -1032,22 +1021,10 @@ const statusLabels: Record<PatientStatus, string> = {
                       </div>
                       <div className="flex items-center gap-3 pt-3 border-t border-border/60 mt-auto">
                         <Button
-                          variant="default"
-                          size="sm"
-                          className="min-w-[116px] bg-gradient-to-r from-[#00C4B3] to-[#0ea5e9] text-white hover:from-[#009b8c] hover:to-[#0284c7] shadow-sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            navigate(`/patient-overview/${patient.recordId}`);
-                          }}
-                        >
-                          View Details
-                        </Button>
-                        <Button
                           variant="outline"
                           size="sm"
                           className="min-w-[104px] border-[#00C4B3] text-[#0f766e] hover:bg-[#00C4B3]/10"
-                          onClick={(event) => {
-                            event.stopPropagation();
+                          onClick={() => {
                             navigate("/admin-appointments");
                           }}
                         >

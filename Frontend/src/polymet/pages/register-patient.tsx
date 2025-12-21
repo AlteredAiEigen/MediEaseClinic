@@ -390,7 +390,7 @@ export function RegisterPatient() {
                     <ul className="space-y-1.5 text-sm text-teal-700 dark:text-teal-300 ml-4 list-disc">
                       <li>Encrypting all personal and medical data in our secure, all-in-one platform.</li>
                       <li>Enabling instant doctor access to your history for better, faster care.</li>
-                      <li>Keeping everything internal—no external sharing or integrations.</li>
+                      <li>Storing data securely with controlled sharing options as per regulations.</li>
                     </ul>
                   </div>
                 </div>
