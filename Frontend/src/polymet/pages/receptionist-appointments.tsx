@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { get, post, put, patch } from "@/lib/api-client";
 import type { BillingItem } from "@/polymet/pages/admin-billing";
+import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 
 // Custom hook for debounced search
 const useDebounce = (value: string, delay: number) => {
@@ -861,253 +862,32 @@ export function ReceptionistAppointments() {
                 Appointments for {date?.toLocaleDateString()}
               </CardTitle>
               <div className="flex items-center gap-2">
-                <Dialog
-                  open={isNewAppointmentOpen}
-                  onOpenChange={setIsNewAppointmentOpen}
+                <Button 
+                  className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-md"
+                  onClick={() => {
+                    setEditingAppointment(null);
+                    setIsNewAppointmentOpen(true);
+                  }}
                 >
-                  <DialogTrigger asChild>
-                    <Button 
-                      className="bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white shadow-md"
-                      onClick={() => {
-                        setEditingAppointment(null);
-                        setSelectedPatient("");
-                        setSelectedDoctor("");
-                        setAppointmentTime("");
-                        setBookingKind("doctor");
-                        setAppointmentType("");
-                        setAppointmentReason("");
-                        setSearchQuery("");
-                        setError(null);
-                      }}
-                    >
-                      <PlusIcon className="w-4 h-4 mr-2" />
-                      New Appointment
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingAppointment ? "Edit Appointment" : "Schedule New Appointment"}
-                      </DialogTitle>
-                      <DialogDescription>
-                        {editingAppointment 
-                          ? "Update appointment details"
-                          : "Search for a patient and schedule their appointment"}
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                      {error && (
-                        <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2">
-                          {error}
-                        </div>
-                      )}
-                      
-                      {/* Booking For */}
-                      <div className="space-y-2">
-                        <Label htmlFor="booking-for">Booking For</Label>
-                        <Select
-                          value={bookingKind}
-                          onValueChange={(value: "doctor" | "lab-test") => {
-                            setBookingKind(value);
-                            setSelectedDoctor("");
-                            setAppointmentType("");
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select booking type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="doctor">Doctor Appointment</SelectItem>
-                            <SelectItem value="lab-test">Lab Test Appointment</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {/* Patient Search */}
-                      <div className="space-y-2">
-                        <Label htmlFor="patient-search">Search Patient</Label>
-                        <div className="relative">
-                          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-
-                          <Input
-                            id="patient-search"
-                            placeholder="Search by patient name..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-10"
-                          />
-                        </div>
-                        {(searchQuery || selectedPatient) && (
-                          <div className="max-h-48 overflow-y-auto border border-border rounded-md">
-                            {filteredPatients.length > 0 ? filteredPatients.map((patient) => {
-                              const isSelected = String(patient._id) === String(selectedPatient);
-                              return (
-                              <div
-                                key={patient._id}
-                                className={`flex items-center gap-3 p-3 hover:bg-accent cursor-pointer border-b border-border last:border-0 ${
-                                  isSelected ? "bg-teal-50 dark:bg-teal-950/20 border-teal-200 dark:border-teal-800" : ""
-                                }`}
-                                onClick={() => {
-                                  setSelectedPatient(patient._id);
-                                  setSearchQuery(patient.fullName);
-                                }}
-                              >
-                                <Avatar className="h-10 w-10">
-                                  <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(patient.fullName)}&background=random`} />
-
-                                  <AvatarFallback>
-                                    {patient.fullName
-                                      .split(" ")
-                                      .map((n) => n[0])
-                                      .join("")
-                                      .toUpperCase()
-                                      .slice(0, 2)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <p className="font-medium">{patient.fullName}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {patient.patientId}
-                                  </p>
-                                </div>
-                                {isSelected && (
-                                  <div className="ml-auto">
-                                    <Badge variant="outline" className="bg-teal-100 text-teal-700 border-teal-300">
-                                      Selected
-                                    </Badge>
-                                  </div>
-                                )}
-                              </div>
-                              );
-                            }) : (
-                              <div className="p-3 text-center text-sm text-muted-foreground">
-                                No patients found matching "{searchQuery}"
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Selected Patient */}
-                      {selectedPatient && (() => {
-                        const selectedPatientObj = patients.find(p => String(p._id) === String(selectedPatient));
-                        return (
-                          <div className="p-3 bg-teal-50 dark:bg-teal-950/20 rounded-md border border-teal-200 dark:border-teal-800">
-                            <p className="text-sm font-medium">
-                              Selected Patient:
-                            </p>
-                            <p className="text-lg font-semibold text-teal-700 dark:text-teal-400">
-                              {selectedPatientObj?.fullName || searchQuery || "Patient selected"}
-                            </p>
-                            {selectedPatientObj?.patientId && (
-                              <p className="text-xs text-muted-foreground mt-1">
-                                ID: {selectedPatientObj.patientId}
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })()}
-
-                      {/* Doctor Selection - Only for doctor appointments */}
-                      {bookingKind === "doctor" && (
-                        <div className="space-y-2">
-                          <Label htmlFor="doctor-select">Select Doctor</Label>
-                          <Select value={selectedDoctor} onValueChange={setSelectedDoctor}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a doctor" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {doctors.map((doctor) => (
-                                <SelectItem key={doctor._id} value={doctor._id}>
-                                  {doctor.fullName || `${doctor.firstName} ${doctor.lastName}`}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Appointment Details */}
-                      <div className="space-y-2">
-                        <Label htmlFor="appointment-time">Time</Label>
-                        <Input
-                          id="appointment-time"
-                          type="time"
-                          value={appointmentTime}
-                          onChange={(e) => setAppointmentTime(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="appointment-type">
-                          {bookingKind === "doctor" ? "Appointment Type" : "Lab Test Type"}
-                        </Label>
-                        <Select
-                          value={appointmentType}
-                          onValueChange={setAppointmentType}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder={`Select ${bookingKind === "doctor" ? "appointment type" : "lab test"}`} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {bookingKind === "doctor"
-                              ? appointmentPricingItems.map((item) => (
-                                  <SelectItem key={item._id} value={item.key}>
-                                    {item.label}
-                                  </SelectItem>
-                                ))
-                              : labTestPricingItems.map((item) => (
-                                  <SelectItem key={item._id} value={item.key}>
-                                    {item.label}
-                                  </SelectItem>
-                                ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="appointment-reason">Reason</Label>
-                        <Textarea
-                          id="appointment-reason"
-                          placeholder="Enter reason for appointment..."
-                          value={appointmentReason}
-                          onChange={(e) => setAppointmentReason(e.target.value)}
-                          rows={3}
-                        />
-                      </div>
-
-                      <div className="flex gap-2 pt-4">
-                        <Button
-                          variant="outline"
-                          className="flex-1"
-                          onClick={() => setIsNewAppointmentOpen(false)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          className="flex-1 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white"
-                          onClick={handleCreateOrUpdateAppointment}
-                          disabled={
-                            !selectedPatient ||
-                            (bookingKind === "doctor" && !selectedDoctor) ||
-                            !appointmentTime ||
-                            !appointmentType ||
-                            isCreating
-                          }
-                        >
-                          {isCreating ? (
-                            <>
-                              <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
-                              {editingAppointment ? "Updating..." : "Scheduling..."}
-                            </>
-                          ) : (
-                            editingAppointment ? "Update Appointment" : "Schedule Appointment"
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
+                  <PlusIcon className="w-4 h-4 mr-2" />
+                  New Appointment
+                </Button>
+                
+                {/* New Appointment Dialog */}
+                <NewAppointmentDialog
+                  open={isNewAppointmentOpen}
+                  onOpenChange={(open) => {
+                    setIsNewAppointmentOpen(open);
+                    if (!open) {
+                      setEditingAppointment(null);
+                    }
+                  }}
+                  editingAppointment={editingAppointment || undefined}
+                  onAppointmentUpdated={() => {
+                    fetchAppointments();
+                    fetchAllAppointmentsForMonth();
+                  }}
+                />
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-[150px]">
                     <FilterIcon className="w-4 h-4 mr-2" />
@@ -1197,12 +977,6 @@ export function ReceptionistAppointments() {
                                 className="h-7 px-2 text-xs"
                                 onClick={() => {
                                   setEditingAppointment(appointment);
-                                  setSelectedPatient(appointment.patientId);
-                                  setSelectedDoctor(appointment.doctorId || "");
-                                  setAppointmentTime(appointment.time);
-                                  setBookingKind(appointment.doctorId ? "doctor" : "lab-test");
-                                  setAppointmentType(appointment.type);
-                                  setAppointmentReason(appointment.notes || appointment.reason || "");
                                   setIsNewAppointmentOpen(true);
                                 }}
                                 disabled={

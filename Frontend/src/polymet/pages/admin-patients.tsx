@@ -34,6 +34,10 @@ import {
   CalendarIcon,
   UserIcon,
   HeartPulseIcon,
+  FilterIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  XIcon,
 } from "lucide-react";
 import { get, post } from "@/lib/api-client";
 import { MediEaseLoader } from "@/components/mediease-loader";
@@ -137,8 +141,48 @@ const emptyNewPatientState: NewPatientForm = {
 export function AdminPatients() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearchQuery = useDebounce(searchQuery, 150); // 150ms debounce
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [phoneFilter, setPhoneFilter] = useState("");
+  const [dateOfBirthFilter, setDateOfBirthFilter] = useState("");
+  const [addressFilter, setAddressFilter] = useState("");
+  const [emailFilter, setEmailFilter] = useState("");
+  const debouncedAddressFilter = useDebounce(addressFilter, 300);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  
+  // Helper function to check if phone number is complete (10 digits minimum)
+  const isPhoneComplete = (phone: string): boolean => {
+    const digits = phone.replace(/\D/g, '');
+    // Remove +91 prefix if present
+    const normalized = digits.startsWith('91') && digits.length > 10 ? digits.slice(2) : digits;
+    return normalized.length >= 10;
+  };
+  
+  // Helper function to check if date of birth is complete (YYYY-MM-DD format)
+  const isDateOfBirthComplete = (dob: string): boolean => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(dob.trim());
+  };
+  
+  // Helper function to check if email is complete/valid
+  const isEmailComplete = (email: string): boolean => {
+    const trimmed = email.trim();
+    if (!trimmed) return false;
+    // Basic email validation: must contain @ and a dot after @
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(trimmed);
+  };
+  
+  // Only use phone filter if it's complete (10+ digits)
+  const effectivePhoneFilter = isPhoneComplete(phoneFilter) ? phoneFilter : "";
+  const debouncedPhoneFilter = useDebounce(effectivePhoneFilter, 500);
+  
+  // Only use date of birth filter if it's complete (YYYY-MM-DD format)
+  const effectiveDateOfBirthFilter = isDateOfBirthComplete(dateOfBirthFilter) ? dateOfBirthFilter : "";
+  const debouncedDateOfBirthFilter = useDebounce(effectiveDateOfBirthFilter, 500);
+  
+  // Only use email filter if it's complete/valid
+  const effectiveEmailFilter = isEmailComplete(emailFilter) ? emailFilter.trim() : "";
+  const debouncedEmailFilter = useDebounce(effectiveEmailFilter, 500);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(20);
   const [totalPages, setTotalPages] = useState(1);
@@ -190,6 +234,28 @@ export function AdminPatients() {
 
         if (debouncedSearchQuery.trim()) {
           queryParams.set("search", debouncedSearchQuery.trim());
+        }
+        
+        // Add additional filters
+        if (debouncedPhoneFilter) {
+          queryParams.set("phone", debouncedPhoneFilter);
+        }
+        
+        if (debouncedDateOfBirthFilter) {
+          queryParams.set("date_of_birth", debouncedDateOfBirthFilter);
+        }
+        
+        if (debouncedAddressFilter) {
+          queryParams.set("address", debouncedAddressFilter);
+        }
+        
+        if (debouncedEmailFilter) {
+          queryParams.set("email", debouncedEmailFilter);
+        }
+        
+        // Add status filter to API call if not "all"
+        if (filterStatus !== "all") {
+          queryParams.set("present_in_clinic", filterStatus === "in-clinic" ? "true" : "false");
         }
 
         console.log("🔍 AdminPatients: Making API call to /api/patients...", queryParams.toString());
@@ -265,7 +331,7 @@ export function AdminPatients() {
     return () => {
       ignore = true;
     };
-  }, [debouncedSearchQuery, page, pageSize]);
+  }, [debouncedSearchQuery, page, pageSize, filterStatus, debouncedPhoneFilter, debouncedDateOfBirthFilter, debouncedAddressFilter, debouncedEmailFilter]);
 
 
   // Fetch queue entries for "In Clinic Today" and appointments for stats
@@ -398,19 +464,10 @@ export function AdminPatients() {
     fetchQueueAndAppointments();
   }, []);
 
+  // No client-side filtering needed - API handles all filters
   const filteredPatients = useMemo(() => {
-    const query = debouncedSearchQuery.trim().toLowerCase();
-    return patientsList.filter((patient) => {
-      const matchesSearch =
-        query.length === 0 ||
-        patient.name.toLowerCase().includes(query) ||
-        patient.patientId.toLowerCase().includes(query) ||
-        patient.email.toLowerCase().includes(query);
-      const matchesStatus =
-        filterStatus === "all" || patient.status === filterStatus;
-      return matchesSearch && matchesStatus;
-    });
-  }, [patientsList, debouncedSearchQuery, filterStatus]);
+    return patientsList;
+  }, [patientsList]);
 
   const handleAddPatient = async () => {
     setSubmissionError(null);
@@ -741,27 +798,153 @@ const statusLabels: Record<PatientStatus, string> = {
             </div>
           )}
           {/* Filters */}
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
-            <div className="relative flex-1">
-              <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-
-              <Input
-                placeholder="Search by name or ID..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-full md:w-[180px]">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="in-clinic">In Clinic</SelectItem>
+                  <SelectItem value="remote">Remote Follow-up</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className="whitespace-nowrap"
+              >
+                {showAdvancedFilters ? (
+                  <>
+                    <ChevronUpIcon className="w-4 h-4 mr-2" />
+                    Hide Filters
+                  </>
+                ) : (
+                  <>
+                    <FilterIcon className="w-4 h-4 mr-2" />
+                    More Filters
+                  </>
+                )}
+              </Button>
             </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="in-clinic">In Clinic</SelectItem>
-                <SelectItem value="remote">Remote Follow-up</SelectItem>
-              </SelectContent>
-            </Select>
+            
+            {/* Advanced Filters */}
+            {showAdvancedFilters && (
+              <div className="pt-4 border-t border-border grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone-filter">Phone Number</Label>
+                  <div className="relative">
+                    <PhoneIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="phone-filter"
+                      placeholder="Enter full 10-digit number (e.g., 9876543210)"
+                      value={phoneFilter}
+                      onChange={(e) => setPhoneFilter(e.target.value)}
+                      className="pl-10"
+                      maxLength={15}
+                    />
+                    {phoneFilter && (
+                      <button
+                        onClick={() => setPhoneFilter("")}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <XIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                    {phoneFilter && !isPhoneComplete(phoneFilter) && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter at least 10 digits to search
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="dob-filter">Date of Birth</Label>
+                  <div className="relative">
+                    <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
+                    <Input
+                      id="dob-filter"
+                      type="date"
+                      value={dateOfBirthFilter}
+                      onChange={(e) => setDateOfBirthFilter(e.target.value)}
+                      className="pl-10"
+                    />
+                    {dateOfBirthFilter && (
+                      <button
+                        onClick={() => setDateOfBirthFilter("")}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <XIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                    {dateOfBirthFilter && !isDateOfBirthComplete(dateOfBirthFilter) && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Please select a complete date
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="address-filter">Address</Label>
+                  <div className="relative">
+                    <Input
+                      id="address-filter"
+                      placeholder="Enter address..."
+                      value={addressFilter}
+                      onChange={(e) => setAddressFilter(e.target.value)}
+                    />
+                    {addressFilter && (
+                      <button
+                        onClick={() => setAddressFilter("")}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <XIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="email-filter">Email Address</Label>
+                  <div className="relative">
+                    <MailIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
+                    <Input
+                      id="email-filter"
+                      type="email"
+                      placeholder="Enter complete email (e.g., user@example.com)"
+                      value={emailFilter}
+                      onChange={(e) => setEmailFilter(e.target.value)}
+                      className="pl-10"
+                    />
+                    {emailFilter && (
+                      <button
+                        onClick={() => setEmailFilter("")}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      >
+                        <XIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                    {emailFilter && !isEmailComplete(emailFilter) && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter a complete email address to search
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {isLoading ? (

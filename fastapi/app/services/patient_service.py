@@ -6,6 +6,8 @@ HIPAA Compliance: Sensitive fields are encrypted before storage.
 from datetime import datetime
 from typing import Optional, List, Dict
 from copy import deepcopy
+import re
+import logging
 from fastapi import HTTPException, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
@@ -20,7 +22,6 @@ from app.models.patient import (
     MedicalHistoryEntry,
 )
 from app.utils.security import field_encryption
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -420,6 +421,10 @@ class PatientService:
         search: Optional[str] = None,
         gender: Optional[str] = None,
         present_in_clinic: Optional[bool] = None,
+        phone: Optional[str] = None,
+        date_of_birth: Optional[str] = None,
+        address: Optional[str] = None,
+        email: Optional[str] = None,
         clinic_id: Optional[str] = None  # Kept for backward compatibility but not used for filtering
     ) -> tuple[List[dict], int]:
         """
@@ -434,6 +439,9 @@ class PatientService:
             search: Search term for name, phone, email
             gender: Filter by gender
             present_in_clinic: Filter by clinic presence
+            phone: Filter by phone number (exact match or partial)
+            date_of_birth: Filter by date of birth (YYYY-MM-DD format)
+            address: Filter by address (partial match)
         
         Returns:
             Tuple of (patient list, total count)
@@ -442,19 +450,94 @@ class PatientService:
         query = {}
         
         if search:
-            query["$or"] = [
+            # Build $or query, but exclude phone and email if they are provided as separate filters
+            search_fields = [
                 {"firstName": {"$regex": search, "$options": "i"}},
                 {"lastName": {"$regex": search, "$options": "i"}},
-                {"email": {"$regex": search, "$options": "i"}},
-                {"phone": {"$regex": search, "$options": "i"}},
                 {"patientId": {"$regex": search, "$options": "i"}},
             ]
+            # Only include phone in search if phone filter is not provided separately
+            if not phone:
+                search_fields.append({"phone": {"$regex": search, "$options": "i"}})
+            # Only include email in search if email filter is not provided separately
+            if not email:
+                search_fields.append({"email": {"$regex": search, "$options": "i"}})
+            query["$or"] = search_fields
         
         if gender:
             query["gender"] = gender
         
         if present_in_clinic is not None:
             query["presentInClinic"] = present_in_clinic
+        
+        # Additional filters
+        # Phone: Use exact digit matching (must match exactly the digits, allowing for formatting)
+        if phone:
+            try:
+                # Normalize phone search: extract only digits
+                phone_digits = re.sub(r'[^0-9]', '', phone.strip())  # Extract only digits
+                
+                # Remove +91 prefix if present (for Indian numbers)
+                if phone_digits.startswith("91") and len(phone_digits) > 10:
+                    phone_digits = phone_digits[2:]
+                
+                # Only proceed if we have digits to search (minimum 10 digits for valid phone)
+                if len(phone_digits) >= 10:
+                    # Create a simpler, more reliable regex pattern for MongoDB
+                    # Match the exact digits in sequence, accounting for +91 prefix and formatting
+                    
+                    # Build a pattern that matches digits with optional non-digit characters between
+                    # Escape each digit to handle special regex characters
+                    escaped_digits = [re.escape(d) for d in phone_digits]
+                    
+                    # Create pattern: optionally +91 prefix, then digits with optional formatting, then end
+                    # Use character class [^0-9] instead of \D for MongoDB compatibility
+                    # Build pattern parts - escape + properly
+                    prefix_part = "(\\+?91[^0-9]*)?"
+                    digits_part = "[^0-9]*".join(escaped_digits)
+                    end_part = "[^0-9]*$"
+                    
+                    phone_pattern = "^" + prefix_part + digits_part + end_part
+                    
+                    # Validate the pattern before using it
+                    try:
+                        test_pattern = re.compile(phone_pattern)
+                        query["phone"] = {"$regex": phone_pattern, "$options": "i"}
+                    except re.error as regex_error:
+                        logger.error(f"Invalid regex pattern '{phone_pattern}' for phone '{phone}': {regex_error}")
+                        # Fallback to simple digit matching (matches digits anywhere in phone)
+                        query["phone"] = {"$regex": re.escape(phone_digits), "$options": "i"}
+                        
+            except Exception as e:
+                logger.error(f"Error processing phone filter '{phone}': {e}", exc_info=True)
+                # Fall back to simple exact digit matching if pattern creation fails
+                try:
+                    phone_digits = re.sub(r'[^0-9]', '', phone.strip())
+                    if phone_digits.startswith("91") and len(phone_digits) > 10:
+                        phone_digits = phone_digits[2:]
+                    if len(phone_digits) >= 10:
+                        query["phone"] = {"$regex": re.escape(phone_digits), "$options": "i"}
+                except Exception as fallback_error:
+                    logger.error(f"Fallback phone filter also failed: {fallback_error}")
+                    # Don't add phone filter if all attempts fail
+        
+        # Date of Birth: Use exact match only (YYYY-MM-DD format)
+        if date_of_birth:
+            # Validate and normalize date format - must be exact YYYY-MM-DD
+            dob_cleaned = date_of_birth.strip()
+            # Ensure it's in YYYY-MM-DD format (exact match required)
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', dob_cleaned):
+                query["dateOfBirth"] = dob_cleaned
+        
+        # Address: Use partial regex matching (as intended for text search)
+        if address:
+            query["address"] = {"$regex": address, "$options": "i"}
+        
+        # Email: Use case-insensitive exact or partial matching
+        if email:
+            email_cleaned = email.strip()
+            if email_cleaned:
+                query["email"] = {"$regex": re.escape(email_cleaned), "$options": "i"}
         
         # Note: clinic_id is NOT used for filtering - patients are universal
         

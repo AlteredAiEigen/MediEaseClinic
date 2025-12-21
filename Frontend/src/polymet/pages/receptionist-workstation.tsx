@@ -47,6 +47,7 @@ import {
 import { get, post, patch } from "@/lib/api-client";
 import { toast } from "@/components/ui/use-toast";
 import { useQueueWebSocket } from "@/hooks/use-websocket";
+import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 
 interface Patient {
   _id: string;
@@ -154,7 +155,6 @@ const [, setPatients] = useState<Patient[]>([]);
 
   // Schedule appointment state
   const [selectedPatientForAppointment, setSelectedPatientForAppointment] = useState<Patient | null>(null);
-  const [isScheduling, setIsScheduling] = useState(false);
 
   // Checkout state
   const [selectedQueueEntry, setSelectedQueueEntry] = useState<QueueEntry | null>(null);
@@ -491,58 +491,6 @@ const [, setPatients] = useState<Patient[]>([]);
     }
   };
 
-  // Handle schedule appointment
-  const handleScheduleAppointment = async () => {
-    if (!selectedPatientForAppointment || !appointmentDoctorId || !appointmentDate || !appointmentTime) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setIsScheduling(true);
-      const response = await post("/api/appointments", {
-        patientId: selectedPatientForAppointment._id,
-        doctorId: appointmentDoctorId,
-        date: appointmentDate,
-        time: appointmentTime,
-        duration: 30,
-        reason: appointmentReason || "General Consultation",
-        priority: "medium",
-      });
-
-      if (response.success) {
-        toast({
-          title: "Success",
-          description: "Appointment scheduled successfully",
-        });
-        setScheduleAppointmentDialog(false);
-        setSelectedPatientForAppointment(null);
-        setAppointmentDate("");
-        setAppointmentTime("");
-        setAppointmentDoctorId("");
-        setAppointmentReason("");
-        await fetchData();
-      } else {
-        toast({
-          title: "Error",
-          description: response.message || "Failed to schedule appointment",
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      toast({
-        title: "Error",
-        description: err instanceof Error ? err.message : "Failed to schedule appointment",
-        variant: "destructive",
-      });
-    } finally {
-      setIsScheduling(false);
-    }
-  };
 
   // Handle complete checkout
   const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
@@ -1131,83 +1079,20 @@ const [, setPatients] = useState<Patient[]>([]);
       </Dialog>
 
       {/* Schedule Appointment Dialog */}
-      <Dialog open={scheduleAppointmentDialog} onOpenChange={setScheduleAppointmentDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Schedule Appointment</DialogTitle>
-            <DialogDescription>
-              Schedule an appointment for {selectedPatientForAppointment?.fullName}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Doctor *</Label>
-              <Select
-                value={appointmentDoctorId}
-                onValueChange={setAppointmentDoctorId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select doctor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {doctors.map((doctor) => (
-                    <SelectItem key={doctor._id} value={doctor._id}>
-                      Dr. {doctor.firstName} {doctor.lastName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Date *</Label>
-              <Input
-                type="date"
-                value={appointmentDate}
-                onChange={(e) => setAppointmentDate(e.target.value)}
-                min={new Date().toISOString().split("T")[0]}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Time *</Label>
-              <Input
-                type="time"
-                value={appointmentTime}
-                onChange={(e) => setAppointmentTime(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Reason</Label>
-              <Input
-                value={appointmentReason}
-                onChange={(e) => setAppointmentReason(e.target.value)}
-                placeholder="General Consultation"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setScheduleAppointmentDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleScheduleAppointment}
-              disabled={isScheduling || !appointmentDoctorId || !appointmentDate || !appointmentTime}
-              className="bg-teal-600 hover:bg-teal-700 text-white"
-            >
-              {isScheduling ? (
-                <>
-                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
-                  Scheduling...
-                </>
-              ) : (
-                <>
-                  <CalendarIcon className="h-4 w-4 mr-2" />
-                  Schedule Appointment
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <NewAppointmentDialog
+        open={scheduleAppointmentDialog}
+        onOpenChange={(open) => {
+          setScheduleAppointmentDialog(open);
+          if (!open) {
+            setSelectedPatientForAppointment(null);
+          }
+        }}
+        initialPatientId={selectedPatientForAppointment?._id || ""}
+        onAppointmentUpdated={() => {
+          // Refresh data if needed
+          fetchData();
+        }}
+      />
 
       {/* Checkout Dialog */}
       <Dialog open={checkoutDialog} onOpenChange={setCheckoutDialog}>

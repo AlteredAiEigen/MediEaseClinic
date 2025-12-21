@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { SearchIcon, CalendarIcon, ClockIcon, AlertCircleIcon, Loader2 } from "lucide-react";
+import { SearchIcon, CalendarIcon, ClockIcon, AlertCircleIcon, Loader2, FilterIcon, ChevronDownIcon, ChevronUpIcon, XIcon, PhoneIcon, MailIcon } from "lucide-react";
 import { post, get, put } from "@/lib/api-client";
 import type { BillingItem } from "@/polymet/pages/admin-billing";
 import { useToast } from "@/hooks/use-toast";
@@ -89,9 +89,40 @@ export function NewAppointmentDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneFilter, setPhoneFilter] = useState("");
+  const [dateOfBirthFilter, setDateOfBirthFilter] = useState("");
+  const [addressFilter, setAddressFilter] = useState("");
+  const [emailFilter, setEmailFilter] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const debouncedAddressFilter = useDebounce(addressFilter, 300);
   
   // Debounce search query for API calls
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
+  
+  // Helper functions for validation
+  const isPhoneComplete = (phone: string): boolean => {
+    const digits = phone.replace(/\D/g, '');
+    const normalized = digits.startsWith('91') && digits.length > 10 ? digits.slice(2) : digits;
+    return normalized.length >= 10;
+  };
+  
+  const isDateOfBirthComplete = (dob: string): boolean => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(dob.trim());
+  };
+  
+  const isEmailComplete = (email: string): boolean => {
+    const trimmed = email.trim();
+    if (!trimmed) return false;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(trimmed);
+  };
+  
+  const effectivePhoneFilter = isPhoneComplete(phoneFilter) ? phoneFilter : "";
+  const debouncedPhoneFilter = useDebounce(effectivePhoneFilter, 500);
+  const effectiveDateOfBirthFilter = isDateOfBirthComplete(dateOfBirthFilter) ? dateOfBirthFilter : "";
+  const debouncedDateOfBirthFilter = useDebounce(effectiveDateOfBirthFilter, 500);
+  const effectiveEmailFilter = isEmailComplete(emailFilter) ? emailFilter.trim() : "";
+  const debouncedEmailFilter = useDebounce(effectiveEmailFilter, 500);
 
   const selectedPatient = useMemo(
     () => patients.find((patient) => patient._id === selectedPatientId) ?? null,
@@ -198,10 +229,13 @@ export function NewAppointmentDialog({
     [billingItems]
   );
 
-  // Search patients from API when query changes
+  // Search patients from API when query or filters change
   useEffect(() => {
-    // Require minimum 2 characters before searching to prevent expensive queries
-    if (!debouncedSearchQuery || debouncedSearchQuery.length < 2) {
+    // Only search if we have a search query OR at least one filter
+    const hasSearchQuery = debouncedSearchQuery && debouncedSearchQuery.length >= 2;
+    const hasFilters = debouncedPhoneFilter || debouncedDateOfBirthFilter || debouncedAddressFilter || debouncedEmailFilter;
+    
+    if (!hasSearchQuery && !hasFilters) {
       setSearchResults([]);
       setIsSearching(false);
       return;
@@ -212,11 +246,27 @@ export function NewAppointmentDialog({
     const searchPatients = async () => {
       setIsSearching(true);
       try {
-        const response = await get<{ patients: Patient[] }>(
-          `/api/patients/search?q=${encodeURIComponent(debouncedSearchQuery)}`
-        );
-        if (!cancelled && response.success && response.data?.patients) {
-          const normalizedResults = response.data.patients.map((patient: any) => ({
+        const params = new URLSearchParams({ limit: "20" });
+        if (debouncedSearchQuery && debouncedSearchQuery.length >= 2) {
+          params.set("search", debouncedSearchQuery);
+        }
+        if (debouncedPhoneFilter) {
+          params.set("phone", debouncedPhoneFilter);
+        }
+        if (debouncedDateOfBirthFilter) {
+          params.set("date_of_birth", debouncedDateOfBirthFilter);
+        }
+        if (debouncedAddressFilter) {
+          params.set("address", debouncedAddressFilter);
+        }
+        if (debouncedEmailFilter) {
+          params.set("email", debouncedEmailFilter);
+        }
+        
+        const response = await get<any>(`/api/patients?${params.toString()}`);
+        if (!cancelled && response.success) {
+          const patientsData = Array.isArray(response.data) ? response.data : [];
+          const normalizedResults = patientsData.map((patient: any) => ({
             ...patient,
             _id: String(patient._id ?? patient.id ?? patient.patientId ?? ""),
             patientId: patient.patientId ?? String(patient._id ?? patient.id ?? ""),
@@ -245,16 +295,17 @@ export function NewAppointmentDialog({
     return () => {
       cancelled = true;
     };
-  }, [debouncedSearchQuery]);
+  }, [debouncedSearchQuery, debouncedPhoneFilter, debouncedDateOfBirthFilter, debouncedAddressFilter, debouncedEmailFilter]);
 
   const filteredPatients = useMemo(() => {
-    // If there's a search query, use search results
-    if (searchQuery.trim()) {
+    // If there's a search query or filters, use search results
+    const hasSearch = searchQuery.trim() || phoneFilter || dateOfBirthFilter || addressFilter || emailFilter;
+    if (hasSearch) {
       return searchResults;
     }
     // Otherwise show first 10 patients from initial load
     return patients.slice(0, 10);
-  }, [patients, searchQuery, searchResults]);
+  }, [patients, searchQuery, searchResults, phoneFilter, dateOfBirthFilter, addressFilter, emailFilter]);
 
   const handleSubmit = async () => {
     if (!selectedPatientId || !appointmentDate || !appointmentTime) {
@@ -364,13 +415,31 @@ export function NewAppointmentDialog({
         <div className="flex gap-6 flex-1 overflow-hidden">
           {/* Left Side - Patient Search */}
           <div className="flex-1 flex flex-col min-w-0 border-r border-border pr-6">
-            <div className="mb-4">
-              <Label className="text-sm font-medium mb-2 block">
-                Search Patient
-              </Label>
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-sm font-medium">
+                  Search Patient
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className="h-8 px-3 text-xs flex items-center gap-1.5"
+                >
+                  <FilterIcon className="w-3.5 h-3.5" />
+                  {showAdvancedFilters ? (
+                    <>
+                      <ChevronUpIcon className="w-3 h-3" />
+                      Hide Filters
+                    </>
+                  ) : (
+                    "More Filters"
+                  )}
+                </Button>
+              </div>
               <div className="relative">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-
                 <Input
                   placeholder="Search by name or ID..."
                   value={searchQuery}
@@ -378,6 +447,112 @@ export function NewAppointmentDialog({
                   className="pl-9"
                 />
               </div>
+              
+              {/* Advanced Filters */}
+              {showAdvancedFilters && (
+                <div className="pt-2 space-y-2 border-t border-border">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label htmlFor="phone-filter-appt" className="text-xs">Phone</Label>
+                      <div className="relative">
+                        <PhoneIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+                        <Input
+                          id="phone-filter-appt"
+                          placeholder="10 digits"
+                          value={phoneFilter}
+                          onChange={(e) => setPhoneFilter(e.target.value)}
+                          className="pl-7 h-8 text-xs"
+                          maxLength={15}
+                        />
+                        {phoneFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setPhoneFilter("")}
+                            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            <XIcon className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      {phoneFilter && !isPhoneComplete(phoneFilter) && (
+                        <p className="text-xs text-muted-foreground">Enter at least 10 digits</p>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <Label htmlFor="dob-filter-appt" className="text-xs">Date of Birth</Label>
+                      <div className="relative">
+                        <CalendarIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-10" />
+                        <Input
+                          id="dob-filter-appt"
+                          type="date"
+                          value={dateOfBirthFilter}
+                          onChange={(e) => setDateOfBirthFilter(e.target.value)}
+                          className="pl-7 h-8 text-xs"
+                        />
+                        {dateOfBirthFilter && (
+                          <button
+                            type="button"
+                            onClick={() => setDateOfBirthFilter("")}
+                            className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            <XIcon className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="address-filter-appt" className="text-xs">Address</Label>
+                    <div className="relative">
+                      <Input
+                        id="address-filter-appt"
+                        placeholder="Enter address..."
+                        value={addressFilter}
+                        onChange={(e) => setAddressFilter(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                      {addressFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setAddressFilter("")}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <Label htmlFor="email-filter-appt" className="text-xs">Email</Label>
+                    <div className="relative">
+                      <MailIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground z-10" />
+                      <Input
+                        id="email-filter-appt"
+                        type="email"
+                        placeholder="user@example.com"
+                        value={emailFilter}
+                        onChange={(e) => setEmailFilter(e.target.value)}
+                        className="pl-7 h-8 text-xs"
+                      />
+                      {emailFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setEmailFilter("")}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          <XIcon className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    {emailFilter && !isEmailComplete(emailFilter) && (
+                      <p className="text-xs text-muted-foreground">Enter a complete email address</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
@@ -419,7 +594,7 @@ export function NewAppointmentDialog({
                         {patient.fullName}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {patient.patientId} • Age {patient.age}
+                        {patient.phone || "No phone"} • {patient.email || "No email"}
                       </p>
                     </div>
                   </div>

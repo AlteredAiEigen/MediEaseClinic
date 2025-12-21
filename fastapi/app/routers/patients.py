@@ -124,6 +124,10 @@ async def list_patients(
     search: Optional[str] = Query(None, description="Search by name, email, phone, or patient ID"),
     gender: Optional[str] = Query(None, pattern="^(Male|Female|Other)$"),
     present_in_clinic: Optional[bool] = Query(None, description="Filter by clinic presence"),
+    phone: Optional[str] = Query(None, description="Filter by phone number"),
+    date_of_birth: Optional[str] = Query(None, description="Filter by date of birth (YYYY-MM-DD)"),
+    address: Optional[str] = Query(None, description="Filter by address"),
+    email: Optional[str] = Query(None, description="Filter by email address"),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -136,8 +140,8 @@ async def list_patients(
     """
     try:
         # Try cache for non-search queries (30 second TTL)
-        cache_key = f"patients:list:{page}:{limit}:{search}:{gender}:{present_in_clinic}"
-        if not search:  # Only cache non-search queries
+        cache_key = f"patients:list:{page}:{limit}:{search}:{gender}:{present_in_clinic}:{phone}:{date_of_birth}:{address}:{email}"
+        if not search and not phone and not date_of_birth and not address and not email:  # Only cache non-search queries
             cached = await cache.get(cache_key)
             if cached is not None:
                 return cached
@@ -152,6 +156,10 @@ async def list_patients(
             search=search,
             gender=gender,
             present_in_clinic=present_in_clinic,
+            phone=phone,
+            date_of_birth=date_of_birth,
+            address=address,
+            email=email,
             clinic_id=None  # Not used for filtering - patients are universal
         )
         
@@ -163,8 +171,8 @@ async def list_patients(
             limit=limit
         )
         
-        # Cache the result if no search query
-        if not search:
+        # Cache the result if no search or filter queries
+        if not search and not phone and not date_of_birth and not address and not email:
             await cache.set(cache_key, result, ttl_seconds=30)
         
         return result
