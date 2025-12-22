@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -73,11 +72,7 @@ export function PatientSearchWidget({
     return results.slice(0, 10);
   }, [results, searchQuery]);
 
-  const getPatientDetailsPath = (patientId: string) => {
-    return userRole === "admin"
-      ? `/admin/patient-details/${patientId}`
-      : `/patient-overview/${patientId}`;
-  };
+  // HIPAA: do not provide navigation to patient profile from global search results.
 
   return (
     <Card className={className}>
@@ -106,16 +101,14 @@ export function PatientSearchWidget({
           {showResults && filteredPatients.length > 0 && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
               {filteredPatients.map((patient) => {
-                const patientPath = getPatientDetailsPath(patient.patientId);
                 const initials = patient.fullName
                   .split(" ")
                   .map((n) => n[0])
                   .join("");
                 return (
-                  <Link
+                  <div
                     key={patient.patientId}
-                    to={patientPath}
-                    className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors border-b border-border last:border-b-0 block"
+                    className="flex items-center gap-3 p-3 border-b border-border last:border-b-0"
                   >
                     <Avatar className="w-10 h-10 border border-border">
                       <AvatarFallback className="bg-teal-100 text-teal-700">
@@ -132,11 +125,11 @@ export function PatientSearchWidget({
                     </div>
                     <Badge
                       variant="outline"
-                      className="text-xs bg-teal-50 text-teal-700 border-teal-200"
+                      className="text-xs bg-slate-50 text-slate-700 border-slate-200"
                     >
-                      View
+                      Restricted
                     </Badge>
-                  </Link>
+                  </div>
                 );
               })}
             </div>
@@ -161,7 +154,7 @@ export function PatientSearchWidget({
 
         {!searchQuery && (
           <p className="text-xs text-muted-foreground mt-3">
-            Search for patients by name or ID to view their details
+            Search for patients by name or ID (patient profile access is restricted).
           </p>
         )}
       </CardContent>

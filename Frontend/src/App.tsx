@@ -289,7 +289,7 @@ export default function MediEaseClinicPrototype() {
           <Route
             path="/patient-overview/:patientId"
             element={
-              <RequireAuth role={["doctor", "admin", "receptionist"]}>
+              <RequireAuth role="doctor">
                 <Suspense fallback={<LoadingFallback />}>
                   <HealthcareLayout>
                     <PatientOverview />

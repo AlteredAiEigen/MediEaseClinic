@@ -45,6 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { get, post, patch } from "@/lib/api-client";
+import { todayLocalYYYYMMDD } from "@/lib/date";
 import { toast } from "@/components/ui/use-toast";
 import { useQueueWebSocket } from "@/hooks/use-websocket";
 import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
@@ -178,7 +179,7 @@ const [, setPatients] = useState<Patient[]>([]);
     try {
       await cleanupOldAppointments();
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayLocalYYYYMMDD();
       await Promise.all([
         fetchPatients(),
         fetchDoctors(),
@@ -196,7 +197,7 @@ const [, setPatients] = useState<Patient[]>([]);
     try {
       await cleanupOldAppointments();
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayLocalYYYYMMDD();
       await Promise.all([
         fetchPatients(),
         fetchDoctors(),
@@ -1030,7 +1031,7 @@ const [, setPatients] = useState<Patient[]>([]);
                       type="date"
                       value={appointmentDate}
                       onChange={(e) => setAppointmentDate(e.target.value)}
-                      min={new Date().toISOString().split("T")[0]}
+                      min={todayLocalYYYYMMDD()}
                     />
                   </div>
                   <div className="space-y-2">

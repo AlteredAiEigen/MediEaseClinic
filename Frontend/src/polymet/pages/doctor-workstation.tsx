@@ -23,6 +23,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import { get, put, patch } from "@/lib/api-client";
+import { todayLocalYYYYMMDD } from "@/lib/date";
 import { useAuth } from "@/context/auth-context";
 import { ConsultationHistoryDialog } from "@/polymet/components/consultation-history-dialog";
 
@@ -301,7 +302,7 @@ export function DoctorWorkstation() {
         }
 
         // Fetch today's appointments
-        const today = new Date().toISOString().split("T")[0];
+        const today = todayLocalYYYYMMDD();
         const appointmentsResponse = await get(`/api/appointments?date=${today}&limit=100`);
         
         if (appointmentsResponse.success) {
@@ -920,16 +921,7 @@ export function DoctorWorkstation() {
                   {/* Action Buttons */}
                   <div className="mt-8 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
-                      <Button
-                        variant="outline"
-                        className="hover:bg-blue-50 dark:hover:bg-blue-950/20"
-                        asChild
-                      >
-                        <Link to={`/patient-overview/${currentPatient.patientId}`}>
-                          <FileTextIcon className="w-4 h-4 mr-2" />
-                          View History
-                        </Link>
-                      </Button>
+                      {/* View History removed for HIPAA compliance (available only in active consultation) */}
                       <Button
                         className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-lg text-base px-6 py-6"
                         onClick={handleStartConsultation}
@@ -1099,14 +1091,7 @@ export function DoctorWorkstation() {
 
                         {patient.waitTime}
                       </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="hover:bg-blue-50 dark:hover:bg-blue-950/20"
-                        asChild
-                      >
-                        <Link to={`/patient-overview/${patient.patientId}`}>View</Link>
-                      </Button>
+                      {/* View removed for HIPAA compliance (available only in active consultation) */}
                     </div>
                   </div>
                 );

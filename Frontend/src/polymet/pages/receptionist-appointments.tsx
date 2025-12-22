@@ -35,6 +35,7 @@ import {
   CheckCircleIcon,
 } from "lucide-react";
 import { get, post, put, patch } from "@/lib/api-client";
+import { formatLocalYYYYMMDD, todayLocalYYYYMMDD } from "@/lib/date";
 import type { BillingItem } from "@/polymet/pages/admin-billing";
 import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 
@@ -215,7 +216,7 @@ export function ReceptionistAppointments() {
   const patientIdFromUrl = searchParams.get("patientId");
   const hasProcessedUrlParam = useRef(false);
   
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [selectedDate, setSelectedDate] = useState(todayLocalYYYYMMDD());
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [statusFilter, setStatusFilter] = useState("all");
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
@@ -375,8 +376,8 @@ export function ReceptionistAppointments() {
       const firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
       const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
-      const startDate = firstDay.toISOString().split("T")[0];
-      const endDate = lastDay.toISOString().split("T")[0];
+      const startDate = formatLocalYYYYMMDD(firstDay);
+      const endDate = formatLocalYYYYMMDD(lastDay);
 
       // For now, we'll fetch appointments for each day of the month
       // In a real implementation, you might want an API endpoint that accepts date ranges
@@ -384,7 +385,7 @@ export function ReceptionistAppointments() {
 
       // Loop through each day of the month
       for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split("T")[0];
+        const dateStr = formatLocalYYYYMMDD(d);
         try {
           const response = await get(`/api/appointments?date=${dateStr}&limit=100`);
           if (response.success) {
@@ -845,7 +846,7 @@ export function ReceptionistAppointments() {
               onSelect={(selectedDate) => {
                 if (selectedDate) {
                   setDate(selectedDate);
-                  setSelectedDate(selectedDate.toISOString().split("T")[0]);
+                  setSelectedDate(formatLocalYYYYMMDD(selectedDate));
                 }
               }}
               modifiers={modifiers}
@@ -1042,7 +1043,7 @@ export function ReceptionistAppointments() {
                     type="date"
                     value={rescheduleDate}
                     onChange={(e) => setRescheduleDate(e.target.value)}
-                    min={new Date().toISOString().split("T")[0]}
+                    min={todayLocalYYYYMMDD()}
                   />
                 </div>
                 <div className="space-y-2">

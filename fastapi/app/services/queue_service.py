@@ -12,6 +12,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.models.queue import Queue, QueueInDB
 from app.schemas.queue import QueueCheckIn, QueueStatusUpdate, QueueConsultationUpdate
 from app.services.websocket_service import WebSocketService
+from app.utils.cache import cache
 
 logger = logging.getLogger(__name__)
 
@@ -381,6 +382,9 @@ class QueueService:
                     }
                 }
             )
+
+            # Invalidate cached appointment lists so dashboards update immediately
+            await cache.clear_pattern("appointments:")
             
             logger.info(f"Checked in appointment {check_in_data.appointment_id} - Queue #{queue_number}")
 
@@ -390,6 +394,11 @@ class QueueService:
                 queue_entry_for_broadcast = await self._get_populated_queue_entry(str(result.inserted_id))
                 if queue_entry_for_broadcast:
                     await self.websocket_service.broadcast_patient_checked_in(queue_entry_for_broadcast)
+
+                # Also broadcast appointment status update so appointment widgets refresh immediately
+                updated_appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+                if updated_appointment:
+                    await self.websocket_service.broadcast_appointment_status_update(updated_appointment)
             except Exception as e:
                 logger.warning(f"Failed to broadcast queue check-in event: {e}")
 
@@ -820,6 +829,9 @@ class QueueService:
                                     {"$set": appointment_status_update}
                                 )
                                 logger.info(f"Updated appointment {appointment_id} status to {appointment_status_update.get('status')}")
+
+                                # Invalidate cached appointment lists so dashboards update immediately
+                                await cache.clear_pattern("appointments:")
                                 
                                 # Broadcast appointment status update via WebSocket
                                 try:
@@ -890,6 +902,9 @@ class QueueService:
                         }
                     )
                     logger.info(f"Updated appointment {appointment_id} status to in-progress")
+
+                    # Invalidate cached appointment lists so dashboards update immediately
+                    await cache.clear_pattern("appointments:")
                     
                     # Broadcast appointment status update via WebSocket
                     try:
@@ -1071,6 +1086,17 @@ class QueueService:
                             {"_id": appointment_object_id},
                             {"$set": update_fields}
                         )
+
+                        # Invalidate cached appointment lists so dashboards update immediately
+                        await cache.clear_pattern("appointments:")
+
+                        # Broadcast appointment status update via WebSocket
+                        try:
+                            updated_appointment = await self.db["appointments"].find_one({"_id": appointment_object_id})
+                            if updated_appointment:
+                                await self.websocket_service.broadcast_appointment_status_update(updated_appointment)
+                        except Exception as e:
+                            logger.warning(f"Failed to broadcast appointment status update on checkout: {e}")
             except Exception as e:
                 logger.warning(f"Failed to update appointment on checkout: {e}")
         

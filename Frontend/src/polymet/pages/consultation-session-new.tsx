@@ -21,11 +21,13 @@ import {
   FileAudioIcon,
   EyeIcon,
   UploadIcon,
+  ExternalLinkIcon,
 } from "lucide-react";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
 import { get, post, put, patch, del } from "@/lib/api-client";
+import { todayLocalYYYYMMDD } from "@/lib/date";
 import { MedicalHistoryRecord } from "@/lib/api/patients";
 import {
   addPendingConsultationUpload,
@@ -729,7 +731,7 @@ export function ConsultationSession() {
 
     if (!resolvedAppointmentId) {
       try {
-        const today = new Date().toISOString().split("T")[0];
+        const today = todayLocalYYYYMMDD();
         const appointmentsResponse = await get<any>(
           `/api/appointments?patientId=${targetPatientId}&date=${today}&status=checked-in`
         );
@@ -1414,6 +1416,24 @@ export function ConsultationSession() {
               </Badge>
             </div>
           </div>
+
+        {/* HIPAA: Patient details link only available during active consultation */}
+        {Boolean(queueEntryId || queueIdParam) && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                const qid = queueEntryId || queueIdParam || "";
+                navigate(
+                  `/patient-overview/${patientId}?queueId=${encodeURIComponent(qid)}`
+                );
+              }}
+            >
+              <ExternalLinkIcon className="h-4 w-4 mr-2" />
+              View Details
+            </Button>
+          </div>
+        )}
         </div>
 
         {/* Recording Controls */}

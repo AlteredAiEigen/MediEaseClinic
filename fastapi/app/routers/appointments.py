@@ -28,6 +28,13 @@ from bson import ObjectId
 
 router = APIRouter()
 
+async def _invalidate_appointments_cache() -> None:
+    """
+    Appointment lists are cached for performance, but any write (create/update/status)
+    must invalidate cached list responses so dashboards update immediately.
+    """
+    await cache.clear_pattern("appointments:")
+
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_appointment(
@@ -52,6 +59,8 @@ async def create_appointment(
             clinic_id=clinic_id,
             clinic_name=clinic_name
         )
+
+        await _invalidate_appointments_cache()
         
         return success_response(
             message="Appointment created successfully",
@@ -194,6 +203,8 @@ async def update_appointment(
             appointment_id,
             update_data
         )
+
+        await _invalidate_appointments_cache()
         
         return success_response(
             message="Appointment updated successfully",
@@ -224,6 +235,8 @@ async def update_appointment_status(
             status_update.status,
             status_update.cancellationReason
         )
+
+        await _invalidate_appointments_cache()
         
         return success_response(
             message="Appointment status updated successfully",
@@ -257,6 +270,8 @@ async def upload_prescription(
             notes=notes
         )
 
+        await _invalidate_appointments_cache()
+
         return success_response(
             message="Prescription uploaded successfully",
             data={"appointment": appointment}
@@ -283,6 +298,8 @@ async def delete_prescription(
         appointment = await appointment_service.delete_prescription_file(
             appointment_id=appointment_id
         )
+
+        await _invalidate_appointments_cache()
 
         return success_response(
             message="Prescription deleted successfully",
@@ -378,6 +395,8 @@ async def check_in_appointment(
             "checked-in",
         )
 
+        await _invalidate_appointments_cache()
+
         # Fire-and-forget task to refresh patient insights using AI
         patient_id = appointment.get("patientId")
         if patient_id:
@@ -467,6 +486,8 @@ async def complete_consultation(
             appointment_id,
             update_data
         )
+
+        await _invalidate_appointments_cache()
         
         # Note: Queue status is now automatically synced in update_appointment method
         # This ensures queue status stays in sync with appointment status
@@ -603,6 +624,8 @@ async def cancel_appointment(
             "cancelled",
             cancellation_reason
         )
+
+        await _invalidate_appointments_cache()
         
         return success_response(
             message="Appointment cancelled successfully",

@@ -478,19 +478,7 @@ export function ConsultationHistoryDialog({
                                 <EyeIcon className="w-4 h-4" />
                                 View Details
                               </Button>
-                              {recording.patient && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  asChild
-                                  className="gap-2"
-                                >
-                                  <Link to={`/patient-overview/${recording.patient.patientId}`}>
-                                    <UserIcon className="w-4 h-4" />
-                                    Patient Profile
-                                  </Link>
-                                </Button>
-                              )}
+                              {/* HIPAA: Patient profile link removed; details are visible only during active consultation */}
                             </div>
                           </div>
                         </CardContent>

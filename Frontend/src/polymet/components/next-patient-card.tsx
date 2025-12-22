@@ -144,13 +144,7 @@ export function NextPatientCard({
             >
               Start Consultation
             </Button>
-            <Button
-              onClick={onViewDetails}
-              variant="outline"
-              className="border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-950/20"
-            >
-              View Details
-            </Button>
+            {/* HIPAA: View Details removed; patient profile is only accessible inside active consultation */}
           </div>
         </div>
       </div>

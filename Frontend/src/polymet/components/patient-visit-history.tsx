@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -58,12 +57,7 @@ export function PatientVisitHistory({
             {visits.length} visits
           </Badge>
         </div>
-        <Link to={`/patient-overview/${patientId}`}>
-          <Button variant="outline" size="sm" className="gap-2">
-            <ExternalLinkIcon className="w-4 h-4" />
-            View Full History
-          </Button>
-        </Link>
+        {/* HIPAA: Full patient history link removed (available only in active consultation) */}
       </div>
 
       {/* Stacked Cards with Dynamic Hover Effect */}
@@ -237,23 +231,7 @@ export function PatientVisitHistory({
                       </div>
                     )}
 
-                    {/* Action Buttons */}
-                    <div className="flex gap-2 pt-2">
-                      <Link
-                        to={`/patient-overview/${patientId}`}
-                        className="flex-1"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full gap-2"
-                        >
-                          <ExternalLinkIcon className="w-3.5 h-3.5" />
-                          View in Patient Overview
-                        </Button>
-                      </Link>
-                    </div>
+                    {/* HIPAA: Patient overview link removed */}
                   </div>
                 )}
               </CardContent>
@@ -263,16 +241,7 @@ export function PatientVisitHistory({
       </div>
 
       {/* Show More Button */}
-      {visits.length > 3 && (
-        <div className="flex justify-center pt-2">
-          <Link to={`/patient-overview/${patientId}`}>
-            <Button variant="outline" className="gap-2">
-              View All {visits.length} Visits
-              <ExternalLinkIcon className="w-4 h-4" />
-            </Button>
-          </Link>
-        </div>
-      )}
+      {/* HIPAA: removed patient overview navigation */}
     </div>
   );
 }

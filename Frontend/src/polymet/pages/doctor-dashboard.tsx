@@ -29,6 +29,7 @@ import {
   AlertCircleIcon,
 } from "lucide-react";
 import { get, post, put, patch } from "@/lib/api-client";
+import { todayLocalYYYYMMDD } from "@/lib/date";
 import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/components/ui/use-toast";
 import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
@@ -211,7 +212,7 @@ export function DoctorDashboard() {
         }
         setError(null);
 
-        const today = new Date().toISOString().split("T")[0];
+        const today = todayLocalYYYYMMDD();
 
         const [
           queueResponse,
@@ -469,7 +470,8 @@ export function DoctorDashboard() {
       try {
         if (lastMessage.type === 'patient_checked_in' ||
             lastMessage.type === 'patient_status_updated' ||
-            lastMessage.type === 'queue_reordered') {
+            lastMessage.type === 'queue_reordered' ||
+            lastMessage.type === 'appointment_status_updated') {
           // Refresh queue data silently (no loading state)
           await fetchDashboardData(false);
         }
@@ -557,6 +559,11 @@ export function DoctorDashboard() {
     }
 
     try {
+      // Invalidate cached dashboard snapshot so UI never rehydrates stale data
+      if (dashboardCacheKey) {
+        sessionStorage.removeItem(dashboardCacheKey);
+      }
+
       // Cancel the queue entry
       const queueResponse = await put(`/api/queue/${queueEntryId}/status`, {
         status: "cancelled"
@@ -626,6 +633,11 @@ export function DoctorDashboard() {
 
     try {
       setQueueActionId(appointmentId);
+
+      // Invalidate cached dashboard snapshot so UI never rehydrates stale data
+      if (dashboardCacheKey) {
+        sessionStorage.removeItem(dashboardCacheKey);
+      }
 
       const response = await post("/api/queue/check-in", {
         appointmentId,

@@ -86,16 +86,7 @@ export function AppointmentCard({
             </Badge>
           </div>
 
-          {onViewDetails && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onViewDetails}
-              className="w-full mt-2 text-[#00C4B3] hover:text-[#00C4B3] hover:bg-[#00C4B3]/10"
-            >
-              View Details
-            </Button>
-          )}
+          {/* HIPAA: View Details removed; patient profile is only accessible inside active consultation */}
         </div>
       </div>
 

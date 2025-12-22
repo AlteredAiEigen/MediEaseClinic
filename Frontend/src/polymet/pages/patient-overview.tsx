@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, FormEvent, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useLocation, useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -421,8 +421,18 @@ const extractList = <T,>(rawData: any): T[] => {
 export function PatientOverview() {
   const { patientId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // HIPAA access gate: only doctors with an active consultation (queueId=in-consultation) can view this page
+  const [accessChecking, setAccessChecking] = useState(true);
+  const [accessAllowed, setAccessAllowed] = useState(false);
+
+  const queueId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("queueId") || "";
+  }, [location.search]);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [vitals, setVitals] = useState<PatientVitals[]>([]);
   const [labReports, setLabReports] = useState<LabReport[]>([]);
@@ -472,6 +482,39 @@ export function PatientOverview() {
     familyHistoryEntries: [],
     previousSurgeryEntries: [],
   });
+
+  useEffect(() => {
+    const checkAccess = async () => {
+      try {
+        if (!user || user.role !== "doctor") {
+          setAccessAllowed(false);
+          return;
+        }
+
+        if (!queueId) {
+          setAccessAllowed(false);
+          return;
+        }
+
+        const response = await get<any>(`/api/queue/${queueId}`);
+        const payload = (response as any)?.data?.data ?? (response as any)?.data;
+        const doctorId = payload?.doctor?._id ?? payload?.doctor;
+        const status = String(payload?.status ?? "").toLowerCase();
+
+        const isDoctorMatch = doctorId && String(doctorId) === String(user._id);
+        const isActiveConsultation = status === "in-consultation";
+
+        setAccessAllowed(Boolean(isDoctorMatch && isActiveConsultation));
+      } catch (err) {
+        console.warn("Patient overview access check failed:", err);
+        setAccessAllowed(false);
+      } finally {
+        setAccessChecking(false);
+      }
+    };
+
+    void checkAccess();
+  }, [queueId, user]);
   const [dirtySections, setDirtySections] = useState<Record<EditableSection, boolean>>({
     overview: false,
     history: false,
@@ -979,6 +1022,16 @@ export function PatientOverview() {
     };
 
     const fetchPatientData = async () => {
+      if (accessChecking) {
+        return;
+      }
+      if (!accessAllowed) {
+        setError("Access restricted: Patient details are only available during an active consultation.");
+        setPatient(null);
+        setHasAnyData(false);
+        setIsLoading(false);
+        return;
+      }
       if (!patientId) {
         setError("Missing patient identifier");
         setPatient(null);
@@ -1278,7 +1331,7 @@ export function PatientOverview() {
     };
 
     fetchPatientData();
-  }, [patientId]);
+  }, [patientId, accessAllowed, accessChecking]);
 
   // Extract consultation notes from appointments and merge with clinical notes
   useEffect(() => {
@@ -2931,6 +2984,38 @@ export function PatientOverview() {
       interpretation: report.interpretation,
     };
   };
+
+  if (accessChecking) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Checking access</h2>
+          <p className="text-muted-foreground">Validating consultation permissions…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!accessAllowed) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center max-w-xl">
+          <ShieldCheckIcon className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-foreground mb-2">Access restricted</h2>
+          <p className="text-muted-foreground mb-4">
+            Patient details are only accessible to the assigned doctor during an active consultation.
+          </p>
+          <Button onClick={() => navigate("/doctor-dashboard")} variant="outline" className="mr-2">
+            Back to Dashboard
+          </Button>
+          <Button onClick={() => navigate(-1)} variant="default">
+            Go Back
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

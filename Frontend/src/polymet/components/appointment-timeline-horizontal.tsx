@@ -134,13 +134,7 @@ export function AppointmentTimelineHorizontal({
                     )}
                   </div>
 
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full mt-3 text-xs hover:bg-blue-50 dark:hover:bg-blue-950/20"
-                  >
-                    View Details
-                  </Button>
+                  {/* HIPAA: View Details removed; patient profile is only accessible inside active consultation */}
                 </CardContent>
               </Card>
             ))}

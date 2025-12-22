@@ -1,5 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { NewAppointmentDialog } from "@/polymet/components/new-appointment-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -115,10 +116,14 @@ const isPastAppointment = (appointmentDate: string): boolean => {
 
 export function DoctorAppointments() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const patientIdFromUrl = searchParams.get("patientId");
+  const hasProcessedUrlParam = useRef(false);
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [viewMode, setViewMode] = useState<"day" | "week" | "month">("day");
   const [statusFilter, setStatusFilter] = useState("all");
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
+  const [initialPatientId, setInitialPatientId] = useState<string | undefined>(undefined);
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [editingAppointment, setEditingAppointment] = useState<any>(null);
@@ -162,6 +167,23 @@ export function DoctorAppointments() {
 
     fetchAppointments();
   }, [user, date]);
+
+  // Auto-open "New Appointment" dialog when arriving with ?patientId=
+  useEffect(() => {
+    if (!patientIdFromUrl || hasProcessedUrlParam.current) {
+      return;
+    }
+    setInitialPatientId(String(patientIdFromUrl));
+    setNewAppointmentOpen(true);
+    hasProcessedUrlParam.current = true;
+
+    // Clear URL param after consuming it
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("patientId");
+      return next;
+    });
+  }, [patientIdFromUrl, setSearchParams]);
 
   // Handle WebSocket messages for real-time updates
   useEffect(() => {
@@ -291,14 +313,7 @@ export function DoctorAppointments() {
   };
 
 
-  // Handle viewing appointment details - opens patient overview with appointment details
-  const handleViewDetails = (appointment: any) => {
-    // Navigate to patient overview page with the patient ID
-    const patientId = appointment.patientId;
-    if (patientId) {
-      window.location.href = `/patient-overview/${patientId}`;
-    }
-  };
+  // HIPAA: patient profile view is restricted to active consultations only (see consultation screen)
 
   // Refresh appointments after edit
   const refreshAppointments = async () => {
@@ -436,9 +451,11 @@ export function DoctorAppointments() {
           setNewAppointmentOpen(open);
           if (!open) {
             setEditingAppointment(null);
+            setInitialPatientId(undefined);
           }
         }}
         editingAppointment={editingAppointment}
+        initialPatientId={initialPatientId}
         onAppointmentUpdated={() => {
           // Refresh appointments
           const selectedDate = date ? formatDateLocal(date) : formatDateLocal(new Date());
@@ -751,13 +768,7 @@ export function DoctorAppointments() {
                         </>
                       )}
 
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleViewDetails(appointment)}
-                      >
-                        View Details
-                      </Button>
+                      {/* View Details removed for HIPAA compliance */}
                     </div>
                   </div>
                 ))}

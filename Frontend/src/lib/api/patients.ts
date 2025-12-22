@@ -15,6 +15,7 @@ export interface PatientSummary {
   gender: string;
   age: string;
   email: string;
+  medieaseClinicEmail?: string;
   phone: string;
   presentInClinic: boolean;
   chiefComplaint?: string | null;
@@ -66,6 +67,10 @@ export interface PatientListParams {
   search?: string;
   gender?: string;
   presentInClinic?: boolean;
+  phone?: string;
+  dateOfBirth?: string;
+  address?: string;
+  email?: string;
 }
 
 export interface PatientCreateInput {
@@ -117,6 +122,10 @@ export async function fetchPatients(params: PatientListParams = {}): Promise<Pat
   if (typeof params.presentInClinic === "boolean") {
     query.set("present_in_clinic", String(params.presentInClinic));
   }
+  if (params.phone) query.set("phone", params.phone);
+  if (params.dateOfBirth) query.set("date_of_birth", params.dateOfBirth);
+  if (params.address) query.set("address", params.address);
+  if (params.email) query.set("email", params.email);
 
   const response = await get<PatientSummary[]>(
     `/api/patients?${query.toString()}`

@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,6 +140,10 @@ const isPastAppointment = (appointmentDate: string): boolean => {
 };
 
 export function AdminAppointments() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const patientIdFromUrl = searchParams.get("patientId");
+  const hasProcessedUrlParam = useRef(false);
+
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -213,6 +218,22 @@ export function AdminAppointments() {
     reason: "",
     notes: "",
   });
+
+  // Auto-open "Add Appointment" dialog when arriving with ?patientId=, preselecting the patient.
+  useEffect(() => {
+    if (!patientIdFromUrl || hasProcessedUrlParam.current) return;
+
+    setNewAppointment((prev) => ({ ...prev, patientId: String(patientIdFromUrl) }));
+    setAddAppointmentDialogOpen(true);
+    hasProcessedUrlParam.current = true;
+
+    // Clear the URL param after using it
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("patientId");
+      return next;
+    });
+  }, [patientIdFromUrl, setSearchParams]);
 
   const sortAppointments = (items: Appointment[]) =>
     [...items].sort((a, b) => {

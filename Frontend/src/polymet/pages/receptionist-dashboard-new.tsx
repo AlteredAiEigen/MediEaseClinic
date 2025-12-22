@@ -55,6 +55,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
 import { useQueueWebSocket } from "@/hooks/use-websocket";
+import { todayLocalYYYYMMDD } from "@/lib/date";
 
 interface Patient {
   _id: string;
@@ -513,7 +514,7 @@ export function ReceptionistDashboardNew() {
 
   const fetchTodayAppointments = useCallback(async () => {
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = todayLocalYYYYMMDD();
       const response = await get(`/api/appointments?date=${today}&limit=100`);
       if (response.success) {
         const rawAppointments = extractList<any>(response.data);
@@ -534,7 +535,7 @@ export function ReceptionistDashboardNew() {
             patientId: normalizeId(apt.patientId) ?? apt.patientId,
             patientName: apt.patientName || apt.patient?.fullName || "Unknown Patient",
             time: apt.time ?? "—",
-            date: apt.date ?? new Date().toISOString().split("T")[0],
+            date: apt.date ?? today,
             reason: apt.reason || "General Consultation",
             status: apt.status ?? "scheduled",
             type: apt.type || apt.appointmentType,
@@ -696,7 +697,7 @@ const matchesPatient = (patient: Patient) => {
     .some((field) => field!.toLowerCase().includes(normalizedQuery));
 };
 
-const todayDate = new Date().toISOString().split("T")[0];
+const todayDate = todayLocalYYYYMMDD();
 const todaysAppointments = appointmentsList.filter((appointment) => {
   const dateValue = (appointment.date ?? "").slice(0, 10);
   const statusValue = (appointment.status ?? "scheduled").toLowerCase();
