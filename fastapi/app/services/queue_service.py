@@ -1027,6 +1027,12 @@ class QueueService:
     
     async def check_out_patient(self, entry_id: str) -> Optional[Dict]:
         """Check out patient from queue."""
+        if not ObjectId.is_valid(entry_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid queue entry ID"
+            )
+
         # Get queue entry to find patient ID
         entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
         if not entry:
@@ -1040,6 +1046,35 @@ class QueueService:
             entry_id,
             QueueStatusUpdate(status="checked-out")
         )
+
+        # Defensive: if multiple active queue entries exist for the same patient today,
+        # mark them checked-out as well so the patient disappears from the receptionist dashboard.
+        try:
+            patient_value = entry.get("patient")
+            if patient_value:
+                patient_object_id = patient_value
+                if isinstance(patient_value, str) and ObjectId.is_valid(patient_value):
+                    patient_object_id = ObjectId(patient_value)
+
+                today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                await self.queue_collection.update_many(
+                    {
+                        "checked_in_at": {"$gte": today},
+                        "patient": patient_object_id,
+                        "is_active": True,
+                        "_id": {"$ne": ObjectId(entry_id)},
+                    },
+                    {
+                        "$set": {
+                            "status": "checked-out",
+                            "is_active": False,
+                            "consultation_ended_at": datetime.utcnow(),
+                            "updated_at": datetime.utcnow(),
+                        }
+                    },
+                )
+        except Exception as e:
+            logger.warning(f"Failed to cascade checkout for patient entries: {e}")
         
         # Update patient's presentInClinic status to False
         if result and entry.get("patient"):

@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -212,9 +213,13 @@ const isPastAppointment = (appointmentDate: string): boolean => {
 };
 
 export function ReceptionistAppointments() {
+  const { toast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const patientIdFromUrl = searchParams.get("patientId");
   const hasProcessedUrlParam = useRef(false);
+  const [initialPatientIdForDialog, setInitialPatientIdForDialog] = useState<string | undefined>(
+    undefined
+  );
   
   const [selectedDate, setSelectedDate] = useState(todayLocalYYYYMMDD());
   const [date, setDate] = useState<Date | undefined>(new Date());
@@ -418,48 +423,38 @@ export function ReceptionistAppointments() {
 
   // Pre-select patient from URL parameter and open appointment dialog
   useEffect(() => {
-    // Only proceed if we have a patientId in URL, patients have been loaded, and we haven't processed it yet
-    if (!patientIdFromUrl || patients.length === 0 || hasProcessedUrlParam.current) {
+    if (!patientIdFromUrl || hasProcessedUrlParam.current) return;
+
+    const raw = String(patientIdFromUrl);
+    const isValidObjectId = (value: string) => /^[a-fA-F0-9]{24}$/.test(value);
+
+    const openWithPatientId = (mongoPatientId: string) => {
+      setInitialPatientIdForDialog(mongoPatientId);
+      setEditingAppointment(null);
+      setIsNewAppointmentOpen(true);
+      hasProcessedUrlParam.current = true;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("patientId");
+        return next;
+      });
+    };
+
+    // Most common path: PatientsDirectory passes Mongo _id -> we can preselect immediately.
+    if (isValidObjectId(raw)) {
+      openWithPatientId(raw);
       return;
     }
 
-    // Try to find patient by _id or patientId (handle both MongoDB ObjectId and patientId string)
-    const foundPatient = patients.find(
-      (p) => {
-        const pId = String(p._id || "");
-        const pPatientId = String(p.patientId || "");
-        const urlId = String(patientIdFromUrl);
-        return pId === urlId || pPatientId === urlId;
-      }
-    );
-    
-    if (foundPatient) {
-      console.log("Found patient for pre-selection:", foundPatient);
-      // Set patient selection first
-      setSelectedPatient(String(foundPatient._id));
-      // Set search query to patient name so it appears in the search field
-      setSearchQuery(foundPatient.fullName || `${foundPatient.patientId}`);
-      // Open dialog after a small delay to ensure state is set
-      setTimeout(() => {
-        setIsNewAppointmentOpen(true);
-      }, 100);
-      hasProcessedUrlParam.current = true;
-      
-      // Clear the URL parameter after using it
-      setSearchParams((prev) => {
-        const newParams = new URLSearchParams(prev);
-        newParams.delete("patientId");
-        return newParams;
-      });
-    } else {
-      console.warn("Patient not found with ID:", patientIdFromUrl);
-      console.log("Available patients:", patients.map(p => ({ 
-        _id: String(p._id), 
-        patientId: String(p.patientId),
-        fullName: p.fullName 
-      })));
-      hasProcessedUrlParam.current = true; // Mark as processed even if not found to avoid infinite retries
+    // Fallback: try to resolve friendly patientId from already loaded patients list.
+    const match = patients.find((p) => String(p.patientId) === raw || String(p._id) === raw);
+    if (match?._id) {
+      openWithPatientId(String(match._id));
+      return;
     }
+
+    // Mark processed to avoid loops; user can still manually pick patient in dialog.
+    hasProcessedUrlParam.current = true;
   }, [patientIdFromUrl, patients, setSearchParams]);
 
   // Ensure search query shows patient name when patient is selected but search query is empty
@@ -622,6 +617,15 @@ export function ReceptionistAppointments() {
       }
 
       if (response.success) {
+        const selectedPatientObj = patients.find(
+          (p) => String(p._id) === String(selectedPatient)
+        );
+        toast({
+          title: editingAppointment ? "Appointment updated" : "Appointment scheduled",
+          description: selectedPatientObj
+            ? `Patient: ${selectedPatientObj.fullName || selectedPatientObj.patientId}`
+            : undefined,
+        });
         setIsNewAppointmentOpen(false);
         setEditingAppointment(null);
         // Reset form
@@ -881,6 +885,7 @@ export function ReceptionistAppointments() {
                     setIsNewAppointmentOpen(open);
                     if (!open) {
                       setEditingAppointment(null);
+                      setInitialPatientIdForDialog(undefined);
                     }
                   }}
                   editingAppointment={editingAppointment || undefined}
@@ -888,6 +893,7 @@ export function ReceptionistAppointments() {
                     fetchAppointments();
                     fetchAllAppointmentsForMonth();
                   }}
+                  initialPatientId={initialPatientIdForDialog}
                 />
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-[150px]">

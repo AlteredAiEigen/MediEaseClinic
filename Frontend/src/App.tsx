@@ -299,6 +299,18 @@ export default function MediEaseClinicPrototype() {
             }
           />
 
+          {/* Embedded patient overview (no sidebar/header layout) - used inside consultation bottom-sheet */}
+          <Route
+            path="/embedded/patient-overview/:patientId"
+            element={
+              <RequireAuth role="doctor">
+                <Suspense fallback={<LoadingFallback />}>
+                  <PatientOverview />
+                </Suspense>
+              </RequireAuth>
+            }
+          />
+
           <Route
             path="/consultation/:patientId"
             element={

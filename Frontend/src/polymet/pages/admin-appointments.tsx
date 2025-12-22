@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar } from "@/components/ui/calendar";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -144,6 +145,8 @@ export function AdminAppointments() {
   const patientIdFromUrl = searchParams.get("patientId");
   const hasProcessedUrlParam = useRef(false);
 
+  const { toast } = useToast();
+
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -223,17 +226,38 @@ export function AdminAppointments() {
   useEffect(() => {
     if (!patientIdFromUrl || hasProcessedUrlParam.current) return;
 
-    setNewAppointment((prev) => ({ ...prev, patientId: String(patientIdFromUrl) }));
+    const raw = String(patientIdFromUrl);
+    const isValidObjectId = (value: string) => /^[a-fA-F0-9]{24}$/.test(value);
+
+    // If URL provides Mongo ObjectId, use it directly.
+    if (isValidObjectId(raw)) {
+      setNewAppointment((prev) => ({ ...prev, patientId: raw }));
+      setAddAppointmentDialogOpen(true);
+      hasProcessedUrlParam.current = true;
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("patientId");
+        return next;
+      });
+      return;
+    }
+
+    // Otherwise, wait until patients are loaded and resolve by friendly patientId.
+    if (!patients.length) return;
+    const match = patients.find(
+      (p) => String(p.patientId) === raw || String(p._id) === raw
+    );
+    if (!match?._id) return;
+
+    setNewAppointment((prev) => ({ ...prev, patientId: String(match._id) }));
     setAddAppointmentDialogOpen(true);
     hasProcessedUrlParam.current = true;
-
-    // Clear the URL param after using it
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.delete("patientId");
       return next;
     });
-  }, [patientIdFromUrl, setSearchParams]);
+  }, [patientIdFromUrl, patients, setSearchParams]);
 
   const sortAppointments = (items: Appointment[]) =>
     [...items].sort((a, b) => {
@@ -506,6 +530,15 @@ export function AdminAppointments() {
       }
 
       if (response.success && response.data?.appointment) {
+        const selectedPatient = patients.find(
+          (p) => String(p._id) === String(newAppointment.patientId)
+        );
+        toast({
+          title: editingAppointment ? "Appointment updated" : "Appointment scheduled",
+          description: selectedPatient
+            ? `Patient: ${selectedPatient.fullName || selectedPatient.patientId}`
+            : undefined,
+        });
         setError(null);
         setAppointmentsList((prev) => {
           const updated = response.data!.appointment;
@@ -793,7 +826,7 @@ export function AdminAppointments() {
                       Add Appointment
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
+                  <DialogContent className="w-[95vw] sm:w-full sm:max-w-[560px] max-h-[90vh] overflow-y-auto overflow-x-hidden">
                     <DialogHeader>
                       <DialogTitle>Schedule New Appointment</DialogTitle>
                       <DialogDescription>
@@ -827,19 +860,19 @@ export function AdminAppointments() {
 
                       {/* Patient */}
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <Label htmlFor="patient">Patient</Label>
                           {recentPatients.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-wrap gap-2 max-w-full sm:max-w-[340px] sm:justify-end overflow-x-auto">
                               {recentPatients.map((p) => (
                                 <Button
                                   key={p._id}
                                   type="button"
                                   variant="outline"
                                   size="sm"
-                                  className="h-8 text-xs"
+                                  className="h-8 text-xs shrink-0"
                                   onClick={() =>
-                                    setNewAppointment({ ...newAppointment, patientId: p.patientId })
+                                    setNewAppointment({ ...newAppointment, patientId: String(p._id) })
                                   }
                                 >
                                   {p.fullName.split(" ")[0]}
@@ -997,8 +1030,8 @@ export function AdminAppointments() {
                               const phoneDisplay = patient.phone || "No phone";
                               const emailDisplay = patient.email || "No email";
                               return (
-                                <SelectItem key={patient._id} value={patient.patientId}>
-                                  {patient.fullName} • {phoneDisplay} • {emailDisplay}
+                                <SelectItem key={patient._id} value={String(patient._id)}>
+                                  {patient.fullName} • {patient.patientId} • {phoneDisplay} • {emailDisplay}
                                 </SelectItem>
                               );
                             })}

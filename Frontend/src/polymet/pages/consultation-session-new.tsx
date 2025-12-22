@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import { useParams, useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,6 @@ import {
   FileAudioIcon,
   EyeIcon,
   UploadIcon,
-  ExternalLinkIcon,
 } from "lucide-react";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
@@ -95,7 +94,9 @@ export function ConsultationSession() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const queueIdParam = searchParams.get("queueId");
+  const [patientDetailsOpen, setPatientDetailsOpen] = useState(false);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [appointmentId, setAppointmentId] = useState<string | null>(null);
   const [queueEntryId, setQueueEntryId] = useState<string | null>(null);
@@ -1423,13 +1424,11 @@ export function ConsultationSession() {
             <Button
               variant="outline"
               onClick={() => {
-                const qid = queueEntryId || queueIdParam || "";
-                navigate(
-                  `/patient-overview/${patientId}?queueId=${encodeURIComponent(qid)}`
-                );
+                if (!(queueEntryId || queueIdParam)) return;
+                setPatientDetailsOpen(true);
               }}
             >
-              <ExternalLinkIcon className="h-4 w-4 mr-2" />
+              <EyeIcon className="h-4 w-4 mr-2" />
               View Details
             </Button>
           </div>
@@ -1577,6 +1576,60 @@ export function ConsultationSession() {
           )}
         </div>
       </div>
+
+      {/* Patient details bottom-sheet (keeps consultation mounted so recording continues) */}
+      <Dialog open={patientDetailsOpen} onOpenChange={setPatientDetailsOpen}>
+        <DialogContent className="p-0 w-[100vw] sm:w-[95vw] max-w-6xl h-[92vh] fixed bottom-0 top-auto left-1/2 -translate-x-1/2 translate-y-0 rounded-t-2xl rounded-b-none overflow-hidden data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom">
+          <DialogHeader className="px-4 py-3 border-b">
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="text-base">
+                Patient Details
+                {patient?.fullName ? (
+                  <span className="text-muted-foreground font-normal">
+                    {" "}
+                    • {patient.fullName}
+                  </span>
+                ) : null}
+              </DialogTitle>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-[#00C4B3] to-cyan-500 text-white shadow-sm hover:from-[#009C8F] hover:to-cyan-600 focus-visible:ring-2 focus-visible:ring-[#00C4B3]/40"
+                  onClick={() => setPatientDetailsOpen(false)}
+                >
+                  Back to Consultation
+                </Button>
+                <Button
+                  size="icon"
+                  className="h-9 w-9 border border-[#00C4B3]/50 text-[#00C4B3] bg-[#00C4B3]/10 hover:bg-[#00C4B3]/20 hover:text-[#0f766e] shadow-sm focus-visible:ring-2 focus-visible:ring-[#00C4B3]/40"
+                  onClick={() => setPatientDetailsOpen(false)}
+                  aria-label="Close patient details"
+                >
+                  <XIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="h-[calc(92vh-56px)] bg-background">
+            <iframe
+              title="Patient Overview"
+              className="w-full h-full"
+              src={(() => {
+                const qid = queueEntryId || queueIdParam || "";
+                const idForOverview = resolvedPatientObjectId || patientId || "";
+                const params = new URLSearchParams();
+                if (qid) params.set("queueId", qid);
+                params.set("embedded", "1");
+                return `/embedded/patient-overview/${encodeURIComponent(
+                  idForOverview
+                )}?${params.toString()}`;
+              })()}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Left Column - AI Analysis & Lab Results */}

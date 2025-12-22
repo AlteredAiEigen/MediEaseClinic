@@ -144,7 +144,7 @@ export function NewAppointmentDialog({
           // Fetch patients
           const patientsResponse = await get<Patient[]>("/api/patients?limit=100");
           if (patientsResponse.success && Array.isArray(patientsResponse.data)) {
-            const normalizedPatients = patientsResponse.data.map((patient) => ({
+            let normalizedPatients = patientsResponse.data.map((patient) => ({
               ...patient,
               _id: String((patient as any)._id ?? (patient as any).id ?? patient.patientId ?? ""),
               patientId:
@@ -152,6 +152,45 @@ export function NewAppointmentDialog({
                 (patient as any).patientId ??
                 String((patient as any)._id ?? (patient as any).id ?? ""),
             }));
+
+            // If we were opened with a preselected patientId, ensure that patient exists in the list
+            // even if it isn't included in the default limit=100 fetch.
+            const isValidObjectId = (value?: string) =>
+              !!value && /^[a-fA-F0-9]{24}$/.test(String(value));
+            if (isValidObjectId(initialPatientId)) {
+              const exists = normalizedPatients.some(
+                (p) => String(p._id) === String(initialPatientId)
+              );
+              if (!exists) {
+                try {
+                  const patientResponse = await get(`/api/patients/${initialPatientId}`);
+                  const payload = (patientResponse as any)?.data?.patient ?? (patientResponse as any)?.data;
+                  if (patientResponse.success && payload) {
+                    const extraPatient: Patient = {
+                      ...(payload as any),
+                      _id: String((payload as any)._id ?? initialPatientId),
+                      patientId:
+                        (payload as any).patientId ??
+                        String((payload as any)._id ?? initialPatientId),
+                      fullName:
+                        (payload as any).fullName ??
+                        [(payload as any).firstName, (payload as any).lastName]
+                          .filter(Boolean)
+                          .join(" ")
+                          .trim(),
+                      age: (payload as any).age ?? "",
+                      gender: (payload as any).gender ?? "",
+                      phone: (payload as any).phone ?? "",
+                      email: (payload as any).email,
+                    };
+                    normalizedPatients = [extraPatient, ...normalizedPatients];
+                  }
+                } catch (err) {
+                  // Best-effort: if this fails, the user can still search/select manually.
+                  console.warn("Failed to fetch preselected patient details:", err);
+                }
+              }
+            }
 
             setPatients(
               [...normalizedPatients].sort((a, b) => a.fullName.localeCompare(b.fullName))

@@ -381,7 +381,8 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
         const weekStartStr = formatDateLocal(weekStart);
         const weekEndStr = formatDateLocal(weekEnd);
 
-        const queueResponse = await get<any>("/api/queue");
+        // Use trailing slash to avoid 307 redirects that can interfere with some proxies/caches.
+        const queueResponse = await get<any>("/api/queue/");
         if (!ignore && queueResponse.success) {
           const queueList = extractList<any>(queueResponse.data);
 
@@ -982,10 +983,11 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                       className="border border-border/70 bg-white dark:bg-background shadow-sm hover:shadow-md transition-all hover:border-[#00C4B3]/40 rounded-2xl h-full"
                     >
                       <CardContent className="p-6 flex flex-col h-full space-y-4">
-                        <div className="flex items-start gap-4">
-                          <Avatar className="w-14 h-14 border border-[#00C4B3]/30 shadow-xs flex-shrink-0">
+                        <div className="flex items-start gap-3">
+                          {/* Small avatar on the left */}
+                          <Avatar className="w-10 h-10 border border-[#00C4B3]/30 shadow-xs flex-shrink-0">
                             <AvatarImage src={patient.avatar} alt={patient.name} />
-                            <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
+                            <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white text-xs">
                               {patient.name
                                 .split(" ")
                                 .map((n) => n[0])
@@ -993,6 +995,7 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                             </AvatarFallback>
                           </Avatar>
 
+                          {/* Content */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
@@ -1005,34 +1008,40 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                               </div>
                             </div>
 
-                            <div className="mt-3 space-y-2 text-xs text-muted-foreground flex-1 h-[112px] overflow-hidden">
+                            <div className="mt-3 space-y-2 text-[11px] leading-snug text-muted-foreground">
                               <div className="flex items-center gap-2 min-w-0">
-                                <UserIcon className="w-3 h-3" />
-                                <span className="truncate w-full" title={patient.gender}>
-                                  Gender: {patient.gender}
+                                <UserIcon className="w-3 h-3 shrink-0" />
+                                <span className="whitespace-nowrap">
+                                  Gender:{" "}
+                                  <span className="text-foreground/80">{patient.gender}</span>
                                 </span>
                               </div>
+
                               <div className="flex items-center gap-2 min-w-0">
-                                <CalendarIcon className="w-3 h-3" />
-                                <span className="truncate w-full" title={`${patient.age} years`}>
-                                  Age: {patient.age} years
+                                <CalendarIcon className="w-3 h-3 shrink-0" />
+                                <span className="whitespace-nowrap">
+                                  Age:{" "}
+                                  <span className="text-foreground/80">{patient.age} years</span>
                                 </span>
                               </div>
+
                               <div className="flex items-center gap-2 min-w-0">
-                                <PhoneIcon className="w-3 h-3" />
-                                <span className="truncate w-full" title={patient.phone}>
+                                <PhoneIcon className="w-3 h-3 shrink-0" />
+                                <span className="break-all whitespace-normal">
                                   {patient.phone}
                                 </span>
                               </div>
+
                               <div className="flex items-center gap-2 min-w-0">
-                                <MailIcon className="w-3 h-3" />
-                                <span className="truncate w-full" title={patient.personalEmail}>
+                                <MailIcon className="w-3 h-3 shrink-0" />
+                                <span className="break-all whitespace-normal">
                                   Email: {patient.personalEmail}
                                 </span>
                               </div>
+
                               <div className="flex items-center gap-2 min-w-0">
-                                <MailIcon className="w-3 h-3" />
-                                <span className="truncate w-full" title={patient.medieaseEmail}>
+                                <MailIcon className="w-3 h-3 shrink-0" />
+                                <span className="break-all whitespace-normal">
                                   MediEase: {patient.medieaseEmail}
                                 </span>
                               </div>
@@ -1051,7 +1060,7 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                                 // with the patient preselected via ?patientId=
                                 navigate(
                                   `${appointmentsPath}?patientId=${encodeURIComponent(
-                                    patient.patientId
+                                    patient.recordId
                                   )}`
                                 );
                               }}

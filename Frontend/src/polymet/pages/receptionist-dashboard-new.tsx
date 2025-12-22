@@ -221,7 +221,8 @@ export function ReceptionistDashboardNew() {
 
   const fetchQueueData = useCallback(async () => {
     try {
-      const response = await get<{ queue?: QueueEntry[]; data?: QueueEntry[] | QueueEntry }>("/api/queue");
+      // Use trailing slash to avoid 307 redirects that can interfere with some proxies/caches.
+      const response = await get<{ queue?: QueueEntry[]; data?: QueueEntry[] | QueueEntry }>("/api/queue/");
       if (response.success) {
         // Handle different response formats - queue can be directly in data or nested
         let queueData: QueueEntry[] = [];
@@ -234,7 +235,19 @@ export function ReceptionistDashboardNew() {
             queueData = (response.data as any).data;
           }
         }
-        setQueueList(queueData);
+        // Backend may return historical entries; hide already checked-out/inactive ones client-side.
+        const filtered = queueData.filter((entry: any) => {
+          const status = String(entry?.status || "").toLowerCase();
+          if (status === "checked-out" || status === "checked_out") return false;
+          if (entry && typeof entry === "object" && "is_active" in entry) {
+            return Boolean((entry as any).is_active);
+          }
+          if (entry && typeof entry === "object" && "isActive" in entry) {
+            return Boolean((entry as any).isActive);
+          }
+          return true;
+        });
+        setQueueList(filtered);
       } else {
         setQueueList([]);
       }
@@ -831,22 +844,13 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
 
   const appointmentId = resolveAppointmentIdForEntry(selectedQueueEntry);
 
-  if (!appointmentId) {
-    toast({
-      title: "Checkout unavailable",
-      description: "Unable to locate the appointment for this patient. Please check their appointment details and try again.",
-      variant: "destructive",
-    });
-    return;
-  }
-
   try {
     setIsCheckingOut(true);
     const queueId = selectedQueueEntry.queue_id;
     const queueEntryId = selectedQueueEntry._id;
 
     // Upload prescription if provided (don't fail checkout if upload fails)
-    if (prescriptionFile) {
+    if (prescriptionFile && appointmentId) {
       try {
         console.log("📤 Uploading prescription file for appointment:", appointmentId);
         const formData = new FormData();
@@ -886,12 +890,31 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
           variant: "destructive",
         });
       }
+    } else if (prescriptionFile && !appointmentId) {
+      toast({
+        title: "Prescription not attached",
+        description:
+          "No appointment could be located for this queue entry. Checkout will continue without attaching the prescription file.",
+        variant: "destructive",
+      });
     }
 
-    // Update appointment status to completed
-    await patch(`/api/appointments/${appointmentId}/status`, {
-      status: "completed",
-    });
+    // Update appointment status to completed (best-effort; don't block checkout if it fails)
+    if (appointmentId) {
+      try {
+        await patch(`/api/appointments/${appointmentId}/status`, {
+          status: "completed",
+        });
+      } catch (err: any) {
+        console.warn("⚠️ Failed to mark appointment completed, continuing checkout:", err);
+        toast({
+          title: "Appointment update warning",
+          description:
+            "Could not update appointment status, but checkout will continue.",
+          variant: "destructive",
+        });
+      }
+    }
 
     // Check out from queue (this sets status to "checked-out" and is_active to False)
     // Use _id (MongoDB ObjectId) for the check-out endpoint, not queue_id
@@ -923,12 +946,26 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
       prev.filter((entry) => {
         const matchesId = entry._id && entry._id === queueEntryId;
         const matchesQueueId = entry.queue_id && entry.queue_id === queueId;
-        return !matchesId && !matchesQueueId;
+        // Also remove any other active entries for the same patient (defensive against duplicates).
+        const samePatient =
+          entry.patient?._id &&
+          selectedQueueEntry?.patient?._id &&
+          String(entry.patient._id) === String(selectedQueueEntry.patient._id);
+        const samePatientId =
+          entry.patient?.patientId &&
+          selectedQueueEntry?.patient?.patientId &&
+          String(entry.patient.patientId) === String(selectedQueueEntry.patient.patientId);
+
+        return !matchesId && !matchesQueueId && !samePatient && !samePatientId;
       })
     );
  
-    // Refresh data to ensure consistency with backend
-    await Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]);
+    // Refresh data to ensure consistency with backend (best-effort; don't show checkout failed if refresh fails)
+    void Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]).catch(
+      (refreshErr) => {
+        console.warn("⚠️ Post-checkout refresh failed:", refreshErr);
+      }
+    );
   } catch (err) {
     console.error("Checkout error:", err);
     toast({

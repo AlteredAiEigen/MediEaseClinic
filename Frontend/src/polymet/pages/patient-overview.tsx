@@ -433,6 +433,18 @@ export function PatientOverview() {
     const params = new URLSearchParams(location.search);
     return params.get("queueId") || "";
   }, [location.search]);
+
+  const isEmbedded = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("embedded") === "1";
+  }, [location.search]);
+
+  const returnTo = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const raw = params.get("returnTo") || "";
+    // Safety: only allow navigating back to an internal consultation route.
+    return raw.startsWith("/consultation/") ? raw : "";
+  }, [location.search]);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [vitals, setVitals] = useState<PatientVitals[]>([]);
   const [labReports, setLabReports] = useState<LabReport[]>([]);
@@ -3175,6 +3187,16 @@ export function PatientOverview() {
                 </Badge>
                   )}
                 </div>
+
+                {returnTo && !isEmbedded && (
+                  <Button
+                    variant="outline"
+                    className="md:ml-auto"
+                    onClick={() => navigate(returnTo)}
+                  >
+                    Back to Consultation
+                  </Button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 text-sm leading-relaxed">

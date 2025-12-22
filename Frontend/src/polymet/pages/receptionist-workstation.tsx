@@ -268,7 +268,8 @@ const [, setPatients] = useState<Patient[]>([]);
 
   const fetchQueue = async () => {
     try {
-      const response = await get<{ queue: QueueEntry[] }>("/api/queue");
+      // Use trailing slash to avoid 307 redirects that can interfere with some proxies/caches.
+      const response = await get<{ queue: QueueEntry[] }>("/api/queue/");
       if (response.success && response.data?.queue) {
         setQueueEntries(response.data.queue);
       }
@@ -514,7 +515,10 @@ const [, setPatients] = useState<Patient[]>([]);
         }
 
         if (selectedQueueEntry.appointment?._id) {
-          await post(`/api/appointments/${selectedQueueEntry.appointment._id}/prescription-upload`, formData);
+          await post(
+            `/api/appointments/${selectedQueueEntry.appointment._id}/prescription-upload`,
+            formData
+          );
         } else {
           toast({
             title: "Prescription not attached",
@@ -526,20 +530,22 @@ const [, setPatients] = useState<Patient[]>([]);
 
       // Update appointment status to completed
       if (selectedQueueEntry.appointment?._id) {
-        await patch(`/api/appointments/${selectedQueueEntry.appointment._id}/status`, {
-          status: "completed",
-        });
+        try {
+          await patch(`/api/appointments/${selectedQueueEntry.appointment._id}/status`, {
+            status: "completed",
+          });
+        } catch (err) {
+          console.warn("⚠️ Failed to mark appointment completed, continuing checkout:", err);
+        }
       }
 
-      // Remove from queue
+      // Remove from queue (this endpoint should mark the entry inactive / checked-out)
       if (selectedQueueEntry._id) {
-        await post(`/api/queue/${selectedQueueEntry._id}/check-out`, {});
+        const checkOutResponse = await post(`/api/queue/${selectedQueueEntry._id}/check-out`, {});
+        if (!checkOutResponse.success) {
+          throw new Error(checkOutResponse.message || "Failed to check out patient from queue");
+        }
       }
-
-      // Update queue entry status to checked-out to remove from active queue
-      await patch(`/api/queue/${selectedQueueEntry._id}/status`, {
-        status: "checked-out",
-      });
 
       toast({
         title: "Success",
