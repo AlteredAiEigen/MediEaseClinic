@@ -21,6 +21,7 @@ from app.services.recording_service import RecordingService
 from app.services.queue_service import QueueService
 from app.services.patient_insights_service import patient_insights_service
 from app.services.s3_service import s3_service
+from app.services.websocket_service import WebSocketService
 from app.middleware.auth import get_current_active_user, require_any_role, require_roles
 from app.utils.response import success_response, paginated_response
 from app.utils.cache import cache
@@ -61,6 +62,14 @@ async def create_appointment(
         )
 
         await _invalidate_appointments_cache()
+
+        # Emit WebSocket event so doctor/receptionist workstations update instantly
+        try:
+            websocket_service = WebSocketService()
+            await websocket_service.broadcast_appointment_created(appointment)
+        except Exception:
+            # Best-effort: don't fail scheduling if WebSocket broadcast fails
+            pass
         
         return success_response(
             message="Appointment created successfully",

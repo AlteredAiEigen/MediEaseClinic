@@ -44,51 +44,49 @@ class AppointmentService:
         Returns:
             True if conflict exists, False otherwise
         """
-        blocking_statuses = {"checked-in", "in-progress", "ongoing"}
+        def normalize_time(value: str) -> str:
+            """
+            Normalize time values to 'HH:MM' 24h.
+            Accepts 'HH:MM' (24h) or 'H:MM AM/PM' / 'HH:MM AM/PM'.
+            """
+            raw = (value or "").strip()
+            if not raw:
+                return raw
+            # If already 24h "HH:MM"
+            if raw.count(":") == 1 and "am" not in raw.lower() and "pm" not in raw.lower():
+                hh, mm = raw.split(":")
+                return f"{int(hh):02d}:{int(mm):02d}"
+            # Try "HH:MM AM/PM"
+            parts = raw.split()
+            if len(parts) >= 2 and parts[0].count(":") == 1:
+                time_part = parts[0]
+                period = parts[1].lower()
+                hh, mm = time_part.split(":")
+                hours = int(hh)
+                minutes = int(mm)
+                if period == "pm" and hours != 12:
+                    hours += 12
+                if period == "am" and hours == 12:
+                    hours = 0
+                return f"{hours:02d}:{minutes:02d}"
+            return raw
 
-        # Parse time
-        hour, minute = map(int, time.split(':'))
-        start_minutes = hour * 60 + minute
-        end_minutes = start_minutes + duration
+        normalized_time = normalize_time(time)
 
         # Build query
         query = {
             "doctorId": doctor_id,
             "date": date,
-            "status": {"$nin": ["cancelled", "no-show"]}
+            "time": normalized_time,
+            "status": {"$nin": ["cancelled", "no-show"]},
         }
 
         if exclude_appointment_id:
             query["appointmentId"] = {"$ne": exclude_appointment_id}
 
-        # Get existing appointments
-        cursor = self.appointments_collection.find(query)
-        existing_appointments = await cursor.to_list(length=None)
-
-        # Check for overlaps
-        for apt in existing_appointments:
-            apt_hour, apt_minute = map(int, apt["time"].split(':'))
-            apt_start = apt_hour * 60 + apt_minute
-            apt_end = apt_start + apt.get("duration", 30)
-
-            # Skip if time slots do not overlap
-            if end_minutes <= apt_start or start_minutes >= apt_end:
-                continue
-
-            apt_status = apt.get("status")
-            apt_patient_id = apt.get("patientId")
-
-            # If we know the patient being booked, only block when that patient already has a blocking status appointment
-            if patient_id:
-                if apt_patient_id == patient_id and apt_status in blocking_statuses:
-                    return True
-                continue
-
-            # Fallback: if patient id is unknown, keep previous behaviour and block on active statuses
-            if apt_status in blocking_statuses:
-                return True
-
-        return False
+        # Exact-time only: block if any existing appointment matches the same start time.
+        existing = await self.appointments_collection.find_one(query)
+        return existing is not None
     
     async def populate_names(self, appointment: dict) -> dict:
         """Populate patient, doctor, and scheduler names."""
@@ -778,7 +776,8 @@ class AppointmentService:
 
                 await queue_collection.update_many(
                     {
-                        "appointment": appointment_object_id,
+                        # Defensive: queue documents historically stored appointment as either ObjectId or string
+                        "appointment": {"$in": [appointment_object_id, str(appointment_object_id)]},
                         "is_active": {"$in": [True, False]},
                     },
                     {"$set": queue_update},

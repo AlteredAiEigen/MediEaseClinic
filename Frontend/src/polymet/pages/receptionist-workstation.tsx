@@ -15,6 +15,7 @@ import {
   CalendarIcon,
   FilterIcon,
   AlertCircleIcon,
+  MailIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -80,12 +81,13 @@ interface QueueEntry {
     appointmentId: string;
   };
   checked_in_at: string;
-  status: "waiting" | "in-consultation" | "completed" | "checkout";
+  status: "waiting" | "in-consultation" | "completed" | "checkout" | "checkout-pending";
   queue_number: number;
   priority: string;
   reason: string;
   notes: string;
   wait_time: number;
+  is_active?: boolean;
 }
 
 interface Appointment {
@@ -93,12 +95,19 @@ interface Appointment {
   appointmentId: string;
   patientId: string;
   patientName: string;
-  doctorId: string;
-  doctorName: string;
+  doctorId?: string;
+  doctorName?: string;
   date: string;
   time: string;
   status: "scheduled" | "cancelled" | "checked-in" | "ongoing" | "checkout" | "completed";
   reason: string;
+  bookingKind?: "doctor" | "lab-test";
+}
+
+interface PatientWithEmail {
+  _id: string;
+  medieaseClinicEmail?: string;
+  fullName?: string;
 }
 
 const extractList = <T,>(rawData: any): T[] => {
@@ -162,6 +171,12 @@ const [, setPatients] = useState<Patient[]>([]);
   const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [showNoPrescriptionConfirm, setShowNoPrescriptionConfirm] = useState(false);
+
+  // Lab test direct checkout state
+  const [labCheckoutDialog, setLabCheckoutDialog] = useState(false);
+  const [selectedLabAppointment, setSelectedLabAppointment] = useState<Appointment | null>(null);
+  const [labPatientEmail, setLabPatientEmail] = useState<string>("");
+  const [isLabCheckingOut, setIsLabCheckingOut] = useState(false);
 
   const cleanupOldAppointments = useCallback(async () => {
     try {
@@ -299,17 +314,105 @@ const [, setPatients] = useState<Patient[]>([]);
       apt.status === "scheduled" &&
       (apt.patientName.toLowerCase().includes(query) ||
        apt.appointmentId.toLowerCase().includes(query) ||
-       apt.doctorName.toLowerCase().includes(query) ||
+       (apt.doctorName || "").toLowerCase().includes(query) ||
        apt.reason.toLowerCase().includes(query))
     );
   });
 
+  // Lab test appointments (no doctor assigned or bookingKind is lab-test)
+  const labTestAppointments = appointments.filter(
+    (apt) => apt.status === "scheduled" && (!apt.doctorId || apt.bookingKind === "lab-test")
+  );
+
+  // Doctor appointments for check-in
+  const doctorAppointments = filteredAppointments.filter(
+    (apt) => apt.doctorId && apt.bookingKind !== "lab-test"
+  );
+
+  // Handle lab test direct checkout
+  const handleLabTestCheckout = async (appointment: Appointment) => {
+    // Fetch patient's MediEase email
+    try {
+      const patientResponse = await get<PatientWithEmail>(`/api/patients/${appointment.patientId}`);
+      if (patientResponse.success && patientResponse.data) {
+        const patientData = (patientResponse.data as any).patient || patientResponse.data;
+        setLabPatientEmail(patientData.medieaseClinicEmail || "Not generated yet");
+      } else {
+        setLabPatientEmail("Not available");
+      }
+    } catch {
+      setLabPatientEmail("Error fetching email");
+    }
+    setSelectedLabAppointment(appointment);
+    setLabCheckoutDialog(true);
+  };
+
+  // Complete lab test checkout
+  const handleCompleteLabCheckout = async () => {
+    if (!selectedLabAppointment) return;
+
+    try {
+      setIsLabCheckingOut(true);
+      // Mark appointment as completed directly
+      await patch(`/api/appointments/${selectedLabAppointment._id}/status`, {
+        status: "completed",
+      });
+
+      toast({
+        title: "Lab Test Completed",
+        description: "Appointment marked as completed. Remind patient to email the report.",
+      });
+
+      setLabCheckoutDialog(false);
+      setSelectedLabAppointment(null);
+      setLabPatientEmail("");
+      await fetchDataSilently();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "Failed to complete checkout",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLabCheckingOut(false);
+    }
+  };
+
   // Get patients without appointments today
 
-  // Get queue entries by status
-  const checkedInPatients = queueEntries.filter((entry) => entry.status === "waiting");
-  const ongoingPatients = queueEntries.filter((entry) => entry.status === "in-consultation");
-  const checkoutPatients = queueEntries.filter((entry) => entry.status === "checkout" || entry.status === "completed");
+  // Priority sorting helper
+  const getPriorityValue = (priority: string): number => {
+    const priorityMap: Record<string, number> = {
+      'emergency': 4,
+      'high': 3,
+      'medium': 2,
+      'normal': 2,
+      'low': 1
+    };
+    return priorityMap[priority?.toLowerCase()] || 2;
+  };
+
+  // Get queue entries by status (only active entries to prevent duplicates)
+  // Sort by priority (high to low) then by queue number (low to high)
+  const checkedInPatients = queueEntries
+    .filter((entry) => entry.status === "waiting" && entry.is_active !== false)
+    .sort((a, b) => {
+      const priorityDiff = getPriorityValue(b.priority) - getPriorityValue(a.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.queue_number - b.queue_number;
+    });
+  
+  const ongoingPatients = queueEntries
+    .filter((entry) => entry.status === "in-consultation" && entry.is_active !== false)
+    .sort((a, b) => {
+      const priorityDiff = getPriorityValue(b.priority) - getPriorityValue(a.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.queue_number - b.queue_number;
+    });
+  
+  const checkoutPatients = queueEntries
+    .filter((entry) => (entry.status === "checkout-pending" || entry.status === "checkout" || entry.status === "completed") && entry.is_active !== false)
+    .sort((a, b) => a.queue_number - b.queue_number);
 
   // Handle check-in (via appointment)
   const handleCheckIn = async () => {
@@ -684,9 +787,23 @@ const [, setPatients] = useState<Patient[]>([]);
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           {entry.reason}
                         </p>
-                        <Badge className="mt-2 text-xs bg-gradient-to-r from-teal-600 to-emerald-600 text-white border-0">
-                          Queue #{entry.queue_number}
-                        </Badge>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge className="text-xs bg-gradient-to-r from-teal-600 to-emerald-600 text-white border-0">
+                            Queue #{entry.queue_number}
+                          </Badge>
+                          {entry.priority && entry.priority !== 'medium' && (
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${
+                                entry.priority === 'high' || entry.priority === 'emergency' 
+                                  ? 'border-red-500 text-red-700 bg-red-50 dark:bg-red-950/30' 
+                                  : 'border-gray-400 text-gray-600'
+                              }`}
+                            >
+                              {entry.priority === 'emergency' ? '🚨 Emergency' : entry.priority === 'high' ? '⚠️ High Priority' : entry.priority}
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-teal-600 dark:text-teal-400 mt-2 font-semibold flex items-center gap-1">
                           <ClockIcon className="h-3 w-3" />
                           Waiting for doctor to start consultation
@@ -743,9 +860,23 @@ const [, setPatients] = useState<Patient[]>([]);
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                           {entry.reason}
                         </p>
-                        <Badge className="mt-2 text-xs bg-gradient-to-r from-blue-600 to-cyan-600 text-white border-0">
-                          Queue #{entry.queue_number}
-                        </Badge>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge className="text-xs bg-gradient-to-r from-blue-600 to-cyan-600 text-white border-0">
+                            Queue #{entry.queue_number}
+                          </Badge>
+                          {entry.priority && entry.priority !== 'medium' && (
+                            <Badge 
+                              variant="outline" 
+                              className={`text-xs ${
+                                entry.priority === 'high' || entry.priority === 'emergency' 
+                                  ? 'border-red-500 text-red-700 bg-red-50 dark:bg-red-950/30' 
+                                  : 'border-gray-400 text-gray-600'
+                              }`}
+                            >
+                              {entry.priority === 'emergency' ? '🚨 Emergency' : entry.priority === 'high' ? '⚠️ High Priority' : entry.priority}
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 font-semibold flex items-center gap-1">
                           <ClockIcon className="h-3 w-3" />
                           Consultation in progress...
@@ -823,6 +954,56 @@ const [, setPatients] = useState<Patient[]>([]);
           </CardContent>
         </Card>
       </div>
+
+      {/* Lab Test Appointments Section */}
+      {labTestAppointments.length > 0 && (
+        <Card className="mt-6 border-2 border-purple-200 dark:border-purple-800 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40 pb-3">
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                🔬 Lab Test Appointments
+              </span>
+              <Badge className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-0 shadow-sm">
+                {labTestAppointments.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {labTestAppointments.map((apt) => (
+                <div
+                  key={apt._id}
+                  className="p-4 rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-white dark:bg-gray-900 hover:border-purple-500 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-11 w-11 border-2 border-purple-400 dark:border-purple-600">
+                      <AvatarFallback className="bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 font-semibold">
+                        {apt.patientName?.split(' ').map(n => n[0]).join('') || 'PT'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 dark:text-gray-100">{apt.patientName || 'Unknown Patient'}</p>
+                      <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">
+                        🔬 {apt.reason || 'Lab Test'}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {apt.time} • {apt.appointmentId}
+                      </p>
+                      <Button
+                        size="sm"
+                        className="mt-3 w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-md font-medium"
+                        onClick={() => handleLabTestCheckout(apt)}
+                      >
+                        ✅ Direct Checkout
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Check-in Dialog (Appointment-based) */}
       <Dialog open={checkInDialog} onOpenChange={setCheckInDialog}>
@@ -1200,6 +1381,73 @@ const [, setPatients] = useState<Patient[]>([]);
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Lab Test Direct Checkout Dialog */}
+      <Dialog open={labCheckoutDialog} onOpenChange={setLabCheckoutDialog}>
+        <DialogContent className="border-2 border-purple-300 dark:border-purple-700">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+              🔬 Lab Test Checkout
+            </DialogTitle>
+            <DialogDescription>
+              Complete checkout for lab test appointment
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLabAppointment && (
+            <div className="space-y-4 py-4">
+              <div className="p-3 rounded-lg bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
+                <p className="font-medium text-purple-900 dark:text-purple-100">{selectedLabAppointment.patientName}</p>
+                <p className="text-sm text-purple-600 dark:text-purple-400">
+                  {selectedLabAppointment.reason || 'Lab Test'} • {selectedLabAppointment.time}
+                </p>
+              </div>
+              
+              <Alert className="border-purple-200 bg-purple-50 text-purple-800 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-200">
+                <MailIcon className="h-5 w-5" />
+                <AlertTitle>📧 Patient's MediEase Email</AlertTitle>
+                <AlertDescription className="mt-2">
+                  <div className="font-mono text-sm bg-white dark:bg-gray-900 p-2 rounded border border-purple-300 dark:border-purple-600 select-all">
+                    {labPatientEmail || "Loading..."}
+                  </div>
+                  <p className="text-xs mt-2 text-purple-600 dark:text-purple-400">
+                    📋 Ask patient to send their lab report to this email address so it gets automatically attached to their medical records.
+                  </p>
+                </AlertDescription>
+              </Alert>
+
+              <div className="text-sm text-muted-foreground bg-gray-50 dark:bg-gray-900 p-3 rounded-lg border">
+                <p className="font-medium mb-1">💡 Instructions for patient:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>Get your lab report from the diagnostic center</li>
+                  <li>Send the report (PDF/Image) to the email shown above</li>
+                  <li>The report will be automatically added to your health records</li>
+                </ol>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLabCheckoutDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCompleteLabCheckout}
+              disabled={isLabCheckingOut}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
+            >
+              {isLabCheckingOut ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  ✅ Complete Checkout
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

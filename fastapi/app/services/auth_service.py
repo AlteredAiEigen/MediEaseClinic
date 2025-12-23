@@ -81,13 +81,11 @@ class AuthService:
             for field_name in [
                 "clinicName",
                 "clinicPhone",
-                "clinicEmail",
                 "clinicAddress",
                 "clinicCity",
                 "clinicState",
                 "clinicPincode",
                 "clinicCountry",
-                "clinicRegistrationNumber",
             ]:
                 if not getattr(user_data, field_name, None):
                     missing_fields.append(field_name)
@@ -178,12 +176,6 @@ class AuthService:
                     country=user_data.clinicCountry or "India",
                     website=user_data.clinicWebsite,
                     registrationNumber=user_data.clinicRegistrationNumber,
-                )
-                # Enforce unique registration number
-                if await provider_service.registration_exists(provider_data.registrationNumber):
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Registration/license number already exists",
                     )
                 await provider_service.create_provider(provider_data)
             except HTTPException:

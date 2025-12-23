@@ -105,6 +105,7 @@ export function ConsultationSession() {
   const [error, setError] = useState<string | null>(null);
   const [labResults, setLabResults] = useState<LabResultDisplay[]>([]);
   const [visitHistory, setVisitHistory] = useState<VisitHistoryItem[]>([]);
+  const [latestVitals, setLatestVitals] = useState<any>(null);
 
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -325,6 +326,17 @@ export function ConsultationSession() {
 
         setPatient(patientData);
         setResolvedPatientObjectId(resolvedPatientId);
+        
+        // Fetch latest vitals for the patient
+        try {
+          const vitalsResponse = await get<any>(`/api/patient-vitals/${resolvedPatientId}/latest`);
+          if (vitalsResponse.success && vitalsResponse.data) {
+            setLatestVitals(vitalsResponse.data);
+          }
+        } catch (err) {
+          console.warn("Failed to fetch vitals:", err);
+        }
+        
         if (localAppointmentId) {
           setAppointmentId(localAppointmentId);
           

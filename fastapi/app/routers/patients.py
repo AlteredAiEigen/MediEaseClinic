@@ -6,6 +6,7 @@ All endpoints require authentication and log PHI access.
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional, Dict, Any
+from datetime import datetime
 import json
 
 from app.database import get_db
@@ -436,6 +437,88 @@ async def delete_patient(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Patient deletion failed: {str(e)}"
+        )
+
+
+@router.post("/backfill-mediease-emails")
+async def backfill_mediease_emails(
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db)
+):
+    """
+    Backfill MediEase clinic emails for all patients that don't have one.
+    
+    Requires authentication. Only admins should run this.
+    
+    This endpoint will:
+    1. Find all patients without medieaseClinicEmail
+    2. Generate unique emails for each based on name and DOB
+    3. Update the patients in the database
+    
+    Returns count of patients updated.
+    """
+    try:
+        patient_service = PatientService(db)
+        
+        # Find all patients without medieaseClinicEmail
+        patients_without_email = await db["patients"].find({
+            "$or": [
+                {"medieaseClinicEmail": {"$exists": False}},
+                {"medieaseClinicEmail": None},
+                {"medieaseClinicEmail": ""}
+            ]
+        }).to_list(length=None)
+        
+        if not patients_without_email:
+            return success_response(
+                message="All patients already have MediEase clinic emails",
+                data={"updated": 0, "total": 0}
+            )
+        
+        updated_count = 0
+        failed_count = 0
+        
+        for patient in patients_without_email:
+            try:
+                patient_id = patient.get("_id")
+                first_name = patient.get("firstName", "")
+                last_name = patient.get("lastName", "")
+                date_of_birth = patient.get("dateOfBirth", "")
+                
+                if first_name and date_of_birth:
+                    clinic_email = await patient_service.generate_mediease_clinic_email(
+                        first_name=first_name,
+                        last_name=last_name,
+                        date_of_birth=date_of_birth,
+                    )
+                    
+                    await db["patients"].update_one(
+                        {"_id": patient_id},
+                        {"$set": {"medieaseClinicEmail": clinic_email, "updatedAt": datetime.utcnow()}}
+                    )
+                    updated_count += 1
+                    logger.info(f"Generated MediEase email for patient {patient_id}: {clinic_email}")
+                else:
+                    failed_count += 1
+                    logger.warning(f"Skipping patient {patient_id}: missing firstName or dateOfBirth")
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Failed to generate email for patient {patient.get('_id')}: {e}")
+        
+        return success_response(
+            message=f"Backfill completed: {updated_count} patients updated, {failed_count} failed",
+            data={
+                "updated": updated_count,
+                "failed": failed_count,
+                "total": len(patients_without_email)
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"Backfill failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Backfill failed: {str(e)}"
         )
 
 

@@ -21,7 +21,7 @@ class HealthcareProviderService:
         self.db = db
         self.providers_collection = db["healthcare_providers"]
 
-    async def registration_exists(self, registration_number: str) -> bool:
+    async def registration_exists(self, registration_number: Optional[str]) -> bool:
         if not registration_number:
             return False
         existing = await self.providers_collection.find_one(

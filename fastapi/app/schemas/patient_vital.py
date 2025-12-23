@@ -15,6 +15,7 @@ class PatientVitalCreateRequest(BaseModel):
     respiratoryRate: Optional[str] = Field(None, max_length=20)
     temperature: Optional[str] = Field(None, max_length=20)
     oxygenSaturation: Optional[str] = Field(None, max_length=20)
+    bloodGlucose: Optional[str] = Field(None, max_length=20, description="Blood glucose level in mg/dL")
     weight: Optional[str] = Field(None, max_length=20)
     height: Optional[str] = Field(None, max_length=20)
     bmi: Optional[str] = Field(None, max_length=20)
@@ -33,6 +34,7 @@ class PatientVitalResponse(BaseModel):
     respiratoryRate: Optional[str]
     temperature: Optional[str]
     oxygenSaturation: Optional[str]
+    bloodGlucose: Optional[str]
     weight: Optional[str]
     height: Optional[str]
     bmi: Optional[str]

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,7 @@ import { get, put, patch } from "@/lib/api-client";
 import { todayLocalYYYYMMDD } from "@/lib/date";
 import { useAuth } from "@/context/auth-context";
 import { ConsultationHistoryDialog } from "@/polymet/components/consultation-history-dialog";
+import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
 
 interface QueuePatient {
   id: string;
@@ -119,11 +120,15 @@ export function DoctorWorkstation() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showConsultationHistory, setShowConsultationHistory] = useState(false);
+  const [latestVitals, setLatestVitals] = useState<any>(null);
+  const [isLoadingVitals, setIsLoadingVitals] = useState(false);
+
+  // WebSocket for real-time queue updates
+  const { lastMessage, isConnected } = useDoctorQueueWebSocket(user?._id || "");
 
   // Fetch queue data and today's appointments
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!user?._id) return;
+  const fetchData = useCallback(async () => {
+    if (!user?._id) return;
 
       try {
         setIsLoading(true);
@@ -362,10 +367,62 @@ export function DoctorWorkstation() {
       } finally {
         setIsLoading(false);
       }
+    }, [user]);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Fetch latest vitals when current patient changes
+  useEffect(() => {
+    const currentPatient = queuePatients[currentIndex];
+    if (currentPatient?.patientId) {
+      setIsLoadingVitals(true);
+      get(`/api/patient-vitals/${currentPatient.patientId}/latest`)
+        .then((response) => {
+          if (response.success && response.data) {
+            setLatestVitals(response.data);
+          } else {
+            setLatestVitals(null);
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to fetch vitals:", err);
+          setLatestVitals(null);
+        })
+        .finally(() => {
+          setIsLoadingVitals(false);
+        });
+    } else {
+      setLatestVitals(null);
+    }
+  }, [currentIndex, queuePatients]);
+
+  // Listen for WebSocket updates and refetch data silently
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const handleQueueUpdate = async () => {
+      try {
+        // Refetch data on relevant events without showing loading state
+        if (
+          lastMessage.type === 'patient_checked_in' ||
+          lastMessage.type === 'patient_status_updated' ||
+          lastMessage.type === 'queue_reordered' ||
+          lastMessage.type === 'appointment_status_updated' ||
+          lastMessage.type === 'appointment_created'
+        ) {
+          // Silently refetch queue and appointments
+          await fetchData();
+        }
+      } catch (error) {
+        console.error('Error handling WebSocket message:', error);
+      }
     };
 
-    fetchData();
-  }, [user]);
+    handleQueueUpdate();
+  }, [lastMessage, fetchData]);
 
   // Auto-advance to next patient when returning from consultation
   const checkConsultationCompletion = async () => {
@@ -520,6 +577,35 @@ export function DoctorWorkstation() {
   const handleNext = () => {
     if (currentIndex < queuePatients.length - 1) {
       setCurrentIndex(currentIndex + 1);
+    }
+  };
+
+  // Save queue order to backend
+  const saveQueueOrder = async (newQueue: QueuePatient[]) => {
+    if (!user?._id) return;
+
+    try {
+      // Extract queue entry IDs in the new order (only active patients after current)
+      const queueOrder = newQueue
+        .slice(currentIndex + 1)
+        .map((patient) => patient.id);
+
+      if (queueOrder.length === 0) return;
+
+      const response = await put("/api/queue/reorder", {
+        doctorId: user._id,
+        queueOrder: queueOrder,
+      });
+
+      if (!response.success) {
+        console.error("Failed to save queue order:", response.message);
+        // Optionally refetch to restore correct order
+        await fetchData();
+      }
+    } catch (error) {
+      console.error("Error saving queue order:", error);
+      // Refetch to restore correct order on error
+      await fetchData();
     }
   };
 
@@ -918,6 +1004,84 @@ export function DoctorWorkstation() {
                     </div>
                   </div>
 
+                  {/* Latest Vitals */}
+                  {latestVitals && (
+                    <div className="mt-6 pt-6 border-t">
+                      <h3 className="font-semibold text-lg flex items-center gap-2 mb-4">
+                        <ActivityIcon className="w-5 h-5 text-blue-500" />
+                        Latest Vitals
+                      </h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {latestVitals.bloodPressure && (
+                          <div className="bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Blood Pressure</p>
+                            <p className="font-semibold text-blue-700 dark:text-blue-300">
+                              {latestVitals.bloodPressure}
+                            </p>
+                          </div>
+                        )}
+                        {latestVitals.heartRate && (
+                          <div className="bg-red-50 dark:bg-red-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Heart Rate</p>
+                            <p className="font-semibold text-red-700 dark:text-red-300">
+                              {latestVitals.heartRate} bpm
+                            </p>
+                          </div>
+                        )}
+                        {latestVitals.temperature && (
+                          <div className="bg-orange-50 dark:bg-orange-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Temperature</p>
+                            <p className="font-semibold text-orange-700 dark:text-orange-300">
+                              {latestVitals.temperature}°F
+                            </p>
+                          </div>
+                        )}
+                        {latestVitals.weight && (
+                          <div className="bg-green-50 dark:bg-green-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Weight</p>
+                            <p className="font-semibold text-green-700 dark:text-green-300">
+                              {latestVitals.weight} lbs
+                            </p>
+                          </div>
+                        )}
+                        {latestVitals.bloodGlucose && (
+                          <div className="bg-purple-50 dark:bg-purple-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Blood Glucose</p>
+                            <p className="font-semibold text-purple-700 dark:text-purple-300">
+                              {latestVitals.bloodGlucose} mg/dL
+                            </p>
+                          </div>
+                        )}
+                        {latestVitals.oxygenSaturation && (
+                          <div className="bg-cyan-50 dark:bg-cyan-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">O2 Saturation</p>
+                            <p className="font-semibold text-cyan-700 dark:text-cyan-300">
+                              {latestVitals.oxygenSaturation}%
+                            </p>
+                          </div>
+                        )}
+                        {latestVitals.respiratoryRate && (
+                          <div className="bg-teal-50 dark:bg-teal-950/20 p-3 rounded-lg">
+                            <p className="text-xs text-muted-foreground mb-1">Respiratory Rate</p>
+                            <p className="font-semibold text-teal-700 dark:text-teal-300">
+                              {latestVitals.respiratoryRate} /min
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                      {latestVitals.recordedAt && (
+                        <p className="text-xs text-muted-foreground mt-3">
+                          Recorded: {new Date(latestVitals.recordedAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {isLoadingVitals && (
+                    <div className="mt-6 pt-6 border-t">
+                      <p className="text-sm text-muted-foreground">Loading vitals...</p>
+                    </div>
+                  )}
+
                   {/* Action Buttons */}
                   <div className="mt-8 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
@@ -994,7 +1158,7 @@ export function DoctorWorkstation() {
                       e.preventDefault();
                       e.dataTransfer.dropEffect = "move";
                     }}
-                    onDrop={(e) => {
+                    onDrop={async (e) => {
                       e.preventDefault();
                       const draggedIndex = parseInt(
                         e.dataTransfer.getData("patientIndex")
@@ -1007,6 +1171,8 @@ export function DoctorWorkstation() {
                         );
                         newQueue.splice(actualIndex, 0, draggedPatient);
                         setQueuePatients(newQueue);
+                        // Save to backend
+                        await saveQueueOrder(newQueue);
                       }
                     }}
                     className="flex items-center gap-3 p-4 rounded-lg border-2 border-border bg-card hover:bg-accent/50 transition-all cursor-move group"
@@ -1019,7 +1185,7 @@ export function DoctorWorkstation() {
                           variant="ghost"
                           size="sm"
                           className="h-5 w-5 p-0 hover:bg-blue-100 dark:hover:bg-blue-900/30"
-                          onClick={() => {
+                          onClick={async () => {
                             if (actualIndex > currentIndex + 1) {
                               const newQueue = [...queuePatients];
                               [
@@ -1031,6 +1197,8 @@ export function DoctorWorkstation() {
                               ];
 
                               setQueuePatients(newQueue);
+                              // Save to backend
+                              await saveQueueOrder(newQueue);
                             }
                           }}
                           disabled={actualIndex === currentIndex + 1}
@@ -1041,7 +1209,7 @@ export function DoctorWorkstation() {
                           variant="ghost"
                           size="sm"
                           className="h-5 w-5 p-0 hover:bg-blue-100 dark:hover:bg-blue-900/30"
-                          onClick={() => {
+                          onClick={async () => {
                             if (actualIndex < queuePatients.length - 1) {
                               const newQueue = [...queuePatients];
                               [
@@ -1053,6 +1221,8 @@ export function DoctorWorkstation() {
                               ];
 
                               setQueuePatients(newQueue);
+                              // Save to backend
+                              await saveQueueOrder(newQueue);
                             }
                           }}
                           disabled={actualIndex === queuePatients.length - 1}

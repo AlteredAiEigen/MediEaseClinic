@@ -368,6 +368,7 @@ class PatientService:
     async def get_patient(self, patient_id: str) -> Optional[dict]:
         """
         Get patient by ID with decrypted sensitive fields.
+        Auto-generates MediEase clinic email if missing.
         
         Args:
             patient_id: Patient MongoDB ID
@@ -389,11 +390,35 @@ class PatientService:
             self.ENCRYPTED_FIELDS
         )
         
+        # Auto-generate MediEase clinic email if missing
+        if not patient.get("medieaseClinicEmail"):
+            try:
+                first_name = patient.get("firstName", "")
+                last_name = patient.get("lastName", "")
+                date_of_birth = patient.get("dateOfBirth", "")
+                
+                if first_name and date_of_birth:
+                    clinic_email = await self.generate_mediease_clinic_email(
+                        first_name=first_name,
+                        last_name=last_name,
+                        date_of_birth=date_of_birth,
+                    )
+                    # Update patient in database
+                    await self.patients_collection.update_one(
+                        {"_id": ObjectId(patient_id)},
+                        {"$set": {"medieaseClinicEmail": clinic_email, "updatedAt": datetime.utcnow()}}
+                    )
+                    patient["medieaseClinicEmail"] = clinic_email
+                    logger.info(f"Auto-generated MediEase clinic email for patient {patient_id}: {clinic_email}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-generate MediEase clinic email for patient {patient_id}: {e}")
+        
         return await patient_helper(patient)
     
     async def get_patient_by_patient_id(self, patient_id: str) -> Optional[dict]:
         """
         Get patient by patientId (e.g., P001).
+        Auto-generates MediEase clinic email if missing.
         
         Args:
             patient_id: Patient ID (e.g., P001)
@@ -411,6 +436,30 @@ class PatientService:
             patient,
             self.ENCRYPTED_FIELDS
         )
+        
+        # Auto-generate MediEase clinic email if missing
+        patient_obj_id = patient.get("_id")
+        if patient_obj_id and not patient.get("medieaseClinicEmail"):
+            try:
+                first_name = patient.get("firstName", "")
+                last_name = patient.get("lastName", "")
+                date_of_birth = patient.get("dateOfBirth", "")
+                
+                if first_name and date_of_birth:
+                    clinic_email = await self.generate_mediease_clinic_email(
+                        first_name=first_name,
+                        last_name=last_name,
+                        date_of_birth=date_of_birth,
+                    )
+                    # Update patient in database
+                    await self.patients_collection.update_one(
+                        {"_id": patient_obj_id},
+                        {"$set": {"medieaseClinicEmail": clinic_email, "updatedAt": datetime.utcnow()}}
+                    )
+                    patient["medieaseClinicEmail"] = clinic_email
+                    logger.info(f"Auto-generated MediEase clinic email for patient {patient_id}: {clinic_email}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-generate MediEase clinic email for patient {patient_id}: {e}")
         
         return await patient_helper(patient)
     

@@ -26,14 +26,14 @@ class RegisterRequest(BaseModel):
     # Clinic information (required for admin registration)
     clinicName: str = Field(...)
     clinicPhone: str = Field(...)
-    clinicEmail: EmailStr = Field(...)
+    clinicEmail: Optional[EmailStr] = Field(None)
     clinicAddress: str = Field(..., max_length=500)
     clinicCity: str = Field(..., max_length=100)
     clinicState: str = Field(..., max_length=100)
     clinicPincode: str = Field(..., max_length=20)
     clinicCountry: str = Field("India", max_length=100)
     clinicWebsite: Optional[str] = Field(None, max_length=200)
-    clinicRegistrationNumber: str = Field(..., max_length=100)
+    clinicRegistrationNumber: Optional[str] = Field(None, max_length=100)
     clinicId: Optional[str] = None  # Auto-generated for admin registration
 
     # Doctor specific

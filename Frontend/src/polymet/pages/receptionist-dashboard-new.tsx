@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -177,6 +178,28 @@ export function ReceptionistDashboardNew() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFilter, setSearchFilter] =
     useState<"patients" | "appointments">("patients");
+  
+  // Lab checkout dialog state
+  const [labCheckoutDialog, setLabCheckoutDialog] = useState(false);
+  const [selectedLabAppointment, setSelectedLabAppointment] = useState<any>(null);
+  const [labPatientEmail, setLabPatientEmail] = useState<string>("");
+  const [isLoadingLabPatient, setIsLoadingLabPatient] = useState(false);
+  const [isProcessingLabCheckout, setIsProcessingLabCheckout] = useState(false);
+  
+  // Vitals dialog state
+  const [vitalsDialog, setVitalsDialog] = useState(false);
+  const [selectedAppointmentForVitals, setSelectedAppointmentForVitals] = useState<any>(null);
+  const [isSavingVitals, setIsSavingVitals] = useState(false);
+  const [vitalsForm, setVitalsForm] = useState({
+    bloodPressure: "",
+    heartRate: "",
+    temperature: "",
+    weight: "",
+    bloodGlucose: "",
+    oxygenSaturation: "",
+    respiratoryRate: "",
+    notes: "",
+  });
   const [queueDetailTab, setQueueDetailTab] =
     useState<"checked-in" | "consultation">("checked-in");
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -472,6 +495,168 @@ export function ReceptionistDashboardNew() {
     }
   };
 
+  // Handle lab appointment direct checkout
+  const handleLabCheckoutClick = async (appointment: any) => {
+    setSelectedLabAppointment(appointment);
+    setLabCheckoutDialog(true);
+    setIsLoadingLabPatient(true);
+    setLabPatientEmail("");
+
+    try {
+      // Fetch patient details to get MediEase email
+      // The backend will auto-generate it if missing when fetching the patient
+      const patientId = appointment.patientId;
+      if (patientId) {
+        const response = await get(`/api/patients/${patientId}`);
+        if (response.success && response.data) {
+          // Handle both response structures: {patient: {...}} or just {...}
+          const patient = response.data?.patient || response.data;
+          const email = patient?.medieaseClinicEmail;
+          
+          if (email) {
+            setLabPatientEmail(email);
+          } else {
+            // If email is still missing after backend auto-generation attempt
+            setLabPatientEmail("Unable to generate email. Patient may be missing required information (name or date of birth).");
+          }
+        } else {
+          setLabPatientEmail("Patient not found");
+        }
+      } else {
+        setLabPatientEmail("Invalid patient ID");
+      }
+    } catch (error) {
+      console.error("Failed to fetch patient details:", error);
+      setLabPatientEmail("Unable to fetch email");
+    } finally {
+      setIsLoadingLabPatient(false);
+    }
+  };
+
+  const handleConfirmLabCheckout = async () => {
+    if (!selectedLabAppointment) return;
+
+    setIsProcessingLabCheckout(true);
+    try {
+      const appointmentId = selectedLabAppointment.mongoId || selectedLabAppointment.id;
+      
+      // Update appointment status to completed
+      const response = await patch(`/api/appointments/${appointmentId}/status`, {
+        status: "completed"
+      });
+
+      if (response.success) {
+        toast({
+          title: "Lab Appointment Completed",
+          description: `Please send the lab report to: ${labPatientEmail}`,
+        });
+        setLabCheckoutDialog(false);
+        setSelectedLabAppointment(null);
+        // Refresh data
+        await Promise.all([fetchTodayAppointments(), fetchQueueData(), fetchQueueStats()]);
+      } else {
+        throw new Error(response.message || "Failed to complete checkout");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to complete lab checkout";
+      toast({
+        variant: "destructive",
+        title: "Checkout Failed",
+        description: message,
+      });
+    } finally {
+      setIsProcessingLabCheckout(false);
+    }
+  };
+
+  // Handle opening vitals dialog
+  const handleAddVitalsClick = (appointment: any) => {
+    setSelectedAppointmentForVitals(appointment);
+    setVitalsDialog(true);
+    // Reset form
+    setVitalsForm({
+      bloodPressure: "",
+      heartRate: "",
+      temperature: "",
+      weight: "",
+      bloodGlucose: "",
+      oxygenSaturation: "",
+      respiratoryRate: "",
+      notes: "",
+    });
+  };
+
+  // Handle saving vitals
+  const handleSaveVitals = async () => {
+    if (!selectedAppointmentForVitals?.patientId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Patient ID not found",
+      });
+      return;
+    }
+
+    setIsSavingVitals(true);
+    try {
+      // Prepare vitals payload - all fields are optional
+      const vitalsPayload: any = {};
+      if (vitalsForm.bloodPressure) vitalsPayload.bloodPressure = vitalsForm.bloodPressure;
+      if (vitalsForm.heartRate) vitalsPayload.heartRate = vitalsForm.heartRate;
+      if (vitalsForm.temperature) vitalsPayload.temperature = vitalsForm.temperature;
+      if (vitalsForm.weight) vitalsPayload.weight = vitalsForm.weight;
+      if (vitalsForm.bloodGlucose) vitalsPayload.bloodGlucose = vitalsForm.bloodGlucose;
+      if (vitalsForm.oxygenSaturation) vitalsPayload.oxygenSaturation = vitalsForm.oxygenSaturation;
+      if (vitalsForm.respiratoryRate) vitalsPayload.respiratoryRate = vitalsForm.respiratoryRate;
+      if (vitalsForm.notes) vitalsPayload.notes = vitalsForm.notes;
+
+      // All vitals are optional - allow saving even if empty (user can close dialog without saving)
+      // Only save if at least one field is filled
+      if (Object.keys(vitalsPayload).length === 0) {
+        // User didn't enter any vitals - just close the dialog
+        setVitalsDialog(false);
+        setSelectedAppointmentForVitals(null);
+        setIsSavingVitals(false);
+        return;
+      }
+
+      const response = await post(
+        `/api/patient-vitals/${selectedAppointmentForVitals.patientId}`,
+        vitalsPayload
+      );
+
+      if (response.success) {
+        toast({
+          title: "Vitals Saved",
+          description: "Patient vitals have been recorded successfully",
+        });
+        setVitalsDialog(false);
+        setSelectedAppointmentForVitals(null);
+        setVitalsForm({
+          bloodPressure: "",
+          heartRate: "",
+          temperature: "",
+          weight: "",
+          bloodGlucose: "",
+          oxygenSaturation: "",
+          respiratoryRate: "",
+          notes: "",
+        });
+      } else {
+        throw new Error(response.message || "Failed to save vitals");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save vitals";
+      toast({
+        variant: "destructive",
+        title: "Save Failed",
+        description: message,
+      });
+    } finally {
+      setIsSavingVitals(false);
+    }
+  };
+
   const checkedInPatients = queueList.filter((q) => q.status === "waiting").length;
   const waitingPatients = queueList.filter((q) => q.status === "waiting").length;
   const inConsultation = queueList.filter((q) => q.status === "in-consultation").length;
@@ -541,6 +726,32 @@ export function ReceptionistDashboardNew() {
             console.warn("⚠️ No valid MongoDB _id found for appointment:", apt);
           }
 
+          const doctorId = normalizeId(apt.doctorId) ?? normalizeId(apt.doctor?._id);
+          const reason = (apt.reason || "General Consultation").toLowerCase();
+          const type = (apt.type || apt.appointmentType || "").toLowerCase();
+          const doctorName = apt.doctorName ||
+            apt.doctor?.fullName ||
+            [apt.doctor?.firstName, apt.doctor?.lastName].filter(Boolean).join(" ");
+          
+          // Detect lab appointment: explicit bookingKind OR no doctor + lab-related keywords
+          const isLabByBookingKind = apt.bookingKind === "lab-test";
+          const hasNoDoctor = !doctorId || !doctorName || doctorName.toLowerCase().includes("not assigned");
+          const isLabByIndicators = hasNoDoctor && (
+            reason.includes("blood test") ||
+            reason.includes("blood") ||
+            reason.includes("lab") ||
+            reason.includes("test") ||
+            reason.includes("diagnostic") ||
+            reason.includes("x-ray") ||
+            reason.includes("scan") ||
+            reason.includes("ultrasound") ||
+            reason.includes("mri") ||
+            reason.includes("ct") ||
+            type.includes("test") ||
+            type.includes("lab") ||
+            type.includes("diagnostic")
+          );
+          
           return {
             id: mongoId ?? appointmentIdentifier ?? Math.random().toString(36).slice(2),
             mongoId: mongoId ?? undefined, // Only set if valid ObjectId
@@ -552,11 +763,9 @@ export function ReceptionistDashboardNew() {
             reason: apt.reason || "General Consultation",
             status: apt.status ?? "scheduled",
             type: apt.type || apt.appointmentType,
-            doctorId: normalizeId(apt.doctorId) ?? normalizeId(apt.doctor?._id),
-            doctorName:
-              apt.doctorName ||
-              apt.doctor?.fullName ||
-              [apt.doctor?.firstName, apt.doctor?.lastName].filter(Boolean).join(" "),
+            doctorId: doctorId,
+            doctorName: doctorName || "Not assigned",
+            bookingKind: isLabByBookingKind || isLabByIndicators ? "lab-test" : "doctor",
           };
         });
         setAppointmentsList(mappedAppointments);
@@ -743,16 +952,23 @@ const patientSearchResults =
     ? patients.filter(matchesPatient)
     : [];
 
-const checkInEntries = queueList.filter((entry) => entry.status === "waiting");
-const consultationEntries = queueList.filter(
-  (entry) => entry.status === "in-consultation"
-);
-const checkoutEntries = queueList.filter(
-  (entry) =>
-    entry.status === "completed" ||
-    entry.status === "checkout" ||
-    entry.status === "checkout-pending"
-);
+// Sort queue entries by queue_number to respect doctor's ordering
+const checkInEntries = queueList
+  .filter((entry) => entry.status === "waiting")
+  .sort((a, b) => (a.queue_number || 0) - (b.queue_number || 0));
+
+const consultationEntries = queueList
+  .filter((entry) => entry.status === "in-consultation")
+  .sort((a, b) => (a.queue_number || 0) - (b.queue_number || 0));
+
+const checkoutEntries = queueList
+  .filter(
+    (entry) =>
+      entry.status === "completed" ||
+      entry.status === "checkout" ||
+      entry.status === "checkout-pending"
+  )
+  .sort((a, b) => (a.queue_number || 0) - (b.queue_number || 0));
 
 const shouldFilterQueue = normalizedQuery && searchFilter === "patients";
 
@@ -1312,28 +1528,67 @@ const confirmCheckoutWithoutPrescription = () => {
                 const shouldShowCheckInButton = !isAlreadyCheckedIn && !isInQueue;
                 const isProcessing = processingAppointmentId === appointmentKey;
                 const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
+                const isLabAppointment = appointment.bookingKind === "lab-test";
                 return (
                   <div
                     key={appointmentKey}
-                    className="space-y-3 rounded-lg border border-slate-200/70 p-3 text-sm dark:border-slate-700/60"
+                    className={`space-y-3 rounded-lg border p-3 text-sm ${
+                      isLabAppointment 
+                        ? "border-purple-200/70 bg-purple-50/30 dark:border-purple-800/60 dark:bg-purple-900/10" 
+                        : "border-slate-200/70 dark:border-slate-700/60"
+                    }`}
                   >
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="space-y-1">
-                        <p className="font-semibold text-foreground">
-                          {appointment.patientName}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-foreground">
+                            {appointment.patientName}
+                          </p>
+                          {isLabAppointment && (
+                            <Badge className="border-0 bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0">
+                              🔬 Lab Test
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {appointment.reason || "General consultation"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Doctor: {appointment.doctorName || "Not assigned"}
-                </p>
-              </div>
+                          {isLabAppointment ? "Lab / Diagnostic" : `Doctor: ${appointment.doctorName || "Not assigned"}`}
+                        </p>
+                      </div>
                       <div className="flex flex-col items-start gap-2 md:items-end">
                         <span className="text-sm font-semibold text-foreground">
                           {formattedTime}
                         </span>
-                        {shouldShowCheckInButton ? (
+                        {isLabAppointment ? (
+                          // Lab appointments get direct checkout button
+                          appointment.status === "completed" ? (
+                            <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                              Completed
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="bg-purple-600 text-white hover:bg-purple-700"
+                              disabled={isProcessing}
+                              onClick={() => handleLabCheckoutClick(appointment)}
+                            >
+                              {isProcessing ? (
+                                <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircleIcon className="mr-2 h-3 w-3" />
+                              )}
+                              Direct Checkout
+                            </Button>
+                          )
+                        ) : isInQueue ? (
+                          // Already in queue - show status badge
+                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            In Queue
+                          </Badge>
+                        ) : (
+                          // Not in queue - always show check-in button for non-lab appointments
                           <Button
                             size="sm"
                             className="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -1347,10 +1602,6 @@ const confirmCheckoutWithoutPrescription = () => {
                             )}
                             Move to check-in
                           </Button>
-                        ) : (
-                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                            {isInQueue ? "In Queue" : "Checked in"}
-                          </Badge>
                         )}
                       </div>
                     </div>
@@ -1358,14 +1609,25 @@ const confirmCheckoutWithoutPrescription = () => {
                       <span className="capitalize">
                         Status: {appointment.status?.replace("-", " ") ?? "scheduled"}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="px-0 text-xs font-medium text-slate-600 hover:text-slate-900"
-                        onClick={() => navigate("/receptionist-appointments")}
-                      >
-                        View in appointments
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="px-2 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                          onClick={() => handleAddVitalsClick(appointment)}
+                        >
+                          <ActivityIcon className="mr-1 h-3 w-3" />
+                          Add Vitals
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="px-0 text-xs font-medium text-slate-600 hover:text-slate-900"
+                          onClick={() => navigate("/receptionist-appointments")}
+                        >
+                          View in appointments
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1428,28 +1690,67 @@ const confirmCheckoutWithoutPrescription = () => {
                 });
                 const shouldShowCheckInButton = !isAlreadyCheckedIn && !isInQueue;
                 const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
+                const isLabAppointment = appointment.bookingKind === "lab-test";
                 return (
                   <div
                     key={appointmentKey}
-                    className="rounded-lg border border-emerald-100 bg-white/80 p-3 shadow-sm dark:border-emerald-800/60 dark:bg-slate-900"
+                    className={`rounded-lg border p-3 shadow-sm ${
+                      isLabAppointment
+                        ? "border-purple-200 bg-purple-50/80 dark:border-purple-800/60 dark:bg-purple-900/20"
+                        : "border-emerald-100 bg-white/80 dark:border-emerald-800/60 dark:bg-slate-900"
+                    }`}
                   >
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                       <div className="space-y-1">
-                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                          {appointment.patientName}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {appointment.patientName}
+                          </p>
+                          {isLabAppointment && (
+                            <Badge className="border-0 bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0">
+                              🔬 Lab
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground">
                           {appointment.reason || "General consultation"}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Doctor: {appointment.doctorName || "Not assigned"}
-                </p>
-              </div>
+                          {isLabAppointment ? "Lab / Diagnostic" : `Doctor: ${appointment.doctorName || "Not assigned"}`}
+                        </p>
+                      </div>
                       <div className="flex flex-col items-start gap-2 md:items-end">
                         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {formattedTime}
                         </span>
-                        {shouldShowCheckInButton ? (
+                        {isLabAppointment ? (
+                          // Lab appointments get direct checkout button (no check-in)
+                          appointment.status === "completed" ? (
+                            <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                              Completed
+                            </Badge>
+                          ) : (
+                            <Button
+                              size="sm"
+                              className="bg-purple-600 text-white hover:bg-purple-700"
+                              disabled={isProcessing}
+                              onClick={() => handleLabCheckoutClick(appointment)}
+                            >
+                              {isProcessing ? (
+                                <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircleIcon className="mr-2 h-3 w-3" />
+                              )}
+                              Direct Checkout
+                            </Button>
+                          )
+                        ) : isInQueue ? (
+                          // Already in queue - show status badge
+                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            In Queue
+                          </Badge>
+                        ) : (
+                          // Not in queue - always show check-in button for non-lab appointments
                           <Button
                             size="sm"
                             className="bg-emerald-600 text-white hover:bg-emerald-700"
@@ -1463,12 +1764,24 @@ const confirmCheckoutWithoutPrescription = () => {
                             )}
                             Move to check-in
                           </Button>
-                        ) : (
-                          <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                            {isInQueue ? "In Queue" : "Checked in"}
-                          </Badge>
                         )}
-            </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-slate-200/50">
+                      <span className="capitalize">
+                        Status: {appointment.status?.replace("-", " ") ?? "scheduled"}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="px-2 text-xs font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                          onClick={() => handleAddVitalsClick(appointment)}
+                        >
+                          <ActivityIcon className="mr-1 h-3 w-3" />
+                          Add Vitals
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -2260,6 +2573,282 @@ const confirmCheckoutWithoutPrescription = () => {
                 <>
                   <CheckCircleIcon className="h-4 w-4 mr-2" />
                   Check In
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lab Checkout Dialog */}
+      <Dialog open={labCheckoutDialog} onOpenChange={setLabCheckoutDialog}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="rounded-full bg-purple-100 p-1.5 text-purple-600">
+                🔬
+              </span>
+              Lab Test Checkout
+            </DialogTitle>
+            <DialogDescription>
+              Complete the lab test appointment and send the report to the patient
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Patient Info */}
+            <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4 space-y-2">
+              <p className="font-semibold text-purple-900">
+                {selectedLabAppointment?.patientName}
+              </p>
+              <p className="text-sm text-purple-700">
+                {selectedLabAppointment?.reason || "Lab Test"}
+              </p>
+              <p className="text-xs text-purple-600">
+                Scheduled: {selectedLabAppointment?.time}
+              </p>
+            </div>
+
+            {/* MediEase Email Section */}
+            <div className="rounded-lg border-2 border-dashed border-purple-300 bg-purple-50/80 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">📧</span>
+                <p className="font-semibold text-purple-800">
+                  Send Lab Report To:
+                </p>
+              </div>
+              
+              {isLoadingLabPatient ? (
+                <div className="flex items-center gap-2 text-purple-600">
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading patient email...</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 p-3 bg-white rounded-md border border-purple-200">
+                    <span className="text-purple-500 font-mono text-sm break-all">
+                      {labPatientEmail || "No email available"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-600">
+                    This is the patient's MediEase clinic email. Please send the lab report to this email address.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Instructions */}
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertCircleIcon className="h-4 w-4 text-amber-600" />
+              <AlertTitle className="text-amber-800 text-sm">Important</AlertTitle>
+              <AlertDescription className="text-amber-700 text-xs">
+                After clicking "Complete Checkout", please email the lab report to the patient's MediEase email shown above.
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLabCheckoutDialog(false);
+                setSelectedLabAppointment(null);
+                setLabPatientEmail("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmLabCheckout}
+              disabled={isProcessingLabCheckout || !labPatientEmail}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              {isProcessingLabCheckout ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CheckCircleIcon className="h-4 w-4 mr-2" />
+                  Complete Checkout
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Vitals Dialog */}
+      <Dialog open={vitalsDialog} onOpenChange={setVitalsDialog}>
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <span className="rounded-full bg-blue-100 p-1.5 text-blue-600">
+                <ActivityIcon className="h-5 w-5" />
+              </span>
+              Add Patient Vitals
+            </DialogTitle>
+            <DialogDescription>
+              Record vital signs for {selectedAppointmentForVitals?.patientName || "patient"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Primary Vitals */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground border-b pb-2">
+                Primary Vitals
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="blood-pressure">Blood Pressure</Label>
+                  <Input
+                    id="blood-pressure"
+                    placeholder="e.g., 120/80"
+                    value={vitalsForm.bloodPressure}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, bloodPressure: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="heart-rate">Heart Rate (bpm)</Label>
+                  <Input
+                    id="heart-rate"
+                    placeholder="e.g., 72"
+                    type="number"
+                    value={vitalsForm.heartRate}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, heartRate: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="temperature">Temperature (°F)</Label>
+                  <Input
+                    id="temperature"
+                    placeholder="e.g., 98.6"
+                    type="number"
+                    step="0.1"
+                    value={vitalsForm.temperature}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, temperature: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="weight">Weight (lbs)</Label>
+                  <Input
+                    id="weight"
+                    placeholder="e.g., 150"
+                    type="number"
+                    step="0.1"
+                    value={vitalsForm.weight}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, weight: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Vitals */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground border-b pb-2">
+                Additional Vitals
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="blood-glucose">Blood Glucose (mg/dL)</Label>
+                  <Input
+                    id="blood-glucose"
+                    placeholder="e.g., 100"
+                    type="number"
+                    value={vitalsForm.bloodGlucose}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, bloodGlucose: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="oxygen-saturation">Oxygen Saturation (%)</Label>
+                  <Input
+                    id="oxygen-saturation"
+                    placeholder="e.g., 98"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={vitalsForm.oxygenSaturation}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, oxygenSaturation: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="respiratory-rate">Respiratory Rate (per min)</Label>
+                  <Input
+                    id="respiratory-rate"
+                    placeholder="e.g., 16"
+                    type="number"
+                    value={vitalsForm.respiratoryRate}
+                    onChange={(e) =>
+                      setVitalsForm({ ...vitalsForm, respiratoryRate: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="vitals-notes">Notes (Optional)</Label>
+              <Textarea
+                id="vitals-notes"
+                placeholder="Add any additional notes about the vitals..."
+                rows={3}
+                value={vitalsForm.notes}
+                onChange={(e) =>
+                  setVitalsForm({ ...vitalsForm, notes: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setVitalsDialog(false);
+                setSelectedAppointmentForVitals(null);
+                setVitalsForm({
+                  bloodPressure: "",
+                  heartRate: "",
+                  temperature: "",
+                  weight: "",
+                  bloodGlucose: "",
+                  oxygenSaturation: "",
+                  respiratoryRate: "",
+                  notes: "",
+                });
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveVitals}
+              disabled={isSavingVitals}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isSavingVitals ? (
+                <>
+                  <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircleIcon className="h-4 w-4 mr-2" />
+                  Save Vitals
                 </>
               )}
             </Button>

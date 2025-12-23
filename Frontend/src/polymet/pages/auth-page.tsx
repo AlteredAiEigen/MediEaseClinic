@@ -90,6 +90,7 @@ export function AuthPage() {
     "Haryana",
     "Himachal Pradesh",
     "Jharkhand",
+    "Jammu and Kashmir",
     "Karnataka",
     "Kerala",
     "Madhya Pradesh",
@@ -200,13 +201,11 @@ export function AuthPage() {
       const missing: string[] = [];
       if (!signupClinicName.trim()) missing.push("Clinic/Hospital Name");
       if (!signupClinicPhone.trim()) missing.push("Clinic Phone Number");
-      if (!signupClinicEmail.trim()) missing.push("Clinic Email");
       if (!signupClinicAddress.trim()) missing.push("Street Address");
       if (!signupClinicCity.trim()) missing.push("City");
       if (!signupClinicState.trim()) missing.push("State");
       if (!signupClinicPincode.trim()) missing.push("Pincode");
       if (!signupClinicCountry.trim()) missing.push("Country");
-      if (!signupClinicRegistrationNumber.trim()) missing.push("Registration/License Number");
       if (missing.length) {
         setError(`Please fill: ${missing.join(", ")}`);
         return;
@@ -232,14 +231,20 @@ export function AuthPage() {
         role: selectedRole as UserRole,
         clinicName: selectedRole === "admin" ? signupClinicName : undefined,
         clinicPhone: selectedRole === "admin" ? signupClinicPhone : undefined,
-        clinicEmail: selectedRole === "admin" ? signupClinicEmail : undefined,
+        clinicEmail:
+          selectedRole === "admin" && signupClinicEmail.trim()
+            ? signupClinicEmail.trim()
+            : undefined,
         clinicAddress: selectedRole === "admin" ? signupClinicAddress : undefined,
         clinicCity: selectedRole === "admin" ? signupClinicCity : undefined,
         clinicState: selectedRole === "admin" ? signupClinicState : undefined,
         clinicPincode: selectedRole === "admin" ? signupClinicPincode : undefined,
         clinicCountry: selectedRole === "admin" ? signupClinicCountry : undefined,
         clinicWebsite: selectedRole === "admin" ? signupClinicWebsite : undefined,
-        clinicRegistrationNumber: selectedRole === "admin" ? signupClinicRegistrationNumber : undefined,
+        clinicRegistrationNumber:
+          selectedRole === "admin" && signupClinicRegistrationNumber.trim()
+            ? signupClinicRegistrationNumber.trim()
+            : undefined,
       });
 
       // Show confirmation UI instead of logging the user in immediately
@@ -691,7 +696,7 @@ export function AuthPage() {
 
                             <div className="space-y-2">
                               <Label htmlFor="signup-clinic-email">
-                                Clinic Email <span className="text-red-500">*</span>
+                                Clinic Email (optional)
                               </Label>
                               <div className="relative">
                                 <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -704,7 +709,6 @@ export function AuthPage() {
                                     setSignupClinicEmail(e.target.value)
                                   }
                                   className="pl-10"
-                                  required
                                 />
                               </div>
                             </div>
@@ -818,7 +822,7 @@ export function AuthPage() {
 
                             <div className="space-y-2">
                                 <Label htmlFor="signup-clinic-registration">
-                                  Registration/License Number <span className="text-red-500">*</span>
+                                  Registration/License Number (optional)
                                 </Label>
                               <div className="relative">
                                 <FileTextIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -831,7 +835,6 @@ export function AuthPage() {
                                     setSignupClinicRegistrationNumber(e.target.value)
                                   }
                                   className="pl-10"
-                                  required
                                 />
                               </div>
                               <p className="text-xs text-muted-foreground">

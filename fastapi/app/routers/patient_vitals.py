@@ -27,7 +27,7 @@ def get_service(db: AsyncIOMotorDatabase = Depends(get_db)) -> PatientVitalServi
 async def record_vitals(
     patient_id: str = Path(..., description="Patient MongoDB ObjectId"),
     payload: PatientVitalCreateRequest = ...,
-    current_user: dict = Depends(require_doctor_or_admin),
+    current_user: dict = Depends(require_any_role),  # Allow receptionists, doctors, and admins
     service: PatientVitalService = Depends(get_service),
 ):
     """Record new vitals for a patient."""

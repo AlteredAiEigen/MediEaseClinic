@@ -720,14 +720,17 @@ class QueueService:
         try:
             # Convert appointment_id to ObjectId if valid
             appointment_object_id = None
+            appointment_match = None
             if ObjectId.is_valid(appointment_id):
                 appointment_object_id = ObjectId(appointment_id)
+                # Defensive: some historical queue docs stored appointment as a string
+                appointment_match = {"$in": [appointment_object_id, str(appointment_object_id)]}
             else:
                 # Try to find by appointmentId string field if it exists
-                appointment_object_id = appointment_id
+                appointment_match = appointment_id
             
             # Find all queue entries for this appointment
-            cursor = self.queue_collection.find({"appointment": appointment_object_id})
+            cursor = self.queue_collection.find({"appointment": appointment_match})
             entries = await cursor.to_list(length=100)
             
             if not entries:
@@ -761,6 +764,11 @@ class QueueService:
     async def update_queue_status(self, entry_id: str, status_update: QueueStatusUpdate) -> Optional[Dict]:
         """Update queue entry status."""
         try:
+            # Fetch current entry (raw) so we can use patient/doctor ids for deduplication cascades.
+            current_entry = await self.queue_collection.find_one({"_id": ObjectId(entry_id)})
+            patient_oid = current_entry.get("patient") if current_entry else None
+            doctor_oid = current_entry.get("doctor") if current_entry else None
+
             update_data = {
                 "status": status_update.status,
                 "updated_at": datetime.utcnow()
@@ -796,6 +804,33 @@ class QueueService:
                     if isinstance(value, ObjectId):
                         result[key] = str(value)
                 logger.info(f"Updated queue entry {entry_id} to status {status_update.status}")
+
+                # Defensive: ensure the patient does not remain in "waiting"/"in-consultation" elsewhere
+                # (can happen with duplicated queue entries or historical mismatches).
+                # Mark duplicate entries as inactive to prevent them from showing in checkout.
+                if status_update.status == "checkout-pending" and patient_oid and doctor_oid:
+                    try:
+                        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                        await self.queue_collection.update_many(
+                            {
+                                "checked_in_at": {"$gte": today},
+                                "patient": patient_oid,
+                                "doctor": doctor_oid,
+                                "is_active": True,
+                                "_id": {"$ne": ObjectId(entry_id)},
+                                "status": {"$in": ["waiting", "in-consultation"]},
+                            },
+                            {
+                                "$set": {
+                                    "status": "checked-out",  # Mark as completed to avoid duplicates in checkout
+                                    "consultation_ended_at": datetime.utcnow(),
+                                    "updated_at": datetime.utcnow(),
+                                    "is_active": False,  # Mark inactive so only the primary entry shows in checkout
+                                }
+                            },
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to cascade checkout for duplicate entries: {e}")
 
                 # Also update appointment status if appointment is linked
                 appointment_id = result.get("appointment")
@@ -1216,7 +1251,7 @@ class QueueService:
         entries = await self.queue_collection.find(
             {
                 "_id": {"$in": [ObjectId(entry_id) for entry_id in queue_order]},
-                "doctor": doctor_id,
+                "doctor": ObjectId(doctor_id),
                 "checked_in_at": {"$gte": today},
                 "is_active": True,
             }

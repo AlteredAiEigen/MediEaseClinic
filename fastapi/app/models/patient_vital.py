@@ -39,6 +39,7 @@ class PatientVitalCreate(BaseModel):
     respiratoryRate: Optional[str] = Field(None, max_length=20)
     temperature: Optional[str] = Field(None, max_length=20)
     oxygenSaturation: Optional[str] = Field(None, max_length=20)
+    bloodGlucose: Optional[str] = Field(None, max_length=20, description="Blood glucose level in mg/dL")
     weight: Optional[str] = Field(None, max_length=20)
     height: Optional[str] = Field(None, max_length=20)
     bmi: Optional[str] = Field(None, max_length=20)
@@ -73,6 +74,7 @@ async def patient_vital_helper(vital: dict) -> dict:
         "respiratoryRate": vital.get("respiratoryRate"),
         "temperature": vital.get("temperature"),
         "oxygenSaturation": vital.get("oxygenSaturation"),
+        "bloodGlucose": vital.get("bloodGlucose"),
         "weight": vital.get("weight"),
         "height": vital.get("height"),
         "bmi": vital.get("bmi"),

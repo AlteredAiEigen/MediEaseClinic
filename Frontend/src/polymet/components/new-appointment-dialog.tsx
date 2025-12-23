@@ -682,8 +682,8 @@ export function NewAppointmentDialog({
                     <SelectValue placeholder="Select booking type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="doctor">Doctor Appointment</SelectItem>
-                    <SelectItem value="lab-test">Lab Test Appointment</SelectItem>
+                    <SelectItem value="doctor">👨‍⚕️ Doctor Consultation</SelectItem>
+                    <SelectItem value="lab-test">🔬 Clinic Lab / Diagnostic Test</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

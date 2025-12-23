@@ -157,12 +157,22 @@ class WebSocketService:
         )
 
     async def broadcast_queue_reordered(self, doctor_id: str, updated_queue: list):
-        """Broadcast when queue is reordered."""
-        await self.broadcast_queue_change(
-            "queue_reordered",
-            {"doctor_id": doctor_id, "queue": updated_queue},
-            [doctor_id]
-        )
+        """Broadcast when queue is reordered.
+        
+        Sends to BOTH the general queue_updates channel (for receptionists)
+        AND the doctor-specific channel.
+        """
+        message = {
+            "type": "queue_reordered",
+            "timestamp": datetime.utcnow().isoformat(),
+            "data": {"doctor_id": doctor_id, "queue": updated_queue}
+        }
+        
+        # Broadcast to general queue_updates channel for receptionists
+        await self.connection_manager.broadcast_to_channel(message, "queue_updates")
+        
+        # Also broadcast to doctor's specific channel
+        await self.connection_manager.broadcast_to_channel(message, "doctor_queue", doctor_id)
 
     async def broadcast_appointment_status_update(self, appointment: dict):
         """Broadcast when appointment status is updated."""
@@ -179,12 +189,35 @@ class WebSocketService:
             }
 
             # Broadcast to general channel for all clients to receive appointment updates
-            await self.broadcast_to_channel(message, "queue_updates")
+            await self.connection_manager.broadcast_to_channel(message, "queue_updates")
 
             # Also broadcast to doctor's specific channel if doctorId is available
             doctor_id = appointment.get("doctorId")
             if doctor_id:
-                await self.broadcast_to_channel(message, "doctor_queue", str(doctor_id))
+                await self.connection_manager.broadcast_to_channel(message, "doctor_queue", str(doctor_id))
 
         except Exception as e:
             logger.error(f"Error broadcasting appointment status update: {e}")
+
+    async def broadcast_appointment_created(self, appointment: dict):
+        """Broadcast when an appointment is created (scheduled)."""
+        try:
+            message = {
+                "type": "appointment_created",
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": {
+                    "appointment": appointment,
+                    "appointmentId": str(appointment.get("_id", "")),
+                    "doctorId": appointment.get("doctorId"),
+                },
+            }
+
+            # Broadcast to general channel for all clients to receive appointment updates
+            await self.connection_manager.broadcast_to_channel(message, "queue_updates")
+
+            # Also broadcast to doctor's specific channel if doctorId is available
+            doctor_id = appointment.get("doctorId")
+            if doctor_id:
+                await self.connection_manager.broadcast_to_channel(message, "doctor_queue", str(doctor_id))
+        except Exception as e:
+            logger.error(f"Error broadcasting appointment created: {e}")

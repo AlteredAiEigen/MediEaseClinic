@@ -3,7 +3,13 @@ import { useAuth } from '@/context/auth-context';
 import { getStoredAccessToken } from '@/lib/api-client';
 
 export interface QueueUpdateMessage {
-  type: 'patient_checked_in' | 'patient_status_updated' | 'queue_reordered' | 'queue_update' | 'appointment_status_updated';
+  type:
+    | 'patient_checked_in'
+    | 'patient_status_updated'
+    | 'queue_reordered'
+    | 'queue_update'
+    | 'appointment_status_updated'
+    | 'appointment_created';
   timestamp: string;
   data: any;
 }
@@ -161,7 +167,7 @@ export function useWebSocket(
 }
 
 // Specialized hook for doctor queue updates
-export function useDoctorQueueWebSocket(doctorId: string): WebSocketHookResult {
+export function useDoctorQueueWebSocket(doctorId?: string): WebSocketHookResult {
   return useWebSocket('queue', doctorId);
 }
 
