@@ -199,6 +199,24 @@ class AppointmentService:
         if effective_clinic:
             appointment_dict["clinicId"] = effective_clinic
         
+        # Determine appointmentType if not explicitly provided
+        # Priority: appointmentType > bookingKind > type > doctorId presence
+        if not appointment_dict.get("appointmentType"):
+            if appointment_dict.get("bookingKind"):
+                appointment_dict["appointmentType"] = appointment_dict["bookingKind"]
+            elif appointment_dict.get("type"):
+                # Normalize type to appointmentType format
+                type_value = appointment_dict["type"].lower()
+                if "lab" in type_value or "test" in type_value:
+                    appointment_dict["appointmentType"] = "lab-test"
+                else:
+                    appointment_dict["appointmentType"] = "doctor"
+            elif appointment_dict.get("doctorId"):
+                appointment_dict["appointmentType"] = "doctor"
+            else:
+                # Default to lab-test if no doctor
+                appointment_dict["appointmentType"] = "lab-test"
+        
         # Populate names
         appointment_dict = await self.populate_names(appointment_dict)
         

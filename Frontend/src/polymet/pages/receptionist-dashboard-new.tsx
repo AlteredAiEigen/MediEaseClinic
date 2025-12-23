@@ -182,6 +182,7 @@ export function ReceptionistDashboardNew() {
   // Lab checkout dialog state
   const [labCheckoutDialog, setLabCheckoutDialog] = useState(false);
   const [selectedLabAppointment, setSelectedLabAppointment] = useState<any>(null);
+  const [selectedLabQueueEntryId, setSelectedLabQueueEntryId] = useState<string | null>(null);
   const [labPatientEmail, setLabPatientEmail] = useState<string>("");
   const [isLoadingLabPatient, setIsLoadingLabPatient] = useState(false);
   const [isProcessingLabCheckout, setIsProcessingLabCheckout] = useState(false);
@@ -201,7 +202,7 @@ export function ReceptionistDashboardNew() {
     notes: "",
   });
   const [queueDetailTab, setQueueDetailTab] =
-    useState<"checked-in" | "consultation">("checked-in");
+    useState<"checked-in" | "consultation" | "lab-results">("checked-in");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [processingAppointmentId, setProcessingAppointmentId] = useState<string | null>(null);
   const [checkoutDialog, setCheckoutDialog] = useState(false);
@@ -496,8 +497,9 @@ export function ReceptionistDashboardNew() {
   };
 
   // Handle lab appointment direct checkout
-  const handleLabCheckoutClick = async (appointment: any) => {
+  const handleLabCheckoutClick = async (appointment: any, queueEntryId?: string) => {
     setSelectedLabAppointment(appointment);
+    setSelectedLabQueueEntryId(queueEntryId || null);
     setLabCheckoutDialog(true);
     setIsLoadingLabPatient(true);
     setLabPatientEmail("");
@@ -540,23 +542,59 @@ export function ReceptionistDashboardNew() {
     try {
       const appointmentId = selectedLabAppointment.mongoId || selectedLabAppointment.id;
       
-      // Update appointment status to completed
-      const response = await patch(`/api/appointments/${appointmentId}/status`, {
-        status: "completed"
-      });
-
-      if (response.success) {
-        toast({
-          title: "Lab Appointment Completed",
-          description: `Please send the lab report to: ${labPatientEmail}`,
+      // Find queue entry if not already provided
+      let queueEntryId = selectedLabQueueEntryId;
+      if (!queueEntryId) {
+        // Try to find queue entry by appointment ID - check all statuses, not just waiting/in-consultation
+        const queueEntry = queueList.find((entry) => {
+          const entryAppointmentId = resolveAppointmentIdForEntry(entry);
+          return entryAppointmentId === appointmentId;
         });
-        setLabCheckoutDialog(false);
-        setSelectedLabAppointment(null);
-        // Refresh data
-        await Promise.all([fetchTodayAppointments(), fetchQueueData(), fetchQueueStats()]);
-      } else {
-        throw new Error(response.message || "Failed to complete checkout");
+        if (queueEntry && queueEntry._id) {
+          queueEntryId = queueEntry._id;
+        }
       }
+      
+      // Check out from queue first (if queue entry exists) - this is critical for lab appointments
+      // The queue entry must be marked as "checked-out" so it doesn't appear in checkout tab
+      // The backend's check_out_patient function already updates the appointment status to "completed",
+      // so we don't need to update it again (and doing so would trigger queue status sync that overrides "checked-out")
+      if (queueEntryId) {
+        try {
+          const checkOutResponse = await post(`/api/queue/${queueEntryId}/check-out`, {});
+          if (!checkOutResponse.success) {
+            throw new Error(checkOutResponse.message || "Failed to check out from queue");
+          }
+          // Queue entry is now marked as checked-out and is_active = false
+          // Backend also updates appointment status to "completed" automatically
+          // No need to update appointment status again - it would cause queue status sync issues
+        } catch (queueError) {
+          // If queue check-out fails, throw error to prevent completion
+          console.error("Error checking out from queue:", queueError);
+          throw new Error(`Failed to check out from queue: ${queueError instanceof Error ? queueError.message : "Unknown error"}`);
+        }
+      } else {
+        // If no queue entry found, update appointment status manually
+        // This handles edge cases where queue entry might not exist
+        const response = await patch(`/api/appointments/${appointmentId}/status`, {
+          status: "completed"
+        });
+        if (!response.success) {
+          throw new Error(response.message || "Failed to complete appointment");
+        }
+      }
+      
+      // If we got here, checkout was successful
+      // (either via queue check-out endpoint which handles appointment update, or manual appointment update)
+      toast({
+        title: "Lab Appointment Completed",
+        description: `Please send the lab report to: ${labPatientEmail}`,
+      });
+      setLabCheckoutDialog(false);
+      setSelectedLabAppointment(null);
+      setSelectedLabQueueEntryId(null);
+      // Refresh data to ensure UI is updated
+      await Promise.all([fetchTodayAppointments(), fetchQueueData(), fetchQueueStats()]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to complete lab checkout";
       toast({
@@ -937,6 +975,16 @@ appointmentsList.forEach((apt) => {
   }
 });
 
+// Helper function to check if an entry is a lab appointment
+const isLabQueueEntry = (entry: QueueEntry): boolean => {
+  const hasNoDoctor = !entry.doctor || entry.doctor === null;
+  const appointment = appointmentByPatientId.get(entry.patient._id);
+  const isLabByAppointment = 
+    appointment?.appointmentType === "lab-test" ||
+    appointment?.bookingKind === "lab-test";
+  return hasNoDoctor || isLabByAppointment;
+};
+
 const filteredAppointments =
   normalizedQuery && searchFilter === "appointments"
     ? todaysAppointments.filter(matchesAppointment)
@@ -953,8 +1001,9 @@ const patientSearchResults =
     : [];
 
 // Sort queue entries by queue_number to respect doctor's ordering
+// Exclude lab appointments from waiting - they go to Lab Results tab
 const checkInEntries = queueList
-  .filter((entry) => entry.status === "waiting")
+  .filter((entry) => entry.status === "waiting" && !isLabQueueEntry(entry))
   .sort((a, b) => (a.queue_number || 0) - (b.queue_number || 0));
 
 const consultationEntries = queueList
@@ -963,11 +1012,65 @@ const consultationEntries = queueList
 
 const checkoutEntries = queueList
   .filter(
-    (entry) =>
-      entry.status === "completed" ||
-      entry.status === "checkout" ||
-      entry.status === "checkout-pending"
+    (entry) => {
+      // Exclude lab appointments - they go through direct checkout and shouldn't appear here
+      // Check multiple ways to identify lab appointments:
+      // 1. No doctor assigned (lab appointments don't have doctors)
+      const hasNoDoctor = !entry.doctor || entry.doctor === null;
+      
+      // 2. Check appointment data if available
+      const appointment = appointmentByPatientId.get(entry.patient._id);
+      const isLabByAppointment = 
+        appointment?.appointmentType === "lab-test" ||
+        appointment?.bookingKind === "lab-test";
+      
+      // 3. Check reason field for lab-related keywords (defensive check)
+      const reason = (entry.reason || "").toLowerCase();
+      const isLabByReason = 
+        reason.includes("lab") ||
+        reason.includes("test") ||
+        reason.includes("diagnostic") ||
+        reason.includes("blood") ||
+        reason.includes("x-ray");
+      
+      // 4. Use the helper function
+      const isLab = isLabQueueEntry(entry);
+      
+      // Exclude if any of these indicate it's a lab appointment
+      // Priority: if no doctor AND reason suggests lab, it's definitely a lab appointment
+      if ((hasNoDoctor && isLabByReason) || isLabByAppointment || isLab) {
+        return false;
+      }
+      
+      // Only include doctor appointments in checkout status
+      // Also exclude entries that are already checked-out (defensive)
+      if (entry.status === "checked-out" || entry.status === "checked_out") {
+        return false;
+      }
+      
+      return (
+        entry.status === "completed" ||
+        entry.status === "checkout" ||
+        entry.status === "checkout-pending"
+      );
+    }
   )
+  .sort((a, b) => (a.queue_number || 0) - (b.queue_number || 0));
+
+// Filter lab appointments - these should appear in Lab Results tab
+// Lab appointments are identified by: no doctor, or appointmentType/bookingKind indicates lab-test
+// Include all lab appointments that haven't been checked out (regardless of status: waiting, in-consultation, etc.)
+const labResultsEntries = queueList
+  .filter((entry) => {
+    // Use the helper function to identify lab appointments
+    const isLab = isLabQueueEntry(entry);
+    
+    // Exclude checked-out entries
+    const isCheckedOut = entry.status === "checked-out" || entry.status === "checked_out";
+    const isActive = entry.is_active !== false;
+    
+    return isLab && !isCheckedOut && isActive;
+  })
   .sort((a, b) => (a.queue_number || 0) - (b.queue_number || 0));
 
 const shouldFilterQueue = normalizedQuery && searchFilter === "patients";
@@ -981,6 +1084,9 @@ const filteredConsultationEntries = shouldFilterQueue
 const filteredCheckoutEntries = shouldFilterQueue
   ? checkoutEntries.filter(matchesQueueEntry)
   : checkoutEntries;
+const filteredLabResultsEntries = shouldFilterQueue
+  ? labResultsEntries.filter(matchesQueueEntry)
+  : labResultsEntries;
 
 // Helper to check if a string is a valid MongoDB ObjectId (24 hex characters)
 const isValidObjectId = (id: string | undefined | null): boolean => {
@@ -1528,7 +1634,9 @@ const confirmCheckoutWithoutPrescription = () => {
                 const shouldShowCheckInButton = !isAlreadyCheckedIn && !isInQueue;
                 const isProcessing = processingAppointmentId === appointmentKey;
                 const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
-                const isLabAppointment = appointment.bookingKind === "lab-test";
+                const isLabAppointment = 
+                  appointment.appointmentType === "lab-test" ||
+                  appointment.bookingKind === "lab-test";
                 return (
                   <div
                     key={appointmentKey}
@@ -1562,24 +1670,28 @@ const confirmCheckoutWithoutPrescription = () => {
                           {formattedTime}
                         </span>
                         {isLabAppointment ? (
-                          // Lab appointments get direct checkout button
+                          // Lab appointments now go through check-in first
                           appointment.status === "completed" ? (
                             <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
                               Completed
                             </Badge>
+                          ) : isInQueue ? (
+                            <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                              In Queue
+                            </Badge>
                           ) : (
                             <Button
                               size="sm"
-                              className="bg-purple-600 text-white hover:bg-purple-700"
+                              className="bg-emerald-600 text-white hover:bg-emerald-700"
                               disabled={isProcessing}
-                              onClick={() => handleLabCheckoutClick(appointment)}
+                              onClick={() => handleCheckInFromAppointment(appointment)}
                             >
                               {isProcessing ? (
                                 <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
                               ) : (
                                 <CheckCircleIcon className="mr-2 h-3 w-3" />
                               )}
-                              Direct Checkout
+                              Move to check-in
                             </Button>
                           )
                         ) : isInQueue ? (
@@ -1690,7 +1802,9 @@ const confirmCheckoutWithoutPrescription = () => {
                 });
                 const shouldShowCheckInButton = !isAlreadyCheckedIn && !isInQueue;
                 const formattedTime = formatAppointmentTime(appointment.date, appointment.time);
-                const isLabAppointment = appointment.bookingKind === "lab-test";
+                const isLabAppointment = 
+                  appointment.appointmentType === "lab-test" ||
+                  appointment.bookingKind === "lab-test";
                 return (
                   <div
                     key={appointmentKey}
@@ -1724,24 +1838,28 @@ const confirmCheckoutWithoutPrescription = () => {
                           {formattedTime}
                         </span>
                         {isLabAppointment ? (
-                          // Lab appointments get direct checkout button (no check-in)
+                          // Lab appointments now go through check-in first
                           appointment.status === "completed" ? (
                             <Badge className="border-0 bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
                               Completed
                             </Badge>
+                          ) : isInQueue ? (
+                            <Badge className="border-0 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                              In Queue
+                            </Badge>
                           ) : (
                             <Button
                               size="sm"
-                              className="bg-purple-600 text-white hover:bg-purple-700"
+                              className="bg-emerald-600 text-white hover:bg-emerald-700"
                               disabled={isProcessing}
-                              onClick={() => handleLabCheckoutClick(appointment)}
+                              onClick={() => handleCheckInFromAppointment(appointment)}
                             >
                               {isProcessing ? (
                                 <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
                               ) : (
                                 <CheckCircleIcon className="mr-2 h-3 w-3" />
                               )}
-                              Direct Checkout
+                              Move to check-in
                             </Button>
                           )
                         ) : isInQueue ? (
@@ -1803,7 +1921,9 @@ const confirmCheckoutWithoutPrescription = () => {
             <Badge className="border-0 bg-sky-200 text-sky-700">
               {queueDetailTab === "checked-in"
                 ? filteredCheckInEntries.length
-                : filteredConsultationEntries.length}
+                : queueDetailTab === "consultation"
+                ? filteredConsultationEntries.length
+                : filteredLabResultsEntries.length}
             </Badge>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1830,6 +1950,17 @@ const confirmCheckoutWithoutPrescription = () => {
               >
                 Consultation
               </button>
+              <button
+                type="button"
+                className={`flex-1 rounded-full px-3 py-1.5 transition ${
+                  queueDetailTab === "lab-results"
+                    ? "bg-purple-500 text-white shadow"
+                    : "text-purple-600 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-slate-800"
+                }`}
+                onClick={() => setQueueDetailTab("lab-results")}
+              >
+                Lab Results
+              </button>
             </div>
             <div className="space-y-3 min-h-[240px] max-h-[320px] overflow-y-auto pr-1">
               {queueDetailTab === "checked-in" ? (
@@ -1848,16 +1979,41 @@ const confirmCheckoutWithoutPrescription = () => {
                     const appointment = appointmentByPatientId.get(entry.patient._id);
                     const patientMongoId = entry.patient?._id;
                     const appointmentId = resolveAppointmentIdForEntry(entry);
+                    // Check if this is a lab appointment
+                    // Priority: appointmentType > bookingKind > no doctor + keywords
+                    const isLabAppointment = 
+                      appointment?.appointmentType === "lab-test" ||
+                      appointment?.bookingKind === "lab-test" || 
+                      (!appointment?.doctorId && (
+                        (appointment?.reason || "").toLowerCase().includes("lab") ||
+                        (appointment?.reason || "").toLowerCase().includes("test") ||
+                        (appointment?.reason || "").toLowerCase().includes("diagnostic") ||
+                        (appointment?.reason || "").toLowerCase().includes("blood") ||
+                        (appointment?.reason || "").toLowerCase().includes("x-ray")
+                      )) ||
+                      // Also check if queue entry has no doctor (lab appointments don't have doctors)
+                      (!entry.doctor || entry.doctor === null);
                     return (
                       <div
                         key={entry.queue_id}
-                        className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
+                        className={`rounded-lg border p-3 shadow-sm ${
+                          isLabAppointment
+                            ? "border-purple-200 bg-purple-50/80 dark:border-purple-800/60 dark:bg-purple-900/20"
+                            : "border-sky-100 bg-white/80 dark:border-sky-800/60 dark:bg-slate-900"
+                        }`}
                       >
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                            <span className="font-semibold text-slate-800 dark:text-slate-100">
-                              {entry.patient.fullName}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-800 dark:text-slate-100">
+                                {entry.patient.fullName}
+                              </span>
+                              {isLabAppointment && (
+                                <Badge className="border-0 bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0">
+                                  🔬 Lab
+                                </Badge>
+                              )}
+                            </div>
                             <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
                               {appointment?.time
                                 ? formatAppointmentTime(appointment.date, appointment.time)
@@ -1867,7 +2023,7 @@ const confirmCheckoutWithoutPrescription = () => {
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                             <span>
                               {entry.reason || "General consultation"},{" "}
-                              {appointment?.doctorName || "Any doctor"}
+                              {isLabAppointment ? "Lab / Diagnostic" : (appointment?.doctorName || "Any doctor")}
                             </span>
                             <Badge
                               variant="outline"
@@ -1879,64 +2035,222 @@ const confirmCheckoutWithoutPrescription = () => {
                         </div>
                         {patientMongoId && (
                           <div className="mt-2 flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              className="h-6 px-2 text-[10px] hover:bg-teal-100 dark:hover:bg-teal-900/30 text-teal-600 dark:text-teal-400"
-                              onClick={() => moveBackToAppointments(entry._id, appointmentId)}
-                              title="Move back to appointments"
-                            >
-                              <ArrowLeftIcon className="w-3 h-3 mr-1" />
-                              Back
-                            </Button>
+                            {isLabAppointment ? (
+                              // Show checkout button for lab appointments (with or without full appointment object)
+                              appointment ? (
+                                <Button
+                                  size="sm"
+                                  className="bg-purple-600 text-white hover:bg-purple-700"
+                                  disabled={isProcessingLabCheckout}
+                                  onClick={() => handleLabCheckoutClick(appointment, entry._id)}
+                                >
+                                  {isProcessingLabCheckout ? (
+                                    <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CheckCircleIcon className="mr-2 h-3 w-3" />
+                                  )}
+                                  Direct Checkout
+                                </Button>
+                              ) : appointmentId ? (
+                                // If appointment object not loaded but we have appointmentId, create minimal object
+                                <Button
+                                  size="sm"
+                                  className="bg-purple-600 text-white hover:bg-purple-700"
+                                  disabled={isProcessingLabCheckout}
+                                  onClick={() => {
+                                    // Create minimal appointment object from entry data
+                                    const minimalAppointment = {
+                                      id: appointmentId,
+                                      mongoId: appointmentId,
+                                      patientId: entry.patient._id,
+                                      patientName: entry.patient.fullName,
+                                      reason: entry.reason || "Lab Test",
+                                      appointmentType: "lab-test",
+                                      bookingKind: "lab-test"
+                                    };
+                                    handleLabCheckoutClick(minimalAppointment, entry._id);
+                                  }}
+                                >
+                                  {isProcessingLabCheckout ? (
+                                    <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CheckCircleIcon className="mr-2 h-3 w-3" />
+                                  )}
+                                  Direct Checkout
+                                </Button>
+                              ) : null
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="xs"
+                                className="h-6 px-2 text-[10px] hover:bg-teal-100 dark:hover:bg-teal-900/30 text-teal-600 dark:text-teal-400"
+                                onClick={() => moveBackToAppointments(entry._id, appointmentId)}
+                                title="Move back to appointments"
+                              >
+                                <ArrowLeftIcon className="w-3 h-3 mr-1" />
+                                Back
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>
                     );
                   })
                 )
-              ) : filteredConsultationEntries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-200 bg-white/80 p-6 text-center dark:border-sky-800/60 dark:bg-slate-900/50">
-                  <ClockIcon className="mb-3 h-8 w-8 text-sky-300" />
-                  <p className="text-sm font-semibold text-sky-700">
-                    No ongoing consultations
+              ) : queueDetailTab === "consultation" ? (
+                filteredConsultationEntries.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-sky-200 bg-white/80 p-6 text-center dark:border-sky-800/60 dark:bg-slate-900/50">
+                    <ClockIcon className="mb-3 h-8 w-8 text-sky-300" />
+                    <p className="text-sm font-semibold text-sky-700">
+                      No ongoing consultations
+                    </p>
+                    <p className="mt-1 text-xs text-sky-600/80">
+                      Patients appear here while doctors are in session.
+                    </p>
+                  </div>
+                ) : (
+                  filteredConsultationEntries.map((entry) => {
+                    const doctorName =
+                      entry.doctor?.fullName ||
+                      [entry.doctor?.firstName, entry.doctor?.lastName]
+                        .filter(Boolean)
+                        .join(" ") ||
+                      "Assigned doctor";
+                    return (
+                      <div
+                        key={entry.queue_id}
+                        className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {entry.patient.fullName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {doctorName}
+                            </p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
+                          >
+                            In consultation
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {entry.reason || "Consultation in progress"}
+                        </p>
+                      </div>
+                    );
+                  })
+                )
+              ) : filteredLabResultsEntries.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-purple-200 bg-white/80 p-6 text-center dark:border-purple-800/60 dark:bg-slate-900/50">
+                  <CheckCircleIcon className="mb-3 h-8 w-8 text-purple-300" />
+                  <p className="text-sm font-semibold text-purple-700">
+                    No lab appointments waiting
                   </p>
-                  <p className="mt-1 text-xs text-sky-600/80">
-                    Patients appear here while doctors are in session.
-                </p>
-              </div>
+                  <p className="mt-1 text-xs text-purple-600/80">
+                    Lab appointments checked in will appear here for direct checkout.
+                  </p>
+                </div>
               ) : (
-                filteredConsultationEntries.map((entry) => {
-                  const doctorName =
-                    entry.doctor?.fullName ||
-                    [entry.doctor?.firstName, entry.doctor?.lastName]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    "Assigned doctor";
+                filteredLabResultsEntries.map((entry) => {
+                  const appointment = appointmentByPatientId.get(entry.patient._id);
+                  const patientMongoId = entry.patient?._id;
+                  const appointmentId = resolveAppointmentIdForEntry(entry);
+                  // Confirm this is a lab appointment
+                  const isLabAppointment = 
+                    appointment?.appointmentType === "lab-test" ||
+                    appointment?.bookingKind === "lab-test" || 
+                    (!appointment?.doctorId && (
+                      (appointment?.reason || "").toLowerCase().includes("lab") ||
+                      (appointment?.reason || "").toLowerCase().includes("test") ||
+                      (appointment?.reason || "").toLowerCase().includes("diagnostic") ||
+                      (appointment?.reason || "").toLowerCase().includes("blood") ||
+                      (appointment?.reason || "").toLowerCase().includes("x-ray")
+                    )) ||
+                    (!entry.doctor || entry.doctor === null);
+                  
                   return (
                     <div
                       key={entry.queue_id}
-                      className="rounded-lg border border-sky-100 bg-white/80 p-3 shadow-sm dark:border-sky-800/60 dark:bg-slate-900"
+                      className="rounded-lg border border-purple-200 bg-purple-50/80 p-3 shadow-sm dark:border-purple-800/60 dark:bg-purple-900/20"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                            {entry.patient.fullName}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {doctorName}
-                          </p>
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-slate-800 dark:text-slate-100">
+                              {entry.patient.fullName}
+                            </span>
+                            <Badge className="border-0 bg-purple-100 text-purple-700 text-[10px] px-1.5 py-0">
+                              🔬 Lab
+                            </Badge>
+                          </div>
+                          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            {appointment?.time
+                              ? formatAppointmentTime(appointment.date, appointment.time)
+                              : "Walk-in"}
+                          </span>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className="border-sky-200 text-sky-700 dark:border-sky-800 dark:text-sky-300"
-                        >
-                          In consultation
-                        </Badge>
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                          <span>
+                            {entry.reason || "Lab Test"}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="border-purple-200 text-purple-700 dark:border-purple-800 dark:text-purple-300"
+                          >
+                            {entry.status === "waiting" ? "Waiting" : 
+                             entry.status === "in-consultation" ? "In Progress" : 
+                             entry.status}
+                          </Badge>
+                        </div>
                       </div>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {entry.reason || "Consultation in progress"}
-                      </p>
+                      {patientMongoId && (
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          {appointment ? (
+                            <Button
+                              size="sm"
+                              className="bg-purple-600 text-white hover:bg-purple-700"
+                              disabled={isProcessingLabCheckout}
+                              onClick={() => handleLabCheckoutClick(appointment, entry._id)}
+                            >
+                              {isProcessingLabCheckout ? (
+                                <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircleIcon className="mr-2 h-3 w-3" />
+                              )}
+                              Direct Checkout
+                            </Button>
+                          ) : appointmentId ? (
+                            <Button
+                              size="sm"
+                              className="bg-purple-600 text-white hover:bg-purple-700"
+                              disabled={isProcessingLabCheckout}
+                              onClick={() => {
+                                const minimalAppointment = {
+                                  id: appointmentId,
+                                  mongoId: appointmentId,
+                                  patientId: entry.patient._id,
+                                  patientName: entry.patient.fullName,
+                                  reason: entry.reason || "Lab Test",
+                                  appointmentType: "lab-test",
+                                  bookingKind: "lab-test"
+                                };
+                                handleLabCheckoutClick(minimalAppointment, entry._id);
+                              }}
+                            >
+                              {isProcessingLabCheckout ? (
+                                <Loader2Icon className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircleIcon className="mr-2 h-3 w-3" />
+                              )}
+                              Direct Checkout
+                            </Button>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -2605,7 +2919,9 @@ const confirmCheckoutWithoutPrescription = () => {
                 {selectedLabAppointment?.reason || "Lab Test"}
               </p>
               <p className="text-xs text-purple-600">
-                Scheduled: {selectedLabAppointment?.time}
+                Scheduled: {selectedLabAppointment?.time 
+                  ? formatAppointmentTime(selectedLabAppointment?.date, selectedLabAppointment?.time)
+                  : "—"}
               </p>
             </div>
 

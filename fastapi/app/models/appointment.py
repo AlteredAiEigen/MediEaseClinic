@@ -42,6 +42,9 @@ class AppointmentBase(BaseModel):
     followUpRequired: bool = False
     followUpNotes: Optional[str] = None
     clinicId: Optional[str] = None
+    type: Optional[str] = None
+    appointmentType: Optional[str] = Field(None, description="Type of appointment: 'doctor' or 'lab-test'")
+    bookingKind: Optional[str] = Field(None, description="Booking kind: 'doctor' or 'lab-test'")
     consultationSummary: Optional[Dict[str, Any]] = None
     prescriptionFileUrl: Optional[str] = None
     prescriptionFileKey: Optional[str] = None
@@ -122,6 +125,9 @@ class AppointmentResponse(BaseModel):
     updatedAt: datetime
     preVisitReminderSentAt: Optional[datetime] = None
     labResultReminderSentAt: Optional[datetime] = None
+    type: Optional[str] = None
+    appointmentType: Optional[str] = None
+    bookingKind: Optional[str] = None
     prescriptionFileUrl: Optional[str] = None
     prescriptionFileKey: Optional[str] = None
     prescriptionFileName: Optional[str] = None
@@ -154,6 +160,9 @@ class AppointmentUpdate(BaseModel):
     cancellationReason: Optional[str] = None
     followUpRequired: Optional[bool] = None
     followUpNotes: Optional[str] = None
+    type: Optional[str] = None
+    appointmentType: Optional[str] = None
+    bookingKind: Optional[str] = None
     consultationSummary: Optional[Dict[str, Any]] = None
     prescriptionFileUrl: Optional[str] = None
     prescriptionFileKey: Optional[str] = None
@@ -229,5 +238,9 @@ async def appointment_helper(appointment: dict) -> dict:
         "aiRecommendations": appointment.get("aiRecommendations"),
         # Patient profile updates tracking from this appointment's transcription
         "patientProfileUpdates": appointment.get("patientProfileUpdates"),
+        # Appointment type fields
+        "type": appointment.get("type"),
+        "appointmentType": appointment.get("appointmentType"),
+        "bookingKind": appointment.get("bookingKind"),
     }
 

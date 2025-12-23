@@ -19,6 +19,9 @@ class AppointmentCreateRequest(BaseModel):
     insurance: bool = False
     followUpRequired: bool = False
     followUpNotes: Optional[str] = None
+    type: Optional[str] = None
+    appointmentType: Optional[str] = Field(None, description="Type of appointment: 'doctor' or 'lab-test'")
+    bookingKind: Optional[str] = Field(None, description="Booking kind: 'doctor' or 'lab-test'")
 
 
 class AppointmentUpdateRequest(BaseModel):

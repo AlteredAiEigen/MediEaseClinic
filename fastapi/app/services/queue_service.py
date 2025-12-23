@@ -32,9 +32,20 @@ class QueueService:
         return f"Q{timestamp}"
     
     async def get_next_queue_number(self, doctor_id: str) -> int:
-        """Get next queue number for doctor today."""
+        """Get next queue number for doctor today. For lab appointments, use 'lab' as identifier."""
         today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = today + timedelta(days=1)
+        
+        # Handle lab appointments (no doctor)
+        if doctor_id == "lab":
+            count = await self.queue_collection.count_documents({
+                "$or": [
+                    {"doctor": None},
+                    {"doctor": {"$exists": False}}
+                ],
+                "created_at": {"$gte": today, "$lt": tomorrow}
+            })
+            return count + 1
         
         # Convert doctor_id to ObjectId if it's a valid ObjectId string
         doctor_object_id = ObjectId(doctor_id) if ObjectId.is_valid(doctor_id) else doctor_id
@@ -246,16 +257,31 @@ class QueueService:
             patient_object_id = appointment.get("patientId")
             doctor_object_id = appointment.get("doctorId")
             
-            if not patient_object_id or not doctor_object_id:
+            # Determine if this is a lab appointment
+            appointment_type = appointment.get("appointmentType") or appointment.get("bookingKind")
+            is_lab_appointment = (
+                appointment_type == "lab-test" or
+                appointment_type == "lab" or
+                (not doctor_object_id and not appointment_type)  # No doctor and no explicit type
+            )
+            
+            if not patient_object_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Appointment is missing patient or doctor information"
+                    detail="Appointment is missing patient information"
+                )
+            
+            # Doctor is required for doctor appointments, optional for lab appointments
+            if not is_lab_appointment and not doctor_object_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Appointment is missing doctor information"
                 )
             
             # Convert to ObjectId if they're strings
             if isinstance(patient_object_id, str):
                 patient_object_id = ObjectId(patient_object_id)
-            if isinstance(doctor_object_id, str):
+            if doctor_object_id and isinstance(doctor_object_id, str):
                 doctor_object_id = ObjectId(doctor_object_id)
             
             # Clean up any stale entries before attempting check-in
@@ -313,36 +339,39 @@ class QueueService:
                     detail="Patient not found"
                 )
             
-            # Check if doctor exists
-            doctor = await self.db["users"].find_one({"_id": doctor_object_id})
-            if not doctor:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Doctor not found"
-                )
-            
-            # Verify doctor role
-            if doctor.get("role") != "doctor":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Selected user is not a doctor"
-                )
+            # Check if doctor exists (only for doctor appointments)
+            if not is_lab_appointment and doctor_object_id:
+                doctor = await self.db["users"].find_one({"_id": doctor_object_id})
+                if not doctor:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail="Doctor not found"
+                    )
+                
+                # Verify doctor role
+                if doctor.get("role") != "doctor":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Selected user is not a doctor"
+                    )
             
             # Generate queue entry
             queue_id = await QueueService.generate_queue_id()
-            queue_number = await self.get_next_queue_number(str(doctor_object_id))
+            # For lab appointments, use "lab" as the identifier for queue numbering
+            queue_identifier = str(doctor_object_id) if doctor_object_id else "lab"
+            queue_number = await self.get_next_queue_number(queue_identifier)
             
             queue_dict = {
                 "queue_id": queue_id,
                 "patient": patient_object_id,
-                "doctor": doctor_object_id,
+                "doctor": doctor_object_id,  # Can be None for lab appointments
                 "appointment": appointment_object_id,
                 "checked_in_by": ObjectId(checked_in_by) if ObjectId.is_valid(checked_in_by) else checked_in_by,
                 "checked_in_at": datetime.utcnow(),
                 "status": "waiting",
                 "queue_number": queue_number,
                 "priority": check_in_data.priority,
-                "reason": check_in_data.reason or "General Consultation",
+                "reason": check_in_data.reason or ("Lab Test" if is_lab_appointment else "General Consultation"),
                 "notes": check_in_data.notes or "",
                 "wait_time": 0,
                 "is_active": True,
@@ -355,7 +384,7 @@ class QueueService:
             
             # Convert ObjectIds to strings for Pydantic model
             queue_dict["patient"] = str(patient_object_id)
-            queue_dict["doctor"] = str(doctor_object_id)
+            queue_dict["doctor"] = str(doctor_object_id) if doctor_object_id else None
             if appointment_object_id:
                 queue_dict["appointment"] = str(appointment_object_id)
             if queue_dict.get("checked_in_by") and isinstance(queue_dict["checked_in_by"], ObjectId):
@@ -469,7 +498,7 @@ class QueueService:
                 entry["patient"] = patient
                 del entry["patient_info"]
 
-            # Format doctor info
+            # Format doctor info (may be None for lab appointments)
             if entry.get("doctor_info") and len(entry["doctor_info"]) > 0:
                 doctor = entry["doctor_info"][0]
                 doctor["_id"] = str(doctor["_id"])
@@ -482,6 +511,11 @@ class QueueService:
                     doctor["fullName"] = f"{firstName} {lastName}".strip()
                 entry["doctor"] = doctor
                 del entry["doctor_info"]
+            elif not entry.get("doctor") or entry.get("doctor") is None:
+                # Lab appointment - no doctor assigned
+                entry["doctor"] = None
+                if "doctor_info" in entry:
+                    del entry["doctor_info"]
 
             return entry
 
@@ -567,6 +601,11 @@ class QueueService:
                         doctor["fullName"] = f"{firstName} {lastName}".strip()
                     entry["doctor"] = doctor
                     del entry["doctor_info"]
+                elif not entry.get("doctor") or entry.get("doctor") is None:
+                    # Lab appointment - no doctor assigned
+                    entry["doctor"] = None
+                    if "doctor_info" in entry:
+                        del entry["doctor_info"]
             
             return queue
         
