@@ -35,6 +35,8 @@ const ConsultationSession = lazy(() => import("@/polymet/pages/consultation-sess
 const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout").then(module => ({ default: module.HealthcareLayout })));
 const LoaderShowcasePage = lazy(() => import("@/polymet/pages/loader-showcase-page").then(module => ({ default: module.LoaderShowcasePage })));
 const ResetPasswordPage = lazy(() => import("@/polymet/pages/reset-password").then(module => ({ default: module.ResetPasswordPage })));
+const TermsOfServicePage = lazy(() => import("@/polymet/pages/terms-of-service-page").then(module => ({ default: module.TermsOfServicePage })));
+const PrivacyPolicyPage = lazy(() => import("@/polymet/pages/privacy-policy-page").then(module => ({ default: module.PrivacyPolicyPage })));
 
 // Import MediEase loader
 import { MediEaseLoader } from "@/components/mediease-loader";
@@ -112,6 +114,10 @@ export default function MediEaseClinicPrototype() {
           <Route path="/auth" element={<AuthPage />} />
 
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+          <Route path="/terms-of-service" element={<TermsOfServicePage />} />
+
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
 
           <Route path="/loader" element={<LoaderShowcasePage />} />
 

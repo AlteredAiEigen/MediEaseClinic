@@ -351,10 +351,10 @@ export function NewLandingPage() {
               <h4 className="font-bold mb-4">Legal</h4>
               <ul className="space-y-2 text-sm text-slate-400">
                 <li>
-                  <a href="#">Privacy</a>
+                  <Link to="/privacy-policy" className="hover:text-teal-400 transition-colors">Privacy</Link>
                 </li>
                 <li>
-                  <a href="#">Terms</a>
+                  <Link to="/terms-of-service" className="hover:text-teal-400 transition-colors">Terms</Link>
                 </li>
                 <li>
                   <a href="#">HIPAA</a>

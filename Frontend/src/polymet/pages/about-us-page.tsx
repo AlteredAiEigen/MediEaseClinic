@@ -169,8 +169,13 @@ export function AboutUsPage() {
             {/* Chanpreet Singh */}
             <Card className="p-8 hover:shadow-xl transition-shadow">
               <div className="flex flex-col items-center text-center mb-6">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center mb-4 text-white text-3xl font-bold">
-                  CS
+                <div className="w-64 h-64 rounded-full overflow-hidden mb-4 ring-4 ring-teal-100 dark:ring-teal-900 shadow-lg">
+                  <img
+                    src="/chanpreet.jpg"
+                    alt="Chanpreet Singh"
+                    className="w-full h-full object-cover object-top"
+                    style={{ objectPosition: 'center top', transform: 'scale(0.85)' }}
+                  />
                 </div>
                 <h3 className="text-2xl font-bold mb-2">Chanpreet Singh</h3>
                 <p className="text-muted-foreground mb-4">Co-Founder</p>
@@ -194,8 +199,13 @@ export function AboutUsPage() {
             {/* Gunjan Rawat */}
             <Card className="p-8 hover:shadow-xl transition-shadow">
               <div className="flex flex-col items-center text-center mb-6">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mb-4 text-white text-3xl font-bold">
-                  GR
+                <div className="w-64 h-64 rounded-full overflow-hidden mb-4 ring-4 ring-emerald-100 dark:ring-emerald-900 shadow-lg">
+                  <img
+                    src="/Gunjan.jpeg"
+                    alt="Gunjan Rawat"
+                    className="w-full h-full object-cover"
+                    style={{ transform: 'scale(0.85)' }}
+                  />
                 </div>
                 <h3 className="text-2xl font-bold mb-2">Gunjan Rawat</h3>
                 <p className="text-muted-foreground mb-4">Co-Founder</p>

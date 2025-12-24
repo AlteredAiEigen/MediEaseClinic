@@ -903,19 +903,23 @@ export function AuthPage() {
 
                               <span className="text-muted-foreground">
                                 I agree to the{" "}
-                                <button
-                                  type="button"
+                                <Link
+                                  to="/terms-of-service"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   className="text-[#00C4B3] hover:underline"
                                 >
                                   Terms of Service
-                                </button>{" "}
+                                </Link>{" "}
                                 and{" "}
-                                <button
-                                  type="button"
+                                <Link
+                                  to="/privacy-policy"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   className="text-[#00C4B3] hover:underline"
                                 >
                                   Privacy Policy
-                                </button>
+                                </Link>
                               </span>
                             </div>
 

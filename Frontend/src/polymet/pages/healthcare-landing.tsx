@@ -22,6 +22,8 @@ import {
   ClipboardListIcon,
   BarChart3Icon,
   Loader2Icon,
+  MenuIcon,
+  XIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -30,6 +32,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -66,6 +76,7 @@ export function HealthcareLanding() {
   const [isSubmittingLead, setIsSubmittingLead] = useState(false);
   const [subscribeEmail, setSubscribeEmail] = useState("");
   const [isSubmittingSubscribe, setIsSubmittingSubscribe] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const scrollToSection = (sectionId: string) => {
     const element = document.getElementById(sectionId);
@@ -177,11 +188,12 @@ export function HealthcareLanding() {
     <div className="min-h-screen bg-gradient-to-b from-teal-50/30 to-white">
       {/* Header */}
       <header className="border-b border-border sticky top-0 z-50 bg-white/80 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Link to={getLogoLink()} onClick={() => !user && window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <MediEaseLogo size="md" />
           </Link>
 
+          {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-8">
             <button
               onClick={() => scrollToSection('features')}
@@ -230,18 +242,104 @@ export function HealthcareLanding() {
               Book a Demo
             </Button>
           </nav>
+
+          {/* Mobile Menu Button */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                aria-label="Open menu"
+              >
+                <MenuIcon className="h-6 w-6" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+              <SheetHeader>
+                <SheetTitle>Menu</SheetTitle>
+                <SheetDescription>
+                  Navigate to different sections
+                </SheetDescription>
+              </SheetHeader>
+              <nav className="flex flex-col gap-4 mt-8">
+                <button
+                  onClick={() => {
+                    scrollToSection('features');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-left text-base font-medium text-muted-foreground hover:text-teal-600 transition-colors py-2"
+                >
+                  Features
+                </button>
+                <button
+                  onClick={() => {
+                    scrollToSection('pricing');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-left text-base font-medium text-muted-foreground hover:text-teal-600 transition-colors py-2"
+                >
+                  Pricing
+                </button>
+                <button
+                  onClick={() => {
+                    scrollToSection('roadmap');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-left text-base font-medium text-muted-foreground hover:text-teal-600 transition-colors py-2"
+                >
+                  Roadmap
+                </button>
+                <button
+                  onClick={() => {
+                    scrollToSection('security');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="text-left text-base font-medium text-muted-foreground hover:text-teal-600 transition-colors py-2"
+                >
+                  Security
+                </button>
+                <Link
+                  to="/about-us#founders"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="text-left text-base font-medium text-muted-foreground hover:text-teal-600 transition-colors py-2"
+                >
+                  About Us
+                </Link>
+                <div className="border-t pt-4 mt-4 space-y-3">
+                  <Link to="/role-selection" onClick={() => setMobileMenuOpen(false)}>
+                    <Button
+                      variant="ghost"
+                      className="w-full text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                    >
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Button
+                    onClick={() => {
+                      setLeadModalOpen(true);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
+                  >
+                    Book a Demo
+                  </Button>
+                </div>
+              </nav>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-6 py-16">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
-          <div className="space-y-8">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-600 text-sm">
-              <RocketIcon className="w-4 h-4" />✨ Live Now - Transform
+      <section className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
+          <div className="space-y-6 sm:space-y-8">
+            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-600 text-xs sm:text-sm">
+              <RocketIcon className="w-3 h-3 sm:w-4 sm:h-4" />✨ Live Now - Transform
               Your Healthcare Practice
             </div>
-            <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold leading-tight">
               <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
                 Connecting Clinics
               </span>
@@ -249,23 +347,23 @@ export function HealthcareLanding() {
 
               <span className="text-foreground">& Hospitals Digitally</span>
             </h1>
-            <p className="text-xl text-muted-foreground leading-relaxed">
+            <p className="text-base sm:text-lg lg:text-xl text-muted-foreground leading-relaxed">
               Empowering Indian healthcare providers with seamless digital
               solutions for appointments, EHR, e-prescriptions, and AI-powered
               consultations
             </p>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-sm font-semibold">
-                <MicIcon className="w-4 h-4" />
-                Multilingual AI Transcription (15+ Indian languages)
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs sm:text-sm font-semibold">
+                <MicIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Multilingual AI Transcription</span>
               </div>
-              <div className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm font-semibold">
-                <FileTextIcon className="w-4 h-4" />
-                Generates structured clinical notes & patient updates
+              <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm font-semibold">
+                <FileTextIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                <span className="whitespace-nowrap">Structured clinical notes</span>
               </div>
             </div>
-            <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-2xl p-6 border border-teal-100 dark:border-teal-900">
-              <p className="text-base text-foreground">
+            <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-teal-100 dark:border-teal-900">
+              <p className="text-sm sm:text-base text-foreground">
                 Streamline your clinic operations with{" "}
                 <span className="text-teal-600 dark:text-teal-400 font-bold">
                   faster consults, fewer clicks,
@@ -276,48 +374,48 @@ export function HealthcareLanding() {
                 </span>
               </p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-3 sm:gap-4">
               <Button
                 size="lg"
                 onClick={() => setLeadModalOpen(true)}
-                className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-4 text-lg font-semibold"
+                className="bg-teal-500 hover:bg-teal-600 text-white px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg font-semibold w-full sm:w-auto"
               >
-                Book a Demo <ArrowRightIcon className="w-5 h-5 ml-2" />
+                Book a Demo <ArrowRightIcon className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
               </Button>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-4 gap-6 pt-8">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 pt-6 sm:pt-8">
               <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">40%</div>
+                <div className="text-2xl sm:text-3xl font-bold text-teal-600">40%</div>
                 <div className="text-xs text-muted-foreground mt-1">
                   Faster Consultations
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">30min</div>
+                <div className="text-2xl sm:text-3xl font-bold text-teal-600">30min</div>
                 <div className="text-xs text-muted-foreground mt-1">
                   Saved Daily
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">99.9%</div>
+                <div className="text-2xl sm:text-3xl font-bold text-teal-600">99.9%</div>
                 <div className="text-xs text-muted-foreground mt-1">Uptime</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-teal-600">HIPAA</div>
+                <div className="text-2xl sm:text-3xl font-bold text-teal-600">HIPAA</div>
                 <div className="text-xs text-muted-foreground mt-1">
                   Compliant
                 </div>
               </div>
             </div>
           </div>
-          <div className="relative">
+          <div className="relative mt-8 lg:mt-0">
             {/* Decorative elements */}
-            <div className="absolute -top-4 -right-4 w-72 h-72 bg-teal-500/10 rounded-full blur-3xl"></div>
-            <div className="absolute -bottom-4 -left-4 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl"></div>
+            <div className="absolute -top-4 -right-4 w-48 sm:w-72 h-48 sm:h-72 bg-teal-500/10 rounded-full blur-3xl"></div>
+            <div className="absolute -bottom-4 -left-4 w-48 sm:w-72 h-48 sm:h-72 bg-emerald-500/10 rounded-full blur-3xl"></div>
 
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-teal-100 dark:ring-teal-900">
+            <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl ring-1 ring-teal-100 dark:ring-teal-900">
               <img
                 src="https://v3b.fal.media/files/b/tiger/4Aaws8gqX_jL_XZCFdEk0.jpg"
                 alt="Indian doctor and patient professional consultation"
@@ -325,30 +423,30 @@ export function HealthcareLanding() {
               />
 
               {/* Floating card */}
-              <div className="absolute bottom-6 left-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl p-5 flex items-center gap-3 border border-teal-100 dark:border-teal-900">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
-                  <PlayIcon className="w-6 h-6 text-white" />
+              <div className="absolute bottom-3 sm:bottom-6 left-3 sm:left-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl sm:rounded-2xl shadow-2xl p-3 sm:p-5 flex items-center gap-2 sm:gap-3 border border-teal-100 dark:border-teal-900 max-w-[calc(100%-1.5rem)] sm:max-w-none">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg flex-shrink-0">
+                  <PlayIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
-                <div>
-                  <div className="text-sm font-semibold">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs sm:text-sm font-semibold truncate">
                     AI Transcription Active
                   </div>
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-[10px] sm:text-xs text-muted-foreground truncate">
                     Recording consultation...
                   </div>
                 </div>
-                <div className="flex gap-0.5 ml-4">
-                  <div className="w-1 h-6 bg-teal-500 rounded-full animate-pulse"></div>
+                <div className="flex gap-0.5 ml-2 sm:ml-4 flex-shrink-0">
+                  <div className="w-0.5 sm:w-1 h-4 sm:h-6 bg-teal-500 rounded-full animate-pulse"></div>
                   <div
-                    className="w-1 h-4 bg-teal-400 rounded-full animate-pulse"
+                    className="w-0.5 sm:w-1 h-3 sm:h-4 bg-teal-400 rounded-full animate-pulse"
                     style={{ animationDelay: "0.1s" }}
                   ></div>
                   <div
-                    className="w-1 h-8 bg-teal-500 rounded-full animate-pulse"
+                    className="w-0.5 sm:w-1 h-5 sm:h-8 bg-teal-500 rounded-full animate-pulse"
                     style={{ animationDelay: "0.2s" }}
                   ></div>
                   <div
-                    className="w-1 h-5 bg-teal-400 rounded-full animate-pulse"
+                    className="w-0.5 sm:w-1 h-3 sm:h-5 bg-teal-400 rounded-full animate-pulse"
                     style={{ animationDelay: "0.3s" }}
                   ></div>
                 </div>
@@ -364,7 +462,7 @@ export function HealthcareLanding() {
       </div>
 
       {/* Why Healthcare Providers Choose Us - Keeping original for continuity */}
-      <section className="relative bg-gradient-to-b from-white to-teal-50/30 dark:from-slate-950 dark:to-teal-950/20 py-16">
+      <section className="relative bg-gradient-to-b from-white to-teal-50/30 dark:from-slate-950 dark:to-teal-950/20 py-8 sm:py-12 lg:py-16">
         {/* Decorative background pattern */}
         <div
           className="absolute inset-0 bg-grid-slate-100 dark:bg-grid-slate-800 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] dark:[mask-image:linear-gradient(0deg,rgba(0,0,0,0.8),rgba(0,0,0,0.4))]"
@@ -374,19 +472,19 @@ export function HealthcareLanding() {
               "linear-gradient(to right, rgb(226 232 240 / 0.1) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.1) 1px, transparent 1px)",
           }}
         ></div>
-        <div className="container mx-auto px-6 relative">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-semibold mb-6">
-              <SparklesIcon className="w-4 h-4" />
+        <div className="container mx-auto px-4 sm:px-6 relative">
+          <div className="text-center mb-8 sm:mb-12">
+            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs sm:text-sm font-semibold mb-4 sm:mb-6">
+              <SparklesIcon className="w-3 h-3 sm:w-4 sm:h-4" />
               Why Choose MediEase
             </div>
-            <h2 className="text-5xl font-bold mb-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 px-4">
               Why Healthcare Providers{" "}
               <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
                 Choose Us
               </span>
             </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto px-4">
               Built for efficiency, designed for care. Experience the difference
               with our unified platform.
             </p>
@@ -445,34 +543,34 @@ export function HealthcareLanding() {
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/50 dark:to-emerald-950/50 rounded-2xl p-8 text-center border border-teal-100 dark:border-teal-900 hover:shadow-lg transition-shadow">
-              <div className="text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+            <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/50 dark:to-emerald-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-teal-100 dark:border-teal-900 hover:shadow-lg transition-shadow">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 2x
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Patient Throughput
               </div>
             </div>
-            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 rounded-2xl p-8 text-center border border-emerald-100 dark:border-emerald-900 hover:shadow-lg transition-shadow">
-              <div className="text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-emerald-100 dark:border-emerald-900 hover:shadow-lg transition-shadow">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 85%
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Less Documentation Time
               </div>
             </div>
-            <div className="bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-950/50 dark:to-teal-950/50 rounded-2xl p-8 text-center border border-cyan-100 dark:border-cyan-900 hover:shadow-lg transition-shadow">
-              <div className="text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            <div className="bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-cyan-100 dark:border-cyan-900 hover:shadow-lg transition-shadow">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 100%
               </div>
-              <div className="text-sm text-muted-foreground">Data Accuracy</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Data Accuracy</div>
             </div>
-            <div className="bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-950/50 dark:to-teal-950/50 rounded-2xl p-8 text-center border border-purple-100 dark:border-purple-900 hover:shadow-lg transition-shadow">
-              <div className="text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            <div className="bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-purple-100 dark:border-purple-900 hover:shadow-lg transition-shadow">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 24/7
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Support Available
               </div>
             </div>
@@ -486,13 +584,13 @@ export function HealthcareLanding() {
       </div>
 
       {/* Complete Care Journey - Keeping original for continuity */}
-      <section className="bg-teal-50/30 py-12">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-10">
-            <h2 className="text-4xl font-bold mb-4">
+      <section className="bg-teal-50/30 py-8 sm:py-12">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8 sm:mb-10">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
               Complete <span className="text-teal-500">Care Journey</span>
             </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
               From patient intake to follow-up, every step is streamlined and
               connected
             </p>
@@ -506,7 +604,7 @@ export function HealthcareLanding() {
               style={{ top: "64px" }}
             ></div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-6 relative">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 sm:gap-6 relative">
               {[
                 {
                   icon: UsersIcon,
@@ -570,19 +668,19 @@ export function HealthcareLanding() {
       </section>
 
       {/* Built for Every Role */}
-      <section className="bg-white py-12">
-        <div className="container mx-auto px-6">
-          <div className="text-center mb-10">
-            <h2 className="text-4xl font-bold mb-4">
+      <section className="bg-white py-8 sm:py-12">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="text-center mb-8 sm:mb-10">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
               Built for <span className="text-teal-500">Every Role</span>
             </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
               Tailored experiences for administrators, healthcare providers, and
               front desk staff
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {/* Clinic Administrator */}
             <Card className="overflow-hidden hover:shadow-xl transition-shadow">
               <div className="relative h-48 overflow-hidden">
@@ -735,23 +833,23 @@ export function HealthcareLanding() {
       </div>
 
       {/* AI That Works For You - Keeping original for continuity */}
-      <section className="relative bg-gradient-to-b from-teal-50/30 via-white to-emerald-50/30 dark:from-teal-950/20 dark:via-slate-950 dark:to-emerald-950/20 py-16">
+      <section className="relative bg-gradient-to-b from-teal-50/30 via-white to-emerald-50/30 dark:from-teal-950/20 dark:via-slate-950 dark:to-emerald-950/20 py-8 sm:py-12 lg:py-16">
         {/* Decorative elements */}
-        <div className="absolute top-20 right-20 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-20 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl"></div>
-        <div className="container mx-auto px-6 relative">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-teal-100 to-emerald-100 dark:from-teal-900/40 dark:to-emerald-900/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-sm font-semibold mb-6 shadow-lg">
-              <SparklesIcon className="w-4 h-4" />
+        <div className="absolute top-20 right-20 w-48 sm:w-96 h-48 sm:h-96 bg-teal-500/5 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-20 left-20 w-48 sm:w-96 h-48 sm:h-96 bg-emerald-500/5 rounded-full blur-3xl"></div>
+        <div className="container mx-auto px-4 sm:px-6 relative">
+          <div className="text-center mb-8 sm:mb-12">
+            <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-teal-100 to-emerald-100 dark:from-teal-900/40 dark:to-emerald-900/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs sm:text-sm font-semibold mb-4 sm:mb-6 shadow-lg">
+              <SparklesIcon className="w-3 h-3 sm:w-4 sm:h-4" />
               Powered by Advanced AI
             </div>
-            <h2 className="text-5xl font-bold mb-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 px-4">
               AI That Works{" "}
               <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
                 For You
               </span>
             </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto mb-12">
+            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-12 px-4">
               Transform your practice with intelligent automation that digitizes
               patient records, increases efficiency, and helps grow your clinic
             </p>
@@ -895,34 +993,34 @@ export function HealthcareLanding() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="bg-gradient-to-br from-white to-teal-50/50 dark:from-slate-900 dark:to-teal-950/30 rounded-2xl p-8 text-center shadow-lg border border-teal-100 dark:border-teal-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+            <div className="bg-gradient-to-br from-white to-teal-50/50 dark:from-slate-900 dark:to-teal-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-teal-100 dark:border-teal-900 hover:shadow-xl hover:-translate-y-1 transition-all">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 98%
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Transcription Accuracy
               </div>
             </div>
-            <div className="bg-gradient-to-br from-white to-emerald-50/50 dark:from-slate-900 dark:to-emerald-950/30 rounded-2xl p-8 text-center shadow-lg border border-emerald-100 dark:border-emerald-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            <div className="bg-gradient-to-br from-white to-emerald-50/50 dark:from-slate-900 dark:to-emerald-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-emerald-100 dark:border-emerald-900 hover:shadow-xl hover:-translate-y-1 transition-all">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 30min
               </div>
-              <div className="text-sm text-muted-foreground">Saved Per Day</div>
+              <div className="text-xs sm:text-sm text-muted-foreground">Saved Per Day</div>
             </div>
-            <div className="bg-gradient-to-br from-white to-cyan-50/50 dark:from-slate-900 dark:to-cyan-950/30 rounded-2xl p-8 text-center shadow-lg border border-cyan-100 dark:border-cyan-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            <div className="bg-gradient-to-br from-white to-cyan-50/50 dark:from-slate-900 dark:to-cyan-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-cyan-100 dark:border-cyan-900 hover:shadow-xl hover:-translate-y-1 transition-all">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 25%
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Practice Growth
               </div>
             </div>
-            <div className="bg-gradient-to-br from-white to-purple-50/50 dark:from-slate-900 dark:to-purple-950/30 rounded-2xl p-8 text-center shadow-lg border border-purple-100 dark:border-purple-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-3">
+            <div className="bg-gradient-to-br from-white to-purple-50/50 dark:from-slate-900 dark:to-purple-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-purple-100 dark:border-purple-900 hover:shadow-xl hover:-translate-y-1 transition-all">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
                 100%
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs sm:text-sm text-muted-foreground">
                 Digital Records
               </div>
             </div>
@@ -1354,12 +1452,12 @@ export function HealthcareLanding() {
       </section>
 
       {/* CTA Section */}
-      <section className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-16">
-        <div className="container mx-auto px-6 text-center">
-          <h2 className="text-4xl font-bold mb-4">
+      <section className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-12 sm:py-16">
+        <div className="container mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
             Ready to Transform Your Healthcare Practice?
           </h2>
-          <p className="text-xl mb-8 text-white/90 max-w-2xl mx-auto">
+          <p className="text-base sm:text-lg lg:text-xl mb-6 sm:mb-8 text-white/90 max-w-2xl mx-auto">
             Join thousands of healthcare providers using MediEase to deliver
             better patient care with AI-powered solutions
           </p>
@@ -1368,18 +1466,18 @@ export function HealthcareLanding() {
               size="lg"
               variant="secondary"
               onClick={() => setLeadModalOpen(true)}
-              className="bg-white text-teal-600 hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
+              className="bg-white text-teal-600 hover:bg-gray-100 px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg font-semibold w-full sm:w-auto"
             >
-              Book a Demo <ArrowRightIcon className="w-5 h-5 ml-2" />
+              Book a Demo <ArrowRightIcon className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
             </Button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-900 text-white py-12">
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
+      <footer className="bg-slate-900 text-white py-8 sm:py-12">
+        <div className="container mx-auto px-4 sm:px-6">
+          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center">
@@ -1437,6 +1535,21 @@ export function HealthcareLanding() {
                 <li>
                   <Link to="/contact" className="hover:text-teal-400">
                     Contact
+                  </Link>
+                </li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-bold mb-4">Legal</h4>
+              <ul className="space-y-2 text-sm text-slate-400">
+                <li>
+                  <Link to="/terms-of-service" className="hover:text-teal-400">
+                    Terms of Service
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/privacy-policy" className="hover:text-teal-400">
+                    Privacy Policy
                   </Link>
                 </li>
               </ul>
