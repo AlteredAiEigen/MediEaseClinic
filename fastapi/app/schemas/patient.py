@@ -45,6 +45,12 @@ class PatientCreateRequest(BaseModel):
     # Data storage consent - required for patient creation
     agreedToDataStorage: bool = Field(..., description="Patient consent for data storage (must be True)")
     
+    # Communication consent preferences - stored for compliance
+    consentWhatsApp: bool = Field(default=False, description="Patient consent for WhatsApp messages")
+    consentEmail: bool = Field(default=False, description="Patient consent for email communications")
+    consentSMS: bool = Field(default=False, description="Patient consent for SMS messages")
+    consentPhoneCall: bool = Field(default=False, description="Patient consent for phone calls")
+    
     @field_validator('agreedToDataStorage')
     @classmethod
     def validate_agreed_to_data_storage(cls, v):

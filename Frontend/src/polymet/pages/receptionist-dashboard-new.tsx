@@ -165,6 +165,12 @@ export function ReceptionistDashboardNew() {
   const [agreedToTermsReceptionist, setAgreedToTermsReceptionist] = useState(false);
   const [scheduleAppointmentDialog, setScheduleAppointmentDialog] = useState(false);
   const [selectedPatientForAppointment, setSelectedPatientForAppointment] = useState<string>("");
+  const [communicationConsentsReceptionist, setCommunicationConsentsReceptionist] = useState({
+    whatsapp: false,
+    email: false,
+    sms: false,
+    phoneCall: false,
+  });
   const [newPatient, setNewPatient] = useState({
     firstName: "",
     lastName: "",
@@ -361,6 +367,11 @@ export function ReceptionistDashboardNew() {
         address: newPatient.address || undefined,
         bloodGroup: newPatient.bloodGroup || undefined,
         agreedToDataStorage: true, // Patient has agreed via checkbox
+        // Communication consent preferences
+        consentWhatsApp: communicationConsentsReceptionist.whatsapp,
+        consentEmail: communicationConsentsReceptionist.email,
+        consentSMS: communicationConsentsReceptionist.sms,
+        consentPhoneCall: communicationConsentsReceptionist.phoneCall,
       };
 
       const response = await post<{ patient: any }>("/api/patients", payload);
@@ -379,6 +390,12 @@ export function ReceptionistDashboardNew() {
           bloodGroup: "",
         });
         setAgreedToTermsReceptionist(false);
+        setCommunicationConsentsReceptionist({
+          whatsapp: false,
+          email: false,
+          sms: false,
+          phoneCall: false,
+        });
         // Open schedule appointment dialog with the newly created patient pre-selected
         setSelectedPatientForAppointment(newPatientId);
         setScheduleAppointmentDialog(true);
@@ -2702,6 +2719,104 @@ const confirmCheckoutWithoutPrescription = () => {
               </Select>
             </div>
 
+            {/* Communication Consent */}
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <ShieldCheckIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-100 text-sm">
+                      Communication Preferences
+                    </h4>
+                    <p className="text-xs text-blue-800 dark:text-blue-200">
+                      Select how patient would like to receive communications:
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentWhatsAppReceptionist"
+                          checked={communicationConsentsReceptionist.whatsapp}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsentsReceptionist((prev) => ({
+                              ...prev,
+                              whatsapp: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentWhatsAppReceptionist"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          WhatsApp
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentEmailReceptionist"
+                          checked={communicationConsentsReceptionist.email}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsentsReceptionist((prev) => ({
+                              ...prev,
+                              email: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentEmailReceptionist"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          Email
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentSMSReceptionist"
+                          checked={communicationConsentsReceptionist.sms}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsentsReceptionist((prev) => ({
+                              ...prev,
+                              sms: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentSMSReceptionist"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          SMS
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentPhoneCallReceptionist"
+                          checked={communicationConsentsReceptionist.phoneCall}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsentsReceptionist((prev) => ({
+                              ...prev,
+                              phoneCall: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentPhoneCallReceptionist"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          Phone Call
+                        </label>
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                      Consents stored for compliance purposes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Data Security Confirmation */}
             <div className="space-y-4 pt-4 border-t border-border">
               <div className="bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4 space-y-3">
@@ -2754,6 +2869,12 @@ const confirmCheckoutWithoutPrescription = () => {
                   bloodGroup: "",
                 });
                 setAgreedToTermsReceptionist(false);
+                setCommunicationConsentsReceptionist({
+                  whatsapp: false,
+                  email: false,
+                  sms: false,
+                  phoneCall: false,
+                });
               }}
             >
               Cancel

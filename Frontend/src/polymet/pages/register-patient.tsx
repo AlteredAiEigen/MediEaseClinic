@@ -17,10 +17,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlusIcon, ArrowLeftIcon, SaveIcon, Loader2Icon, ShieldCheckIcon } from "lucide-react";
+import { UserPlusIcon, ArrowLeftIcon, SaveIcon, Loader2Icon, ShieldCheckIcon, CheckCircle2Icon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { post } from "@/lib/api-client";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function RegisterPatient() {
   const [formData, setFormData] = useState({
@@ -40,6 +47,14 @@ export function RegisterPatient() {
 
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [communicationConsents, setCommunicationConsents] = useState({
+    whatsapp: false,
+    email: false,
+    sms: false,
+    phoneCall: false,
+  });
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [registeredPatient, setRegisteredPatient] = useState<{ name: string; patientId?: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +94,11 @@ export function RegisterPatient() {
         emergencyContact: formData.emergencyContact,
         emergencyContactPhone: formData.emergencyPhone ? `+91 ${formData.emergencyPhone.replace(/\s/g, '')}`.trim() : "",
         agreedToDataStorage: true, // Patient has agreed via checkbox
+        // Communication consent preferences
+        consentWhatsApp: communicationConsents.whatsapp,
+        consentEmail: communicationConsents.email,
+        consentSMS: communicationConsents.sms,
+        consentPhoneCall: communicationConsents.phoneCall,
       };
 
       // Call the real backend API
@@ -87,6 +107,11 @@ export function RegisterPatient() {
       if (!response.success) {
         throw new Error(response.message || "Failed to register patient");
       }
+
+      // Store registered patient info for success dialog
+      const patientName = `${formData.firstName} ${formData.lastName}`;
+      const patientId = response.data?.patient?.patientId || response.data?.patient?.patient_id || response.data?.patientId;
+      setRegisteredPatient({ name: patientName, patientId });
 
       // Reset form on success
       setFormData({
@@ -104,9 +129,15 @@ export function RegisterPatient() {
         medicalHistory: "",
       });
       setAgreedToTerms(false);
+      setCommunicationConsents({
+        whatsapp: false,
+        email: false,
+        sms: false,
+        phoneCall: false,
+      });
 
-      // Show success message
-      alert("Patient registered successfully!");
+      // Show success dialog
+      setShowSuccessDialog(true);
     } catch (error) {
       console.error("Error registering patient:", error);
       alert("Failed to register patient. Please try again.");
@@ -375,6 +406,104 @@ export function RegisterPatient() {
               </div>
             </div>
 
+            {/* Communication Consent */}
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <ShieldCheckIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-100">
+                      Communication Preferences
+                    </h4>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Please select how you would like to receive healthcare communications:
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentWhatsApp"
+                          checked={communicationConsents.whatsapp}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              whatsapp: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentWhatsApp"
+                          className="text-sm font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          WhatsApp Messages
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentEmail"
+                          checked={communicationConsents.email}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              email: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentEmail"
+                          className="text-sm font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          Email Communications
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentSMS"
+                          checked={communicationConsents.sms}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              sms: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentSMS"
+                          className="text-sm font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          SMS Messages
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentPhoneCall"
+                          checked={communicationConsents.phoneCall}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              phoneCall: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentPhoneCall"
+                          className="text-sm font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          Phone Calls
+                        </label>
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                      You can update these preferences at any time. These consents are stored for compliance purposes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Data Security Confirmation */}
             <div className="space-y-4 pt-4 border-t border-border">
               <div className="bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-lg p-4 space-y-3">
@@ -434,6 +563,54 @@ export function RegisterPatient() {
           </CardContent>
         </Card>
       </form>
+
+      {/* Success Dialog */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex flex-col items-center text-center space-y-4 py-4">
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                <CheckCircle2Icon className="w-12 h-12 text-white" />
+              </div>
+              <DialogTitle className="text-2xl font-bold text-gray-900">
+                Patient Registered Successfully!
+              </DialogTitle>
+              <DialogDescription className="text-base">
+                <div className="space-y-2">
+                  <p className="font-semibold text-gray-700">
+                    {registeredPatient?.name}
+                  </p>
+                  {registeredPatient?.patientId && (
+                    <p className="text-sm text-gray-600">
+                      Patient ID: <span className="font-mono font-semibold text-teal-600">{registeredPatient.patientId}</span>
+                    </p>
+                  )}
+                  <p className="text-sm text-gray-500 mt-4">
+                    The patient has been successfully added to the system and can now be scheduled for appointments.
+                  </p>
+                </div>
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="flex gap-3 pt-4">
+            <Button
+              onClick={() => setShowSuccessDialog(false)}
+              className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
+            >
+              Continue
+            </Button>
+            <Link to="/receptionist-dashboard" className="flex-1">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowSuccessDialog(false)}
+              >
+                Go to Dashboard
+              </Button>
+            </Link>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

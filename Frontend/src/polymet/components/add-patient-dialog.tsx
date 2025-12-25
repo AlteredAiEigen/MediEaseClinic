@@ -50,6 +50,12 @@ export function AddPatientDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [communicationConsents, setCommunicationConsents] = useState({
+    whatsapp: false,
+    email: false,
+    sms: false,
+    phoneCall: false,
+  });
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -198,6 +204,11 @@ export function AddPatientDialog({
           ? `+91 ${formData.emergencyPhone.replace(/\s/g, '')}`.trim()
           : undefined,
         agreedToDataStorage: true, // Patient has agreed via checkbox
+        // Communication consent preferences
+        consentWhatsApp: communicationConsents.whatsapp,
+        consentEmail: communicationConsents.email,
+        consentSMS: communicationConsents.sms,
+        consentPhoneCall: communicationConsents.phoneCall,
       };
 
       // Call the backend API
@@ -225,6 +236,12 @@ export function AddPatientDialog({
         });
         setErrors({});
         setAgreedToTerms(false);
+        setCommunicationConsents({
+          whatsapp: false,
+          email: false,
+          sms: false,
+          phoneCall: false,
+        });
 
         // Close dialog
         onOpenChange(false);
@@ -539,6 +556,104 @@ export function AddPatientDialog({
                   }
                   rows={6}
                 />
+              </div>
+            </div>
+
+            {/* Communication Consent */}
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <ShieldCheckIcon className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-100 text-sm">
+                      Communication Preferences
+                    </h4>
+                    <p className="text-xs text-blue-800 dark:text-blue-200">
+                      Select how patient would like to receive communications:
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 mt-2">
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentWhatsAppDialog"
+                          checked={communicationConsents.whatsapp}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              whatsapp: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentWhatsAppDialog"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          WhatsApp Messages
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentEmailDialog"
+                          checked={communicationConsents.email}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              email: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentEmailDialog"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          Email Communications
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentSMSDialog"
+                          checked={communicationConsents.sms}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              sms: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentSMSDialog"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          SMS Messages
+                        </label>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="consentPhoneCallDialog"
+                          checked={communicationConsents.phoneCall}
+                          onCheckedChange={(checked) =>
+                            setCommunicationConsents((prev) => ({
+                              ...prev,
+                              phoneCall: checked === true,
+                            }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <label
+                          htmlFor="consentPhoneCallDialog"
+                          className="text-xs font-medium text-blue-900 dark:text-blue-100 cursor-pointer leading-tight"
+                        >
+                          Phone Calls
+                        </label>
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                      Consents stored for compliance purposes.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 

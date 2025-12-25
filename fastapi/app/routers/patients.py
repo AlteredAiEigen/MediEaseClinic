@@ -64,6 +64,15 @@ async def create_patient(
         patient_payload = patient_data.model_dump(exclude_none=True)
         if "agreedToDataStorage" in patient_payload:
             patient_payload["agreed_to_data_storage"] = patient_payload.pop("agreedToDataStorage")
+        # Convert communication consent fields from camelCase to snake_case
+        if "consentWhatsApp" in patient_payload:
+            patient_payload["consent_whatsapp"] = patient_payload.pop("consentWhatsApp")
+        if "consentEmail" in patient_payload:
+            patient_payload["consent_email"] = patient_payload.pop("consentEmail")
+        if "consentSMS" in patient_payload:
+            patient_payload["consent_sms"] = patient_payload.pop("consentSMS")
+        if "consentPhoneCall" in patient_payload:
+            patient_payload["consent_phone_call"] = patient_payload.pop("consentPhoneCall")
         
         patient_service = PatientService(db)
         logger.info("patient_payload for creating patient %s", patient_payload)

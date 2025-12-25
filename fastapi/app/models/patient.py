@@ -105,6 +105,12 @@ class PatientBase(BaseModel):
     
     # Data storage consent - required for patient creation
     agreed_to_data_storage: bool = Field(default=False, description="Patient consent for data storage")
+    
+    # Communication consent preferences - stored for compliance
+    consent_whatsapp: bool = Field(default=False, description="Patient consent for WhatsApp messages")
+    consent_email: bool = Field(default=False, description="Patient consent for email communications")
+    consent_sms: bool = Field(default=False, description="Patient consent for SMS messages")
+    consent_phone_call: bool = Field(default=False, description="Patient consent for phone calls")
 
 
 class PatientCreate(PatientBase):
@@ -159,6 +165,10 @@ class PatientResponse(BaseModel):
     followUpPlan: Optional[str] = None
     insights: Optional[PatientInsights] = None
     agreed_to_data_storage: bool
+    consent_whatsapp: bool = False
+    consent_email: bool = False
+    consent_sms: bool = False
+    consent_phone_call: bool = False
     createdAt: datetime
     updatedAt: datetime
     
@@ -282,6 +292,10 @@ async def patient_helper(patient: dict) -> dict:
         "medieaseClinicEmail": patient.get("medieaseClinicEmail"),
         "currentMedications": patient.get("currentMedications", []),
         "agreed_to_data_storage": patient.get("agreed_to_data_storage", False),
+        "consent_whatsapp": patient.get("consent_whatsapp", False),
+        "consent_email": patient.get("consent_email", False),
+        "consent_sms": patient.get("consent_sms", False),
+        "consent_phone_call": patient.get("consent_phone_call", False),
         "createdAt": patient.get("createdAt"),
         "updatedAt": patient.get("updatedAt"),
     }
