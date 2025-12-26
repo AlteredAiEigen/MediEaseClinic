@@ -4,14 +4,15 @@ Scheduled reminders for appointments (WhatsApp + email).
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.services.email_service import EmailService
-from app.services.whatsapp_service import WhatsAppService
+from app.config import settings
+from app.services.whatsapp_template_service import WhatsAppTemplateService
 
 logger = logging.getLogger(__name__)
 
@@ -19,303 +20,30 @@ logger = logging.getLogger(__name__)
 class AppointmentNotificationService:
     """Business logic for appointment reminder notifications."""
 
-    PRE_VISIT_REMINDER_HOURS = 1
-    LAB_RESULT_REMINDER_DAYS = 3
+    APPOINTMENT_REMINDER_LOOKAHEAD_HOURS = settings.whatsapp_appointment_reminder_lookahead_hours
+    LAB_RESULT_HOURS_AFTER_COMPLETION = settings.whatsapp_lab_result_hours_after_completion
+    FOLLOWUP_DAYS_BEFORE = settings.whatsapp_followup_days_before
+    REMINDER_DISPATCH_HOUR = settings.whatsapp_reminder_dispatch_hour
 
     def __init__(self, db: AsyncIOMotorDatabase):
         self.db = db
         self.appointments = db.appointments
         self.patients = db.patients
         self.users = db.users
-        self.whatsapp_service = WhatsAppService()
-        self.email_service = EmailService()
+        self.providers = db.healthcare_providers
+        self.whatsapp_template_service = WhatsAppTemplateService(db)
 
-    async def process_pre_appointment_reminders(self) -> None:
-        """Send WhatsApp reminders 12 hours before the appointment."""
-        if not self.whatsapp_service.is_configured():
-            logger.warning("WhatsApp service not configured. Skipping reminders. Check Twilio credentials in .env file.")
-            return
 
-        # Use local time for comparison since appointments are likely stored in local time
-        # This ensures the time delta calculation is correct
-        now = datetime.now()
-        horizon = now + timedelta(hours=self.PRE_VISIT_REMINDER_HOURS + 2)
-        
-        logger.info("Current local time: %s", now.strftime("%Y-%m-%d %H:%M:%S"))
-
-        query: Dict[str, Any] = {
-            "status": {"$in": ["scheduled"]},
-            "preVisitReminderSentAt": {"$exists": False},
-            "preVisitReminderError": {"$exists": False},  # Exclude appointments with phone number errors
-            "date": {"$gte": now.strftime("%Y-%m-%d"), "$lte": horizon.strftime("%Y-%m-%d")},
-        }
-        logger.info(
-            "Scanning for pre-visit reminders: status=scheduled, date between %s and %s, no preVisitReminderSentAt, no preVisitReminderError.",
-            now.strftime("%Y-%m-%d"),
-            horizon.strftime("%Y-%m-%d"),
-        )
-        cursor = self.appointments.find(query).limit(250)
-        appointments = await cursor.to_list(length=250)
-        logger.info(
-            "Pre-visit reminder scan found %s pending appointments (window=%sh).",
-            len(appointments),
-            self.PRE_VISIT_REMINDER_HOURS,
-        )
-        
-        # Log all appointment IDs found for debugging
-        if appointments:
-            apt_ids = [apt.get("appointmentId", "UNKNOWN") for apt in appointments]
-            logger.info("Appointments found in query: %s", ", ".join(apt_ids))
-
-        for appointment in appointments:
-            apt_id = appointment.get("appointmentId", "UNKNOWN")
-            appointment_dt = self._parse_datetime(appointment.get("date"), appointment.get("time"))
-            if not appointment_dt:
-                logger.warning(
-                    "Appointment %s skipped: failed to parse datetime (date=%s, time=%s).",
-                    apt_id,
-                    appointment.get("date"),
-                    appointment.get("time"),
-                )
-                continue
-
-            delta = appointment_dt - now
-            minutes_until = delta.total_seconds() / 60
-            
-            # Log detailed time comparison for debugging
-            logger.info(
-                "Appointment %s time check: appointment_dt=%s (parsed from date=%s, time=%s), now(local)=%s, delta=%.1f minutes",
-                apt_id,
-                appointment_dt,
-                appointment.get("date"),
-                appointment.get("time"),
-                now,
-                minutes_until,
-            )
-            
-            if timedelta(seconds=0) <= delta <= timedelta(hours=self.PRE_VISIT_REMINDER_HOURS, minutes=15):
-                logger.info(
-                    "Appointment %s eligible for reminder (starts in %.1f minutes).",
-                    apt_id,
-                    minutes_until,
-                )
-                await self._send_whatsapp_reminder(appointment, appointment_dt)
-            else:
-                logger.info(
-                    "Appointment %s not in reminder window: %.1f minutes until appointment (window: 0 to %.1f minutes).",
-                    apt_id,
-                    minutes_until,
-                    (self.PRE_VISIT_REMINDER_HOURS * 60) + 15,
-                )
-
-    async def process_post_appointment_lab_emails(self) -> None:
-        """Email doctors 3 days after appointment completion."""
-        if not self.email_service.is_configured():
-            logger.debug("Email service not configured. Skipping lab reminders.")
-            return
-
-        threshold = datetime.utcnow() - timedelta(days=self.LAB_RESULT_REMINDER_DAYS)
-        query: Dict[str, Any] = {
-            "status": "completed",
-            "completedAt": {"$lte": threshold},
-            "labResultReminderSentAt": {"$exists": False},
-        }
-
-        cursor = self.appointments.find(query).limit(250)
-        appointments = await cursor.to_list(length=250)
-        logger.debug(
-            "Lab reminder scan found %s completed appointments awaiting notification.",
-            len(appointments),
-        )
-
-        for appointment in appointments:
-            await self._send_lab_email(appointment)
-
-    async def _send_whatsapp_reminder(self, appointment: dict, appointment_dt: datetime) -> None:
-        apt_id = appointment.get("appointmentId", "UNKNOWN")
-        patient_id = appointment.get("patientId")
-        
-        logger.info("Processing reminder for appointment %s (patientId=%s)", apt_id, patient_id)
-        
-        patient = await self._get_patient(patient_id)
-        if not patient:
-            logger.warning(
-                "Appointment %s skipped: patient %s not found in database.",
-                apt_id,
-                patient_id,
-            )
-            return
-
-        phone = self._get_patient_whatsapp_number(patient)
-        recipient = self._format_whatsapp_number(phone)
-        if not recipient:
-            error_message = f"Invalid or missing WhatsApp phone number for patient {patient_id}. Raw phone: {phone or 'None'}"
-            logger.error(
-                "Appointment %s REMINDER FAILED: %s. Marking appointment with error to prevent repeated attempts.",
-                apt_id,
-                error_message,
-            )
-            # Mark appointment with error to prevent repeated attempts
-            await self.appointments.update_one(
-                {"_id": appointment["_id"]},
-                {
-                    "$set": {
-                        "preVisitReminderError": {
-                            "error": "INVALID_PHONE_NUMBER",
-                            "message": error_message,
-                            "patientId": patient_id,
-                            "rawPhone": phone,
-                            "occurredAt": datetime.utcnow(),
-                        },
-                        "updatedAt": datetime.utcnow(),
-                    }
-                },
-            )
-            return
-
-        doctor_name = appointment.get("doctorName") or await self._get_doctor_name(appointment.get("doctorId"))
-        message = (
-            f"Hi {patient.get('firstName', 'there')}, this is MediEase Clinic.\n"
-            f"Reminder: Your appointment with {doctor_name or 'your doctor'} is scheduled "
-            f"for {appointment.get('date')} at {appointment.get('time')}."
-            "\nPlease call us if you need to reschedule or cancel your appointment."
-        )
-
-        logger.info(
-            "Triggering WhatsApp reminder for appointment %s (patient=%s).",
-            appointment.get("appointmentId"),
-            patient.get("_id"),
-        )
-        result = await self.whatsapp_service.send_message(
-            to=recipient,
-            message=message,
-            patient_id=str(patient.get("_id")),
-            appointment_id=appointment.get("appointmentId"),
-        )
-
-        if result.get("success"):
-            await self.appointments.update_one(
-                {"_id": appointment["_id"]},
-                {"$set": {"preVisitReminderSentAt": datetime.utcnow()}},
-            )
-            logger.info("WhatsApp reminder sent successfully for appointment %s", appointment.get("appointmentId"))
-        else:
-            error_code = result.get("error_code", "UNKNOWN_ERROR")
-            error_msg = result.get("error_message", str(result))
-            
-            # Check if it's a phone number related error
-            is_phone_error = (
-                "phone" in error_msg.lower() 
-                or "invalid" in error_msg.lower() 
-                or error_code in ["INVALID_TO_NUMBER", "TWILIO_ERROR"]
-            )
-            
-            if is_phone_error:
-                # Mark with error to prevent repeated attempts
-                logger.error(
-                    "Appointment %s REMINDER FAILED (phone error): %s. Marking appointment with error.",
-                    apt_id,
-                    error_msg,
-                )
-                await self.appointments.update_one(
-                    {"_id": appointment["_id"]},
-                    {
-                        "$set": {
-                            "preVisitReminderError": {
-                                "error": error_code,
-                                "message": error_msg,
-                                "patientId": patient_id,
-                                "phoneNumber": recipient,
-                                "occurredAt": datetime.utcnow(),
-                            },
-                            "updatedAt": datetime.utcnow(),
-                        }
-                    },
-                )
-            else:
-                # Other errors (Twilio config, network, etc.) - log but don't mark as permanent error
-                logger.warning(
-                    "WhatsApp reminder failed for appointment %s (non-phone error): %s. Will retry on next scheduler run.",
-                    apt_id,
-                    error_msg,
-                )
-
-    async def _send_lab_email(self, appointment: dict) -> None:
-        doctor = await self._get_doctor(appointment.get("doctorId"))
-        if not doctor:
-            logger.warning("Doctor %s not found for appointment %s", appointment.get("doctorId"), appointment.get("appointmentId"))
-            return
-
-        patient = await self._get_patient(appointment.get("patientId"))
-        patient_name = (
-            appointment.get("patientName")
-            or (f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip() if patient else "patient")
-        )
-
-        subject = f"Lab results reminder for {patient_name}"
-        body = (
-            "Hello from MediEase! Please remember to send your lab results to "
-            "alteredai@alertedai.care for quick review. Your prompt response helps us support your health better. Thank you!"
-        )
-
-        logger.info(
-            "Triggering lab reminder email for appointment %s (doctor=%s).",
-            appointment.get("appointmentId"),
-            doctor.get("_id"),
-        )
-        result = await self.email_service.send_email(
-            to=doctor.get("email"),
-            subject=subject,
-            body=body,
-        )
-
-        if result.get("success"):
-            await self.appointments.update_one(
-                {"_id": appointment["_id"]},
-                {"$set": {"labResultReminderSentAt": datetime.utcnow()}},
-            )
-            logger.info("Lab reminder email sent for appointment %s", appointment.get("appointmentId"))
-        else:
-            logger.warning(
-                "Lab reminder email failed for appointment %s: %s",
-                appointment.get("appointmentId"),
-                result.get("error"),
-            )
-
-    async def _get_patient(self, patient_id: Optional[str]) -> Optional[dict]:
+    async def _get_patient_phone(self, patient_id: Optional[str]) -> Optional[str]:
+        """Get patient phone number from patient table (only field not in appointment)."""
         if not patient_id or not ObjectId.is_valid(patient_id):
             return None
-        return await self.patients.find_one({"_id": ObjectId(patient_id)})
-
-    async def _get_doctor(self, doctor_id: Optional[str]) -> Optional[dict]:
-        if not doctor_id or not ObjectId.is_valid(doctor_id):
-            return None
-        return await self.users.find_one({"_id": ObjectId(doctor_id)})
-
-    async def _get_doctor_name(self, doctor_id: Optional[str]) -> Optional[str]:
-        doctor = await self._get_doctor(doctor_id)
-        if not doctor:
-            return None
-        return f"Dr. {doctor.get('firstName', '')} {doctor.get('lastName', '')}".strip()
-
-    @staticmethod
-    def _get_patient_whatsapp_number(patient: Optional[dict]) -> Optional[str]:
-        """Pick WhatsApp-friendly number from patient record."""
+        patient = await self.patients.find_one({"_id": ObjectId(patient_id)})
         if not patient:
             return None
+        phone = patient.get("phone")
+        return phone.strip() if isinstance(phone, str) and phone.strip() else None
 
-        candidates = [
-            patient.get("whatsappNumber"),
-            patient.get("phone"),
-            patient.get("contactPhone"),
-            patient.get("emergencyContactPhone"),
-        ]
-
-        for number in candidates:
-            if isinstance(number, str) and number.strip():
-                return number.strip()
-
-        return None
 
     @staticmethod
     def _parse_datetime(date_str: Optional[str], time_str: Optional[str]) -> Optional[datetime]:
@@ -343,12 +71,395 @@ class AppointmentNotificationService:
         if not phone:
             return None
         if phone.startswith("whatsapp:"):
+            # Remove spaces from existing whatsapp: prefix
+            phone = phone.replace(" ", "")
             return phone
         if not phone.startswith("+"):
             # Assume local number; cannot send via WhatsApp without country code.
             logger.warning("Phone %s missing country code; skipping WhatsApp message.", phone)
             return None
+        # Remove all spaces, dashes, and parentheses from phone number
+        phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         return f"whatsapp:{phone}"
+        
+
+    async def _get_provider(self, clinic_id: Optional[str]) -> Optional[dict]:
+        if not clinic_id:
+            return None
+        return await self.providers.find_one({"clinicId": clinic_id})
+
+    async def _log_whatsapp_attempt(
+        self,
+        appointment: dict,
+        scenario: str,
+        success: bool,
+        details: Dict[str, Any],
+        set_flag: Optional[str] = None,
+        extra_set: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        update: Dict[str, Any] = {
+            "updatedAt": datetime.utcnow(),
+            f"whatsappLogs.{scenario}": {
+                "status": "sent" if success else "failed",
+                "attemptedAt": datetime.utcnow(),
+                "details": details,
+            },
+        }
+        if success and set_flag:
+            update[set_flag] = True
+        if extra_set:
+            update.update(extra_set)
+        await self.appointments.update_one({"_id": appointment["_id"]}, {"$set": update})
+
+    async def _send_template(
+        self,
+        *,
+        appointment: dict,
+        scenario: str,
+        to: str,
+        content_values: Dict[str, Any],
+        flag_field: str,
+    ) -> None:
+        if appointment.get(flag_field):
+            logger.info("Skipping %s for appointment %s (already sent).", scenario, appointment.get("appointmentId"))
+            return
+        if not self.whatsapp_template_service.is_configured():
+            logger.warning("Twilio Content API not configured; skipping scenario %s", scenario)
+            return
+
+        result = await self.whatsapp_template_service.send(
+            to=to,
+            scenario=scenario,
+            values=content_values,
+            patient_id=str(appointment.get("patientId")),
+            appointment_id=appointment.get("appointmentId"),
+        )
+        await self._log_whatsapp_attempt(
+            appointment=appointment,
+            scenario=scenario,
+            success=result.get("success", False),
+            details=result,
+            set_flag=flag_field if result.get("success") else None,
+        )
+
+
+    async def process_appointment_reminders_24h(self) -> None:
+        """
+        Send appointment reminders 24 hours before appointment time.
+        Finds all scheduled appointments where appointment_date + time is approximately 24 hours from now.
+        Runs hourly to catch all appointments that need reminders.
+        """
+        if not self.whatsapp_template_service.is_configured():
+            logger.warning("WhatsApp template service not configured; skipping 24h reminders.")
+            return
+
+        now = datetime.utcnow()
+        # Calculate target window: appointments that are 24 hours away (within ±1 hour window for hourly cron)
+        target_time = now + timedelta(hours=self.APPOINTMENT_REMINDER_LOOKAHEAD_HOURS)
+        window_start = target_time - timedelta(hours=1)  # Widen to 1 hour before
+        window_end = target_time + timedelta(hours=1)    # Widen to 1 hour after
+        
+        logger.info(f"Current time: {now}")
+        logger.info(f"Looking for appointments between {window_start} and {window_end}")
+        logger.info(f"Target: {target_time} (24 hours from now)")
+        
+        # Query for scheduled appointments that haven't had reminders sent
+        # We'll filter by date range first, then check exact time
+        query = {
+            "status": {"$in": ["scheduled"]},
+            "appointmentReminderSent": {"$ne": True},
+            "date": {"$gte": window_start.strftime("%Y-%m-%d"), "$lte": window_end.strftime("%Y-%m-%d")},
+        }
+        
+        logger.info(f"Query: {query}")
+        cursor = self.appointments.find(query)
+        appointments = await cursor.to_list(length=None)  # Get all matching appointments
+
+        logger.info("Found %d scheduled appointments to check for 24h reminders", len(appointments))
+        
+        sent_count = 0
+        skipped_count = 0
+
+        for appointment in appointments:
+            appointment_id = appointment.get("appointmentId")
+            patient_name = appointment.get("patientName", "Unknown")
+            appointment_date = appointment.get("date")
+            appointment_time = appointment.get("time")
+            
+            logger.info(f"Checking appointment {appointment_id} for {patient_name} on {appointment_date} at {appointment_time}")
+            
+            appointment_dt = self._parse_datetime(appointment_date, appointment_time)
+            if not appointment_dt:
+                logger.warning(f"  ✗ Could not parse datetime for {appointment_id}")
+                continue
+            
+            # Check if appointment is within the 24-hour window
+            delta = appointment_dt - now
+            hours_until = delta.total_seconds() / 3600
+            
+            logger.info(f"  Appointment datetime: {appointment_dt}")
+            logger.info(f"  Hours until appointment: {hours_until:.2f}")
+            logger.info(f"  Target window: {self.APPOINTMENT_REMINDER_LOOKAHEAD_HOURS - 1} to {self.APPOINTMENT_REMINDER_LOOKAHEAD_HOURS + 1} hours")
+            
+            # Send reminder if appointment is between 23 and 25 hours away (wider window)
+            min_hours = self.APPOINTMENT_REMINDER_LOOKAHEAD_HOURS - 1
+            max_hours = self.APPOINTMENT_REMINDER_LOOKAHEAD_HOURS + 1
+            
+            if hours_until < min_hours or hours_until > max_hours:
+                logger.info(f"  ⚠ Skipping {appointment_id} - {hours_until:.2f} hours away (outside {min_hours}-{max_hours} hour window)")
+                skipped_count += 1
+                continue
+
+            logger.info(f"  ✓ Appointment {appointment_id} is within window, sending reminder...")
+
+            patient_phone = await self._get_patient_phone(appointment.get("patientId"))
+            provider = await self._get_provider(appointment.get("clinicId"))
+            recipient = self._format_whatsapp_number(patient_phone)
+            if not recipient:
+                logger.warning(f"  ✗ No valid phone number for {appointment_id}")
+                await self._log_whatsapp_attempt(
+                    appointment,
+                    "copy_appointment_reminder",
+                    False,
+                    {"error_message": "missing or invalid patient WhatsApp number"},
+                )
+                continue
+
+            variables = {
+                "patient_name": appointment.get("patientName", ""),
+                "clinic_name": provider.get("name") if provider else "MediEase Clinic",
+                "doctor_name": appointment.get("doctorName", ""),
+                "appointment_datetime": f"{appointment.get('date')} {appointment.get('time')}",
+                "header_clinic_name": provider.get("name") if provider else "MediEase Clinic",  # Position 5 - Header
+            }
+            await self._send_template(
+                appointment=appointment,
+                scenario="copy_appointment_reminder",
+                to=recipient,
+                content_values=variables,
+                flag_field="appointmentReminderSent",
+            )
+            sent_count += 1
+            logger.info(
+                "  ✓ Sent 24h appointment reminder for appointment %s (patient: %s, date: %s %s)",
+                appointment_id,
+                patient_name,
+                appointment_date,
+                appointment_time
+            )
+        
+        logger.info(
+            "Appointment reminder processing complete: %d sent, %d skipped (outside time window)",
+            sent_count,
+            skipped_count
+        )
+
+    @staticmethod
+    def _should_run_at_hour(target_hour: int) -> bool:
+        """Check if current hour matches target hour."""
+        now = datetime.utcnow()
+        return now.hour == target_hour
+
+    async def process_lab_result_reminders(self) -> None:
+        """
+        Send post-visit lab result WhatsApp reminders 24 hours after appointment completion.
+        Finds all completed appointments with prescribedTest that were completed exactly 24 hours ago.
+        Runs only at configured dispatch hour (default 10 AM) to send all eligible reminders at once.
+        """
+        if not self.whatsapp_template_service.is_configured():
+            logger.warning("WhatsApp template service not configured; skipping lab result reminders.")
+            return
+        if not self._should_run_at_hour(self.REMINDER_DISPATCH_HOUR):
+            return
+
+        now = datetime.utcnow()
+        # Find appointments completed exactly 24 hours ago (within ±1 hour window for daily dispatch)
+        target_completion_time = now - timedelta(hours=self.LAB_RESULT_HOURS_AFTER_COMPLETION)
+        window_start = target_completion_time - timedelta(hours=1)
+        window_end = target_completion_time + timedelta(hours=1)
+        
+        query = {
+            "status": "completed",
+            "labResultReminderSent": {"$ne": True},
+            "completedAt": {
+                "$gte": window_start,
+                "$lte": window_end
+            },
+            "prescribedTest": {"$exists": True, "$ne": None, "$ne": ""},
+        }
+        cursor = self.appointments.find(query)
+        appointments = await cursor.to_list(length=None)  # Get all matching appointments
+        
+        logger.info("Found %d completed appointments with lab tests eligible for reminder", len(appointments))
+        
+        sent_count = 0
+        failed_count = 0
+
+        for appointment in appointments:
+            patient_phone = await self._get_patient_phone(appointment.get("patientId"))
+            provider = await self._get_provider(appointment.get("clinicId"))
+            recipient = self._format_whatsapp_number(patient_phone)
+            if not recipient:
+                failed_count += 1
+                await self._log_whatsapp_attempt(
+                    appointment,
+                    "copy_post_visit_lab_request",
+                    False,
+                    {"error_message": "missing or invalid patient WhatsApp number"},
+                )
+                continue
+
+            # Get clinic email from patient table (not in appointment)
+            patient_id = appointment.get("patientId")
+            clinic_email = ""
+            if patient_id and ObjectId.is_valid(patient_id):
+                patient = await self.patients.find_one({"_id": ObjectId(patient_id)})
+                if patient:
+                    clinic_email = patient.get("medieaseClinicEmail", "")
+
+            variables = {
+                "patient_name": appointment.get("patientName", ""),
+                "clinic_email": clinic_email,
+                "clinic_name": provider.get("name") if provider else "",
+            }
+            await self._send_template(
+                appointment=appointment,
+                scenario="copy_post_visit_lab_request",
+                to=recipient,
+                content_values=variables,
+                flag_field="labResultReminderSent",
+            )
+            sent_count += 1
+            logger.info(
+                "Sent lab result reminder for appointment %s (patient: %s, completed: %s)",
+                appointment.get("appointmentId"),
+                appointment.get("patientName"),
+                appointment.get("completedAt")
+            )
+        
+        logger.info(
+            "Lab result reminder processing complete: %d sent, %d failed (missing phone/invalid)",
+            sent_count,
+            failed_count
+        )
+
+    async def process_followup_reminders(self) -> None:
+        """
+        Send follow-up WhatsApp reminders based on followup_days.
+        Finds all past appointments where followUpRequired=True and reminder date has passed.
+        Calculates: reminder_date = (completedAt + followup_days) - FOLLOWUP_DAYS_BEFORE
+        Runs only at configured dispatch hour (default 10 AM) to send all eligible reminders at once.
+        """
+        if not self.whatsapp_template_service.is_configured():
+            logger.warning("WhatsApp template service not configured; skipping follow-up reminders.")
+            return
+        if not self._should_run_at_hour(self.REMINDER_DISPATCH_HOUR):
+            return
+
+        now = datetime.utcnow()
+        # Find all appointments that need follow-up reminders
+        query = {
+            "followUpRequired": True,
+            "followupWhatsappSent": {"$ne": True},
+            "status": {"$in": ["completed", "checkout", "checkout-pending"]},
+            "completedAt": {"$exists": True, "$ne": None},
+        }
+        cursor = self.appointments.find(query)
+        appointments = await cursor.to_list(length=None)  # Get all matching appointments
+        
+        logger.info("Found %d appointments with followUpRequired=True to check for reminders", len(appointments))
+        
+        sent_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        for appointment in appointments:
+            completed_at = appointment.get("completedAt")
+            if not completed_at:
+                continue
+            
+            # Get followup_days from appointment or parse from followUpInstructions
+            followup_days = appointment.get("followup_days")
+            if not followup_days:
+                # Try to parse from followUpInstructions if available
+                followup_instructions = appointment.get("followUpInstructions", "")
+                if followup_instructions:
+                    match = re.search(r'(\d+)\s*days?', followup_instructions, re.IGNORECASE)
+                    if match:
+                        followup_days = int(match.group(1))
+            
+            if not followup_days or followup_days <= 0:
+                continue
+            
+            # Calculate follow-up date: completedAt + followup_days
+            if isinstance(completed_at, str):
+                try:
+                    # Handle ISO format strings
+                    if 'T' in completed_at:
+                        completed_at = datetime.fromisoformat(completed_at.replace('Z', '+00:00'))
+                    else:
+                        # Fallback for other formats
+                        completed_at = datetime.strptime(completed_at, "%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    logger.warning(f"Could not parse completedAt for appointment {appointment.get('appointmentId')}: {e}")
+                    continue
+            elif not isinstance(completed_at, datetime):
+                continue
+            
+            # Calculate: reminder should be sent X days before the follow-up date
+            # Follow-up date = completedAt + followup_days
+            # Reminder date = follow-up date - FOLLOWUP_DAYS_BEFORE
+            followup_date = completed_at + timedelta(days=followup_days)
+            reminder_date = followup_date - timedelta(days=self.FOLLOWUP_DAYS_BEFORE)
+            
+            # Only send if current time is past the reminder date (reminder is due)
+            # Since this runs at 10 AM daily, send if reminder_date is today or in the past
+            if now < reminder_date:
+                skipped_count += 1
+                continue
+
+            patient_phone = await self._get_patient_phone(appointment.get("patientId"))
+            provider = await self._get_provider(appointment.get("clinicId"))
+            recipient = self._format_whatsapp_number(patient_phone)
+            if not recipient:
+                failed_count += 1
+                await self._log_whatsapp_attempt(
+                    appointment,
+                    "copy_followup_appointment_reminder",
+                    False,
+                    {"error_message": "missing or invalid patient WhatsApp number"},
+                )
+                continue
+
+            variables = {
+                "patient_name": appointment.get("patientName", ""),
+                "clinic_name": provider.get("name") if provider else "",
+                "doctor_name": appointment.get("doctorName", ""),
+                "visit_date": appointment.get("date", ""),
+                "visit_time": appointment.get("time", ""),
+                "clinic_phone": provider.get("phone") if provider else "",
+            }
+            await self._send_template(
+                appointment=appointment,
+                scenario="copy_followup_appointment_reminder",
+                to=recipient,
+                content_values=variables,
+                flag_field="followupWhatsappSent",
+            )
+            sent_count += 1
+            logger.info(
+                "Sent follow-up reminder for appointment %s (patient: %s, follow-up in %d days)",
+                appointment.get("appointmentId"),
+                appointment.get("patientName"),
+                followup_days
+            )
+        
+        logger.info(
+            "Follow-up reminder processing complete: %d sent, %d skipped (reminder not due), %d failed (missing phone/invalid)",
+            sent_count,
+            skipped_count,
+            failed_count
+        )
 
 
 class AppointmentNotificationScheduler:
@@ -382,8 +493,9 @@ class AppointmentNotificationScheduler:
             iteration += 1
             logger.info("Notification scheduler iteration #%s starting...", iteration)
             try:
-                await self.service.process_pre_appointment_reminders()
-                await self.service.process_post_appointment_lab_emails()
+                await self.service.process_appointment_reminders_24h()
+                await self.service.process_lab_result_reminders()
+                await self.service.process_followup_reminders()
                 logger.info("Notification scheduler iteration #%s completed.", iteration)
             except Exception as exc:
                 logger.error("Notification scheduler iteration #%s failed: %s", iteration, exc, exc_info=True)

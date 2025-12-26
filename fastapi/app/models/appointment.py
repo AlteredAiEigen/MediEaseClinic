@@ -60,6 +60,11 @@ class AppointmentBase(BaseModel):
     followUpInstructions: Optional[str] = None
     detailedNotes: Optional[str] = None
     aiRecommendations: Optional[str] = None
+    # WhatsApp reminders / logs
+    appointmentReminderSent: bool = False
+    labResultReminderSent: bool = False
+    followupWhatsappSent: bool = False
+    whatsappLogs: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AppointmentCreate(AppointmentBase):
@@ -128,6 +133,10 @@ class AppointmentResponse(BaseModel):
     type: Optional[str] = None
     appointmentType: Optional[str] = None
     bookingKind: Optional[str] = None
+    appointmentReminderSent: bool = False
+    labResultReminderSent: bool = False
+    followupWhatsappSent: bool = False
+    whatsappLogs: Dict[str, Any] = Field(default_factory=dict)
     prescriptionFileUrl: Optional[str] = None
     prescriptionFileKey: Optional[str] = None
     prescriptionFileName: Optional[str] = None
@@ -178,6 +187,11 @@ class AppointmentUpdate(BaseModel):
     followUpInstructions: Optional[str] = None
     detailedNotes: Optional[str] = None
     aiRecommendations: Optional[str] = None
+    # WhatsApp reminder flags/logs (optional updates)
+    appointmentReminderSent: Optional[bool] = None
+    labResultReminderSent: Optional[bool] = None
+    followupWhatsappSent: Optional[bool] = None
+    whatsappLogs: Optional[Dict[str, Any]] = None
 
 
 async def appointment_helper(appointment: dict) -> dict:
@@ -222,6 +236,10 @@ async def appointment_helper(appointment: dict) -> dict:
         "consultationSummary": appointment.get("consultationSummary"),
         "preVisitReminderSentAt": appointment.get("preVisitReminderSentAt"),
         "labResultReminderSentAt": appointment.get("labResultReminderSentAt"),
+        "appointmentReminderSent": appointment.get("appointmentReminderSent", False),
+        "labResultReminderSent": appointment.get("labResultReminderSent", False),
+        "followupWhatsappSent": appointment.get("followupWhatsappSent", False),
+        "whatsappLogs": appointment.get("whatsappLogs", {}),
         "prescriptionFileUrl": appointment.get("prescriptionFileUrl"),
         "prescriptionFileKey": appointment.get("prescriptionFileKey"),
         "prescriptionFileName": appointment.get("prescriptionFileName"),

@@ -22,11 +22,11 @@ class WhatsAppService:
         if not settings.twilio_account_sid or not settings.twilio_auth_token:
             logger.warning("Twilio credentials not configured. WhatsApp messaging will not be available.")
             self.client = None
-            self.from_number = settings.twilio_whatsapp_number or ""
+            self.from_number = settings.twilio_whatsapp_number
         else:
             try:
                 self.client = Client(settings.twilio_account_sid, settings.twilio_auth_token)
-                self.from_number = settings.twilio_whatsapp_number or "whatsapp:+14155238886"  # Default Twilio sandbox
+                self.from_number = settings.twilio_whatsapp_number # Default Twilio sandbox
                 logger.info("Twilio WhatsApp service initialized successfully")
             except Exception as e:
                 logger.error(f"Failed to initialize Twilio client: {e}")
