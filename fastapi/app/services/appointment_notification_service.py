@@ -277,6 +277,9 @@ class AppointmentNotificationService:
         target_completion_time = now - timedelta(hours=self.LAB_RESULT_HOURS_AFTER_COMPLETION)
         window_start = target_completion_time - timedelta(hours=1)
         window_end = target_completion_time + timedelta(hours=1)
+
+        logger.info(f"Looking for appointments between {window_start} and {window_end}")
+        logger.info(f"Target: {target_completion_time} (24 hours after completion)")
         
         query = {
             "status": "completed",

@@ -53,10 +53,10 @@ class Settings(BaseSettings):
     
     # WhatsApp schedule configuration (override via env)
     whatsapp_appointment_reminder_lookahead_hours: int = 24  # Hours before appointment to send reminder
-    whatsapp_lab_result_hours_after_completion: int = 24  # Hours after appointment completion to send lab result reminder
+    whatsapp_lab_result_hours_after_completion: int = 13  # Hours after appointment completion to send lab result reminder
     whatsapp_followup_days_before: int = 3  # Days before follow-up date to send reminder
-    whatsapp_reminder_dispatch_hour: int = 10  # Hour of day (0-23) to send lab result and follow-up reminders (10 AM)
-    whatsapp_scheduler_interval_seconds: int = 3600  # How often to check for reminders (default: 1 hour = 3600 seconds)
+    whatsapp_reminder_dispatch_hour: int = 8  # Hour of day (0-23) to send lab result and follow-up reminders (10 AM)
+    whatsapp_scheduler_interval_seconds: int = 3600  # How often to check for reminders (default: 5 hour = 3600 seconds)
     
     @property
     def effective_transcribe_region(self) -> str:
