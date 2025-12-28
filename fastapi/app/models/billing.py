@@ -52,6 +52,7 @@ class BillingItemBase(BaseModel):
     price: float = Field(..., ge=0, description="Price in clinic currency.")
     currency: str = Field("INR", min_length=1, max_length=10)
     isActive: bool = Field(True, description="Whether this item is active.")
+    clinicId: str = Field(..., description="Clinic ID that owns this billing item.")
 
 
 class BillingItemCreate(BillingItemBase):
@@ -69,6 +70,7 @@ class BillingItemUpdate(BaseModel):
     price: Optional[float] = Field(None, ge=0)
     currency: Optional[str] = Field(None, min_length=1, max_length=10)
     isActive: Optional[bool] = None
+    # Note: clinicId should not be updated after creation
 
 
 class BillingItemInDB(BillingItemBase):
@@ -108,6 +110,7 @@ async def billing_item_helper(item: dict) -> dict:
         "price": float(item.get("price", 0)),
         "currency": item.get("currency", "INR"),
         "isActive": item.get("isActive", True),
+        "clinicId": item.get("clinicId"),
         "createdAt": item.get("createdAt"),
         "updatedAt": item.get("updatedAt"),
     }

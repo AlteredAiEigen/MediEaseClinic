@@ -45,7 +45,7 @@ const defaultFormState: Omit<BillingItem, "_id"> = {
   category: "appointmentType",
   key: "",
   label: "",
-  price: 0,
+  price: 0, // Will be converted from string input
   currency: "INR",
   isActive: true,
 };
@@ -57,8 +57,9 @@ export function AdminBilling() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<BillingItem | null>(null);
   const [formState, setFormState] = useState(defaultFormState);
-const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
+  const [priceInput, setPriceInput] = useState<string>(""); // Store price as string for input
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
 
   const loadItems = async () => {
     try {
@@ -86,6 +87,7 @@ const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
   const openCreateDialog = () => {
     setEditingItem(null);
     setFormState(defaultFormState);
+    setPriceInput(""); // Clear price input
     setDialogOpen(true);
   };
 
@@ -99,6 +101,7 @@ const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
       currency: item.currency,
       isActive: item.isActive,
     });
+    setPriceInput(item.price.toString()); // Set price as string for input
     setDialogOpen(true);
   };
 
@@ -108,14 +111,34 @@ const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
       return;
     }
 
+    // Validate and convert price
+    const priceValue = priceInput.trim();
+    if (!priceValue) {
+      setError("Price is required.");
+      return;
+    }
+
+    const parsedPrice = parseFloat(priceValue);
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
+      setError("Please enter a valid price (number greater than or equal to 0).");
+      return;
+    }
+
     try {
       setError(null);
+      const payload = {
+        ...formState,
+        price: parsedPrice,
+        currency: "INR", // Always INR
+      };
+      
       if (editingItem) {
-        await put(`/api/admin/billing-items/${editingItem._id}`, formState);
+        await put(`/api/admin/billing-items/${editingItem._id}`, payload);
       } else {
-        await post("/api/admin/billing-items", formState);
+        await post("/api/admin/billing-items", payload);
       }
       setDialogOpen(false);
+      setPriceInput(""); // Clear price input
       await loadItems();
     } catch (err) {
       const message =
@@ -370,28 +393,25 @@ const [itemToDelete, setItemToDelete] = useState<BillingItem | null>(null);
               <div className="space-y-2 md:col-span-2">
                 <Label>Price</Label>
                 <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
-                  value={formState.price}
-                  onChange={(e) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      price: Number(e.target.value),
-                    }))
-                  }
+                  type="text"
+                  value={priceInput}
+                  onChange={(e) => {
+                    // Only allow numbers and decimal point
+                    const value = e.target.value;
+                    // Allow empty string, numbers, and single decimal point
+                    if (value === "" || /^\d*\.?\d*$/.test(value)) {
+                      setPriceInput(value);
+                    }
+                  }}
+                  placeholder="e.g. 500"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Currency</Label>
                 <Input
-                  value={formState.currency}
-                  onChange={(e) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      currency: e.target.value,
-                    }))
-                  }
+                  value="INR"
+                  disabled
+                  className="bg-muted cursor-not-allowed"
                 />
               </div>
             </div>

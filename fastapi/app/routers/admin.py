@@ -131,9 +131,16 @@ async def list_billing_items(
     current_user: dict = Depends(require_roles(["admin", "doctor", "receptionist"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """List all billing/pricing items (optionally filtered by category)."""
+    """List all billing/pricing items for the current user's clinic (optionally filtered by category)."""
     try:
-        query: Dict[str, object] = {}
+        clinic_id = current_user.get("clinicId")
+        if not clinic_id:
+            return error_response(
+                message="Clinic ID not found in user profile",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        query: Dict[str, object] = {"clinicId": clinic_id}
         if category:
             query["category"] = category
 
@@ -158,14 +165,26 @@ async def create_billing_item(
     current_user: dict = Depends(require_roles(["admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Create a new billing/pricing item."""
+    """Create a new billing/pricing item for the current user's clinic."""
     try:
-        model = BillingItemCreate(**payload.model_dump())
-        item_dict = model.model_dump()
+        clinic_id = current_user.get("clinicId")
+        if not clinic_id:
+            return error_response(
+                message="Clinic ID not found in user profile",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Create item dict from payload and add clinicId before model validation
+        item_dict = payload.model_dump()
+        item_dict["clinicId"] = clinic_id  # Set clinicId from current user
         item_dict["createdAt"] = datetime.utcnow()
         item_dict["updatedAt"] = datetime.utcnow()
 
-        result = await get_billing_collection(db).insert_one(item_dict)
+        # Now validate with BillingItemCreate (which includes clinicId)
+        model = BillingItemCreate(**item_dict)
+        validated_dict = model.model_dump()
+
+        result = await get_billing_collection(db).insert_one(validated_dict)
         created = await get_billing_collection(db).find_one({"_id": result.inserted_id})
         formatted = await billing_item_helper(created)
 
@@ -176,7 +195,7 @@ async def create_billing_item(
         )
     except DuplicateKeyError:
         return error_response(
-            message="A pricing entry with this category and key already exists. Please use a different key or edit the existing item.",
+            message="A pricing entry with this category and key already exists for your clinic. Please use a different key or edit the existing item.",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     except Exception as e:
@@ -193,8 +212,29 @@ async def update_billing_item(
     current_user: dict = Depends(require_roles(["admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Update an existing billing item."""
+    """Update an existing billing item (only for items belonging to the user's clinic)."""
     try:
+        clinic_id = current_user.get("clinicId")
+        if not clinic_id:
+            return error_response(
+                message="Clinic ID not found in user profile",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verify the billing item belongs to the user's clinic
+        existing_item = await get_billing_collection(db).find_one({"_id": ObjectId(item_id)})
+        if not existing_item:
+            return error_response(
+                message="Billing item not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        if existing_item.get("clinicId") != clinic_id:
+            return error_response(
+                message="You do not have permission to update this billing item",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
         update_doc = BillingItemUpdate(**payload.model_dump(exclude_unset=True)).model_dump(
             exclude_unset=True
         )
@@ -204,15 +244,17 @@ async def update_billing_item(
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Ensure clinicId cannot be changed
+        update_doc.pop("clinicId", None)
         update_doc["updatedAt"] = datetime.utcnow()
 
         result = await get_billing_collection(db).update_one(
-            {"_id": ObjectId(item_id)},
+            {"_id": ObjectId(item_id), "clinicId": clinic_id},  # Double-check clinicId in query
             {"$set": update_doc},
         )
         if result.matched_count == 0:
             return error_response(
-                message="Billing item not found",
+                message="Billing item not found or access denied",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
@@ -225,7 +267,7 @@ async def update_billing_item(
         )
     except DuplicateKeyError:
         return error_response(
-            message="Another pricing entry already uses this category and key. Please choose a unique key.",
+            message="Another pricing entry already uses this category and key in your clinic. Please choose a unique key.",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     except Exception as e:
@@ -241,12 +283,35 @@ async def delete_billing_item(
     current_user: dict = Depends(require_roles(["admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """Delete a billing item."""
+    """Delete a billing item (only for items belonging to the user's clinic)."""
     try:
-        result = await get_billing_collection(db).delete_one({"_id": ObjectId(item_id)})
-        if result.deleted_count == 0:
+        clinic_id = current_user.get("clinicId")
+        if not clinic_id:
+            return error_response(
+                message="Clinic ID not found in user profile",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Verify the billing item belongs to the user's clinic before deleting
+        existing_item = await get_billing_collection(db).find_one({"_id": ObjectId(item_id)})
+        if not existing_item:
             return error_response(
                 message="Billing item not found",
+                status_code=status.HTTP_404_NOT_FOUND,
+            )
+
+        if existing_item.get("clinicId") != clinic_id:
+            return error_response(
+                message="You do not have permission to delete this billing item",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        result = await get_billing_collection(db).delete_one(
+            {"_id": ObjectId(item_id), "clinicId": clinic_id}  # Double-check clinicId in query
+        )
+        if result.deleted_count == 0:
+            return error_response(
+                message="Billing item not found or access denied",
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
@@ -936,10 +1001,12 @@ async def get_revenue_metrics(
     Aggregates revenue per day over a given period (day, week, month, year),
     and breaks it down into appointments vs lab tests.
     """
-    # Load billing configuration for appointment types
-    billing_cursor = get_billing_collection(db).find(
-        {"category": "appointmentType", "isActive": True}
-    )
+    # Load billing configuration for appointment types (clinic-specific)
+    clinic_id = current_user.get("clinicId")
+    billing_query = {"category": "appointmentType", "isActive": True}
+    if clinic_id:
+        billing_query["clinicId"] = clinic_id
+    billing_cursor = get_billing_collection(db).find(billing_query)
     billing_items = await billing_cursor.to_list(length=None)
     pricing: Dict[str, float] = {}
     # Store pricing by normalized key (lowercase) for matching
@@ -1052,10 +1119,12 @@ async def get_revenue_metrics(
             else:
                 revenue_by_date[date_str]["appointments"] += float(price)
 
-    # Lab test pricing
-    test_pricing_cursor = get_billing_collection(db).find(
-        {"category": "test", "isActive": True}
-    )
+    # Lab test pricing (clinic-specific)
+    clinic_id = current_user.get("clinicId")
+    test_pricing_query = {"category": "test", "isActive": True}
+    if clinic_id:
+        test_pricing_query["clinicId"] = clinic_id
+    test_pricing_cursor = get_billing_collection(db).find(test_pricing_query)
     test_billing = await test_pricing_cursor.to_list(length=None)
     test_pricing: Dict[str, float] = {}
     for item in test_billing:

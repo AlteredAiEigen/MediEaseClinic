@@ -160,7 +160,8 @@ class Database:
             # Billing items collection indexes
             await cls.database.billing_items.create_index("category")
             await cls.database.billing_items.create_index("key")
-            await cls.database.billing_items.create_index([("category", 1), ("key", 1)], unique=True)
+            await cls.database.billing_items.create_index("clinicId")
+            await cls.database.billing_items.create_index([("clinicId", 1), ("category", 1), ("key", 1)], unique=True)
             
             # Password reset tokens
             await cls.database.password_reset_tokens.create_index("tokenHash", unique=True)
