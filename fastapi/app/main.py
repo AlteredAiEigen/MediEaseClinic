@@ -185,6 +185,7 @@ from app.routers import (
     notifications,
     contact,
     subscribe,
+    consent,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -228,6 +229,7 @@ app.include_router(s3_reports.router, prefix="/api/s3-reports", tags=["S3 Report
 app.include_router(notifications.router, tags=["Notifications"])
 app.include_router(contact.router, prefix="/api/contact", tags=["Contact"])
 app.include_router(subscribe.router, prefix="/api", tags=["Subscribe"])
+app.include_router(consent.router, prefix="/api/consent", tags=["Consent"])
 
 
 if __name__ == "__main__":

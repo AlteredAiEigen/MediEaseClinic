@@ -3325,27 +3325,30 @@ export function PatientOverview() {
             </div>
 
             <div className="flex flex-col gap-2 items-start md:ml-auto md:items-end">
-              <Button
-                size="sm"
-                className="px-4 bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
-                onClick={() => {
-                  if (!patientId) return;
-                  
-                  // Determine the appointments page based on user role
-                  let appointmentsPath = "/receptionist-appointments";
-                  if (user?.role === "doctor") {
-                    appointmentsPath = "/doctor-appointments";
-                  } else if (user?.role === "admin") {
-                    appointmentsPath = "/admin-appointments";
-                  }
-                  
-                  // Navigate to appointments page with patient ID as query parameter
-                  navigate(`${appointmentsPath}?patientId=${encodeURIComponent(patientId)}`);
-                }}
-              >
-                <CalendarIcon className="w-4 h-4 mr-2" />
-                Schedule Appointment
-              </Button>
+              {/* Hide Schedule Appointment button when viewing from consultation (queueId present) */}
+              {!queueId && (
+                <Button
+                  size="sm"
+                  className="px-4 bg-gradient-to-r from-[#00C4B3] to-[#10b981] hover:from-[#009C8F] hover:to-[#059669] text-white"
+                  onClick={() => {
+                    if (!patientId) return;
+                    
+                    // Determine the appointments page based on user role
+                    let appointmentsPath = "/receptionist-appointments";
+                    if (user?.role === "doctor") {
+                      appointmentsPath = "/doctor-appointments";
+                    } else if (user?.role === "admin") {
+                      appointmentsPath = "/admin-appointments";
+                    }
+                    
+                    // Navigate to appointments page with patient ID as query parameter
+                    navigate(`${appointmentsPath}?patientId=${encodeURIComponent(patientId)}`);
+                  }}
+                >
+                  <CalendarIcon className="w-4 h-4 mr-2" />
+                  Schedule Appointment
+                </Button>
+              )}
               {canEditPatientProfile && (
                 isGlobalEditMode ? (
                   <div className="flex flex-wrap gap-2">

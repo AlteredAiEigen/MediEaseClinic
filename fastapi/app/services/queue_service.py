@@ -720,6 +720,21 @@ class QueueService:
                     for key, value in appointment.items():
                         if isinstance(value, ObjectId):
                             appointment[key] = str(value)
+                    
+                    # Check consent status for HIPAA compliance
+                    consent_status = appointment.get("consentStatus", "pending")
+                    if consent_status != "accepted":
+                        # Mask patient sensitive data if consent not granted
+                        if entry.get("patient"):
+                            patient = entry["patient"]
+                            # Keep only basic info
+                            entry["patient"] = {
+                                "_id": patient.get("_id"),
+                                "patientId": patient.get("patientId"),
+                                "fullName": patient.get("fullName"),
+                                "consentStatus": "No consent granted for viewing medical history"
+                            }
+                    
                     entry["appointment"] = appointment
                     del entry["appointment_info"]
             

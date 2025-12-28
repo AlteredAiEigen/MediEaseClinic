@@ -60,6 +60,9 @@ class AppointmentBase(BaseModel):
     followUpInstructions: Optional[str] = None
     detailedNotes: Optional[str] = None
     aiRecommendations: Optional[str] = None
+    # HIPAA Consent fields
+    consentStatus: Optional[str] = Field(None, description="Consent status: pending, accepted, rejected")
+    consentDate: Optional[datetime] = None
 
 
 class AppointmentCreate(AppointmentBase):
@@ -87,6 +90,8 @@ class AppointmentInDB(AppointmentBase):
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
     preVisitReminderSentAt: Optional[datetime] = None
     labResultReminderSentAt: Optional[datetime] = None
+    consentStatus: Optional[str] = None
+    consentDate: Optional[datetime] = None
     
     class Config:
         populate_by_name = True
@@ -142,6 +147,9 @@ class AppointmentResponse(BaseModel):
     followUpInstructions: Optional[str] = None
     detailedNotes: Optional[str] = None
     aiRecommendations: Optional[str] = None
+    # HIPAA Consent fields
+    consentStatus: Optional[str] = None
+    consentDate: Optional[datetime] = None
     
     class Config:
         populate_by_name = True
@@ -242,5 +250,8 @@ async def appointment_helper(appointment: dict) -> dict:
         "type": appointment.get("type"),
         "appointmentType": appointment.get("appointmentType"),
         "bookingKind": appointment.get("bookingKind"),
+        # HIPAA Consent fields
+        "consentStatus": appointment.get("consentStatus"),
+        "consentDate": appointment.get("consentDate"),
     }
 

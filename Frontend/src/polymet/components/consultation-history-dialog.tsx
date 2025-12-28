@@ -147,14 +147,69 @@ export function ConsultationHistoryDialog({
       // Enrich recordings with patient and appointment information
       const enrichedRecordings = await Promise.all(
         recordingsPayload.map(async (recording: Recording) => {
-          try {
-            // Fetch patient details for each recording
-            const patientResponse = await get(`/api/patients/${recording.patientId}`);
-            if (patientResponse.success && patientResponse.data?.patient) {
-              recording.patient = patientResponse.data.patient;
+          // Check if patient data is already included in the recording (from backend)
+          if (!recording.patient && (recording as any).patient) {
+            recording.patient = (recording as any).patient;
+          }
+          
+          // Only fetch patient if not already present
+          if (!recording.patient && recording.patientId) {
+            try {
+              // Check if patientId is a MongoDB ObjectId (24 hex characters)
+              const isObjectId = /^[0-9a-fA-F]{24}$/.test(recording.patientId);
+              
+              let patientFetched = false;
+              
+              // Try fetching by MongoDB ObjectId first
+              if (isObjectId) {
+                try {
+                  const patientResponse = await get(`/api/patients/${recording.patientId}`);
+                  if (patientResponse.success && patientResponse.data?.patient) {
+                    recording.patient = patientResponse.data.patient;
+                    patientFetched = true;
+                  }
+                } catch (err) {
+                  // If ObjectId fetch fails, try patient-id endpoint as fallback
+                  console.warn(`Could not fetch patient by ObjectId ${recording.patientId}, trying patient-id:`, err);
+                }
+              }
+              
+              // If not fetched yet, try patient-id endpoint (for patientId like P211)
+              if (!patientFetched) {
+                try {
+                  const patientByIdResponse = await get(`/api/patients/patient-id/${recording.patientId}`);
+                  if (patientByIdResponse.success && patientByIdResponse.data?.patient) {
+                    recording.patient = patientByIdResponse.data.patient;
+                    patientFetched = true;
+                  }
+                } catch (err) {
+                  console.warn(`Could not fetch patient by patientId ${recording.patientId}:`, err);
+                }
+              }
+              
+              // If still no patient data and it's an ObjectId, try one more time with patient-id endpoint
+              if (!patientFetched && isObjectId) {
+                try {
+                  const patientByIdResponse = await get(`/api/patients/patient-id/${recording.patientId}`);
+                  if (patientByIdResponse.success && patientByIdResponse.data?.patient) {
+                    recording.patient = patientByIdResponse.data.patient;
+                  }
+                } catch (err) {
+                  console.warn(`Could not fetch patient by patientId (fallback) ${recording.patientId}:`, err);
+                }
+              }
+            } catch (err) {
+              console.warn(`Error fetching patient details for ${recording.patientId}:`, err);
             }
-          } catch (err) {
-            console.warn(`Could not fetch patient details for ${recording.patientId}:`, err);
+          }
+          
+          // If still no patient data but we have patientName from backend, create a minimal patient object
+          if (!recording.patient && (recording as any).patientName) {
+            recording.patient = {
+              _id: recording.patientId,
+              patientId: recording.patientId,
+              fullName: (recording as any).patientName,
+            };
           }
 
           if (recording.appointmentId) {

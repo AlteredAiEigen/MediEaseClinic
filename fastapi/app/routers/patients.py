@@ -4,6 +4,7 @@ All endpoints require authentication and log PHI access.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Body
+from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -110,6 +111,18 @@ async def create_patient(
             except Exception as e:
                 logger.error(f"❌ Failed to create medical history during patient creation: {e}", exc_info=True)
                 # Don't fail the request, but log the error clearly
+        
+        # Send email verification after patient registration
+        try:
+            from app.services.consent_service import ConsentService
+            patient_obj_id = patient.get("_id") or patient.get("id")
+            if patient_obj_id:
+                consent_service = ConsentService(db)
+                await consent_service.send_email_verification(str(patient_obj_id))
+                logger.info(f"Email verification sent to patient {patient_obj_id}")
+        except Exception as e:
+            logger.error(f"Failed to send email verification: {e}", exc_info=True)
+            # Don't fail the request, but log the error
         
         return success_response(
             message="Patient created successfully",
@@ -226,6 +239,7 @@ async def search_patients(
 @router.get("/{patient_id}")
 async def get_patient(
     patient_id: str,
+    appointment_id: Optional[str] = Query(None, description="Appointment ID for consent check"),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -233,33 +247,212 @@ async def get_patient(
     Get patient details by ID.
     
     Requires authentication. PHI access is logged for audit trail.
+    
+    For doctors: Requires valid appointment with consent granted.
+    If appointment_id is provided, consent will be checked for that appointment.
+    Otherwise, checks for active appointment with current doctor.
     """
+    from bson import ObjectId
+    from app.services.consent_service import ConsentService
+    
+    # Get patient - try both ObjectId and patientId formats
     patient_service = PatientService(db)
-    patient = await patient_service.get_patient(patient_id)
+    patient = None
+    patient_obj_id = None
+    
+    # First try as ObjectId
+    if ObjectId.is_valid(patient_id):
+        patient = await patient_service.get_patient(patient_id)
+        if patient:
+            patient_obj_id = patient_id
+    else:
+        # Try as patientId (like P211)
+        patient = await patient_service.get_patient_by_patient_id(patient_id)
+        if patient:
+            patient_obj_id = patient.get("_id")
+    
+    # If still not found, try direct database lookup
+    if not patient:
+        patient_doc = await db.patients.find_one({"_id": ObjectId(patient_id)}) if ObjectId.is_valid(patient_id) else None
+        if not patient_doc:
+            patient_doc = await db.patients.find_one({"patientId": patient_id})
+        
+        if patient_doc:
+            from app.models.patient import patient_helper
+            patient = await patient_helper(patient_doc)
+            patient_obj_id = str(patient_doc["_id"])
     
     if not patient:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found"
         )
+    
+    if not patient_obj_id:
+        patient_obj_id = patient.get("_id") or patient_id
+    
+    # Ensure patient_obj_id is a string for consistent matching
+    if isinstance(patient_obj_id, ObjectId):
+        patient_obj_id = str(patient_obj_id)
+    elif patient_obj_id and not isinstance(patient_obj_id, str):
+        patient_obj_id = str(patient_obj_id)
+    
+    logger.info(f"Patient lookup: patient_id={patient_id}, patient_obj_id={patient_obj_id} (type: {type(patient_obj_id)})")
 
+    # Check consent for doctors - but allow basic patient info for consultation to start
+    user_role = current_user.get("role")
+    has_consent = False
+    appointment = None
+    
+    if user_role == "doctor":
+        consent_service = ConsentService(db)
+        
+        if appointment_id:
+            # Check consent for specific appointment
+            if ObjectId.is_valid(appointment_id):
+                has_consent = await consent_service.check_consent_for_appointment(appointment_id)
+                logger.info(f"Checking consent for appointment {appointment_id}: {has_consent}")
+                if not has_consent:
+                    appointment = await db.appointments.find_one({"_id": ObjectId(appointment_id)})
+        else:
+            # Check for active appointment with current doctor
+            doctor_id = str(current_user["_id"])
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            
+            logger.info(f"Looking for appointment: patientId={patient_obj_id}, doctorId={doctor_id}, today={today}")
+            
+            # Find active appointment for this doctor and patient
+            # patientId in appointments collection stores MongoDB ObjectId as string
+            # Try multiple query strategies
+            
+            # Strategy 1: Try with string patientId and date/status filters
+            # Find ALL matching appointments and prioritize the one with accepted consent
+            appointment_query = {
+                "patientId": patient_obj_id,
+                "doctorId": doctor_id,
+                "$or": [
+                    {
+                        "date": today,
+                        "status": {"$in": ["scheduled", "checked-in", "in-progress"]}
+                    },
+                    {
+                        "status": "in-progress"  # In-progress appointments can be from any date
+                    }
+                ]
+            }
+            # Get all matching appointments sorted by date descending (most recent first)
+            all_appointments = await db.appointments.find(appointment_query).sort("date", -1).to_list(length=10)
+            logger.info(f"Query 1 found {len(all_appointments)} appointments")
+            
+            if all_appointments:
+                # Prioritize appointment with consentStatus="accepted", otherwise use most recent
+                appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                logger.info(f"Query 1 selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+            
+            # Strategy 2: If not found and patient_obj_id is a valid ObjectId, try as ObjectId
+            if not appointment and ObjectId.is_valid(patient_obj_id):
+                appointment_query["patientId"] = ObjectId(patient_obj_id)
+                all_appointments = await db.appointments.find(appointment_query).sort("date", -1).to_list(length=10)
+                logger.info(f"Query 2 (ObjectId) found {len(all_appointments)} appointments")
+                
+                if all_appointments:
+                    appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                    appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                    logger.info(f"Query 2 selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+            
+            # Strategy 3: Try without date restriction for in-progress appointments (string)
+            if not appointment:
+                appointment_query_no_date = {
+                    "patientId": patient_obj_id,
+                    "doctorId": doctor_id,
+                    "status": "in-progress"
+                }
+                appointment = await db.appointments.find_one(appointment_query_no_date)
+                logger.info(f"Query 3 (no date, string) result: {appointment['_id'] if appointment else 'None'}")
+                
+                # Strategy 4: Try without date restriction with ObjectId
+                if not appointment and ObjectId.is_valid(patient_obj_id):
+                    appointment_query_no_date["patientId"] = ObjectId(patient_obj_id)
+                    appointment = await db.appointments.find_one(appointment_query_no_date)
+                    logger.info(f"Query 4 (no date, ObjectId) result: {appointment['_id'] if appointment else 'None'}")
+            
+            # Strategy 5: Last resort - find ANY in-progress appointment for this patient (ignore doctor)
+            if not appointment:
+                appointment_query_any_doctor = {
+                    "patientId": patient_obj_id,
+                    "status": "in-progress"
+                }
+                appointment = await db.appointments.find_one(appointment_query_any_doctor)
+                logger.info(f"Query 5 (any doctor, string) result: {appointment['_id'] if appointment else 'None'}")
+                
+                if not appointment and ObjectId.is_valid(patient_obj_id):
+                    appointment_query_any_doctor["patientId"] = ObjectId(patient_obj_id)
+                    appointment = await db.appointments.find_one(appointment_query_any_doctor)
+                    logger.info(f"Query 6 (any doctor, ObjectId) result: {appointment['_id'] if appointment else 'None'}")
+            
+            if appointment:
+                logger.info(f"Found appointment {appointment['_id']} with consent status: {appointment.get('consentStatus')}")
+                logger.info(f"Appointment patientId: {appointment.get('patientId')} (type: {type(appointment.get('patientId'))})")
+                logger.info(f"Looking for patientId: {patient_obj_id} (type: {type(patient_obj_id)})")
+                # Check consent directly from appointment document
+                consent_status = appointment.get("consentStatus", "pending")
+                has_consent = consent_status == "accepted"
+                logger.info(f"Consent check result: has_consent={has_consent}, consent_status={consent_status}")
+            else:
+                logger.warning(f"No active appointment found for patient {patient_obj_id} (type: {type(patient_obj_id)}) and doctor {doctor_id}")
+        
+        # If no consent or pending, return error response (no patient data shown)
+        if not has_consent:
+            # Get consent status from appointment
+            consent_status = "pending"
+            patient_email = patient.get("email", "")
+            
+            if appointment:
+                consent_status = appointment.get("consentStatus", "pending")
+            
+            # Return structured JSON error response that frontend can use to show popup
+            # Format matches FastAPI error response with additional consent-specific fields
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={
+                    "detail": {
+                        "error": "CONSENT_NOT_GRANTED",
+                        "consentStatus": consent_status,
+                        "patientEmail": patient_email,
+                        "message": f"Consent is not granted by patient. Consent status: {consent_status}. Please ask the patient to grant access. Consent request was sent to: {patient_email}"
+                    },
+                    "success": False,
+                    "error": "CONSENT_NOT_GRANTED",
+                    "consentStatus": consent_status,
+                    "patientEmail": patient_email,
+                    "message": f"Consent is not granted by patient. Consent status: {consent_status}. Please ask the patient to grant access. Consent request was sent to: {patient_email}"
+                }
+            )
+
+    # Add consent flag for doctors
+    if user_role == "doctor":
+        patient["consentGranted"] = has_consent
+    
     # Attach current medical history fields from the separate collection so that
     # the API response still exposes `medicalHistory`, `familyHistory`, and
     # `previousSurgeries` while the patients collection itself does not store them.
-    try:
-        from app.services.patient_medical_history_service import PatientMedicalHistoryService
+    # Only attach if consent is granted for doctors
+    if user_role != "doctor" or has_consent:
+        try:
+            from app.services.patient_medical_history_service import PatientMedicalHistoryService
 
-        history_service = PatientMedicalHistoryService(db)
-        current_history = await history_service.get_current_medical_history(patient_id)
-        if current_history:
-            if "medicalHistory" in current_history:
-                patient["medicalHistory"] = current_history["medicalHistory"]
-            if "familyHistory" in current_history:
-                patient["familyHistory"] = current_history["familyHistory"]
-            if "previousSurgeries" in current_history:
-                patient["previousSurgeries"] = current_history["previousSurgeries"]
-    except Exception as e:
-        logger.warning(f"Failed to enrich patient with medical history: {e}", exc_info=True)
+            history_service = PatientMedicalHistoryService(db)
+            current_history = await history_service.get_current_medical_history(patient_id)
+            if current_history:
+                if "medicalHistory" in current_history:
+                    patient["medicalHistory"] = current_history["medicalHistory"]
+                if "familyHistory" in current_history:
+                    patient["familyHistory"] = current_history["familyHistory"]
+                if "previousSurgeries" in current_history:
+                    patient["previousSurgeries"] = current_history["previousSurgeries"]
+        except Exception as e:
+            logger.warning(f"Failed to enrich patient with medical history: {e}", exc_info=True)
     
     return success_response(
         message="Patient retrieved successfully",
@@ -270,43 +463,276 @@ async def get_patient(
 @router.get("/patient-id/{patient_id}")
 async def get_patient_by_patient_id(
     patient_id: str,
+    appointment_id: Optional[str] = Query(None, description="Appointment ID for consent check"),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
     """
-    Get patient details by patient ID (e.g., P001).
+    Get patient details by patient ID (e.g., P001) or MongoDB ObjectId.
     
     Requires authentication.
+    
+    For doctors: Returns error if consent not granted (no patient data shown).
     """
+    from bson import ObjectId
+    from app.services.consent_service import ConsentService
+    
     patient_service = PatientService(db)
-    patient = await patient_service.get_patient_by_patient_id(patient_id)
+    patient = None
+    patient_obj_id = None
+    
+    # Try as patientId first (like P211)
+    if not ObjectId.is_valid(patient_id):
+        logger.info(f"Looking up patient by patientId: {patient_id}")
+        try:
+            patient = await patient_service.get_patient_by_patient_id(patient_id)
+            if patient:
+                patient_obj_id = patient.get("_id")
+                logger.info(f"Found patient by patientId: {patient.get('fullName')}")
+        except Exception as e:
+            logger.warning(f"get_patient_by_patient_id failed: {e}")
+    else:
+        # If it's a MongoDB ObjectId, try get_patient first
+        logger.info(f"Looking up patient by ObjectId: {patient_id}")
+        try:
+            patient = await patient_service.get_patient(patient_id)
+            if patient:
+                patient_obj_id = patient.get("_id") or patient_id
+                logger.info(f"Found patient by ObjectId via get_patient: {patient.get('fullName')}")
+        except Exception as e:
+            logger.warning(f"get_patient failed for {patient_id}: {e}")
+    
+    # If still not found, try direct database lookup
+    if not patient:
+        logger.info(f"Trying direct database lookup for: {patient_id}")
+        try:
+            if ObjectId.is_valid(patient_id):
+                patient_doc = await db.patients.find_one({"_id": ObjectId(patient_id)})
+                if patient_doc:
+                    from app.models.patient import patient_helper
+                    from app.utils.security import field_encryption
+                    # Decrypt fields before helper
+                    patient_doc = field_encryption.decrypt_dict_fields(
+                        patient_doc,
+                        ["email", "phone", "address", "insuranceNumber"]
+                    )
+                    patient = await patient_helper(patient_doc)
+                    patient_obj_id = patient_id
+                    logger.info(f"Found patient via direct DB lookup: {patient.get('fullName')}")
+            else:
+                patient_doc = await db.patients.find_one({"patientId": patient_id})
+                if patient_doc:
+                    from app.models.patient import patient_helper
+                    from app.utils.security import field_encryption
+                    # Decrypt fields before helper
+                    patient_doc = field_encryption.decrypt_dict_fields(
+                        patient_doc,
+                        ["email", "phone", "address", "insuranceNumber"]
+                    )
+                    patient = await patient_helper(patient_doc)
+                    patient_obj_id = str(patient_doc["_id"])
+                    logger.info(f"Found patient via direct DB lookup by patientId: {patient.get('fullName')}")
+        except Exception as e:
+            logger.error(f"Direct DB lookup failed: {e}", exc_info=True)
     
     if not patient:
+        logger.error(f"Patient not found for ID: {patient_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Patient not found"
         )
+    
+    # Ensure patient_obj_id is set correctly
+    if not patient_obj_id:
+        patient_obj_id = patient.get("_id") or patient_id
+    
+    # Ensure patient_obj_id is a string for consistent matching
+    if isinstance(patient_obj_id, ObjectId):
+        patient_obj_id = str(patient_obj_id)
+    elif patient_obj_id and not isinstance(patient_obj_id, str):
+        patient_obj_id = str(patient_obj_id)
+    
+    logger.info(f"Patient lookup successful: {patient.get('fullName')}, obj_id: {patient_obj_id} (type: {type(patient_obj_id)})")
+
+    # Check consent for doctors - return error if not granted (no patient data shown)
+    user_role = current_user.get("role")
+    has_consent = False
+    appointment = None
+    
+    if user_role == "doctor":
+        consent_service = ConsentService(db)
+        
+        if appointment_id:
+            # Check consent for specific appointment
+            if ObjectId.is_valid(appointment_id):
+                has_consent = await consent_service.check_consent_for_appointment(appointment_id)
+                logger.info(f"Checking consent for appointment {appointment_id}: {has_consent}")
+                # Get appointment for consent status
+                if not has_consent:
+                    appointment = await db.appointments.find_one({"_id": ObjectId(appointment_id)})
+        else:
+            # Check for active appointment with current doctor
+            doctor_id = str(current_user["_id"])
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            
+            logger.info(f"Looking for appointment: patientId={patient_obj_id}, doctorId={doctor_id}, today={today}")
+            
+            # Find active appointment for this doctor and patient
+            # patientId in appointments collection stores MongoDB ObjectId as string
+            # Try multiple query strategies
+            
+            # Strategy 1: Try with string patientId and date/status filters
+            # Find ALL matching appointments and prioritize the one with accepted consent
+            appointment_query = {
+                "patientId": patient_obj_id,
+                "doctorId": doctor_id,
+                "$or": [
+                    {
+                        "date": today,
+                        "status": {"$in": ["scheduled", "checked-in", "in-progress"]}
+                    },
+                    {
+                        "status": "in-progress"  # In-progress appointments can be from any date
+                    }
+                ]
+            }
+            # Get all matching appointments sorted by date descending (most recent first)
+            all_appointments = await db.appointments.find(appointment_query).sort("date", -1).to_list(length=10)
+            logger.info(f"Query 1 found {len(all_appointments)} appointments")
+            
+            if all_appointments:
+                # Prioritize appointment with consentStatus="accepted", otherwise use most recent
+                appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                logger.info(f"Query 1 selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+            
+            # Strategy 2: If not found and patient_obj_id is a valid ObjectId, try as ObjectId
+            if not appointment and ObjectId.is_valid(patient_obj_id):
+                appointment_query["patientId"] = ObjectId(patient_obj_id)
+                all_appointments = await db.appointments.find(appointment_query).sort("date", -1).to_list(length=10)
+                logger.info(f"Query 2 (ObjectId) found {len(all_appointments)} appointments")
+                
+                if all_appointments:
+                    appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                    appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                    logger.info(f"Query 2 selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+            
+            # Strategy 3: Try without date restriction for in-progress appointments (string)
+            # Find ALL in-progress appointments and pick the best one (prioritize accepted consent, then most recent)
+            if not appointment:
+                appointment_query_no_date = {
+                    "patientId": patient_obj_id,
+                    "doctorId": doctor_id,
+                    "status": "in-progress"
+                }
+                # Get all matching appointments sorted by date descending (most recent first)
+                all_appointments = await db.appointments.find(appointment_query_no_date).sort("date", -1).to_list(length=10)
+                logger.info(f"Query 3 found {len(all_appointments)} in-progress appointments")
+                
+                if all_appointments:
+                    # Prioritize appointment with consentStatus="accepted", otherwise use most recent
+                    appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                    appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                    logger.info(f"Query 3 selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+                else:
+                    # Try with ObjectId
+                    if ObjectId.is_valid(patient_obj_id):
+                        appointment_query_no_date["patientId"] = ObjectId(patient_obj_id)
+                        all_appointments = await db.appointments.find(appointment_query_no_date).sort("date", -1).to_list(length=10)
+                        if all_appointments:
+                            appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                            appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                            logger.info(f"Query 4 (ObjectId) selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+            
+            # Strategy 5: Last resort - find ANY in-progress appointment for this patient (ignore doctor)
+            if not appointment:
+                appointment_query_any_doctor = {
+                    "patientId": patient_obj_id,
+                    "status": "in-progress"
+                }
+                # Get all matching appointments sorted by date descending
+                all_appointments = await db.appointments.find(appointment_query_any_doctor).sort("date", -1).to_list(length=10)
+                logger.info(f"Query 5 found {len(all_appointments)} in-progress appointments (any doctor)")
+                
+                if all_appointments:
+                    # Prioritize appointment with consentStatus="accepted", otherwise use most recent
+                    appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                    appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                    logger.info(f"Query 5 selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+                else:
+                    # Try with ObjectId
+                    if ObjectId.is_valid(patient_obj_id):
+                        appointment_query_any_doctor["patientId"] = ObjectId(patient_obj_id)
+                        all_appointments = await db.appointments.find(appointment_query_any_doctor).sort("date", -1).to_list(length=10)
+                        if all_appointments:
+                            appointment_with_consent = next((apt for apt in all_appointments if apt.get("consentStatus") == "accepted"), None)
+                            appointment = appointment_with_consent if appointment_with_consent else all_appointments[0]
+                            logger.info(f"Query 6 (ObjectId) selected appointment: {appointment['_id']} with consentStatus: {appointment.get('consentStatus')}")
+            
+            if appointment:
+                logger.info(f"Found appointment {appointment['_id']} with consent status: {appointment.get('consentStatus')}")
+                logger.info(f"Appointment patientId: {appointment.get('patientId')} (type: {type(appointment.get('patientId'))})")
+                logger.info(f"Looking for patientId: {patient_obj_id} (type: {type(patient_obj_id)})")
+                # Check consent directly from appointment document (more reliable)
+                consent_status = appointment.get("consentStatus", "pending")
+                has_consent = consent_status == "accepted"
+                logger.info(f"Consent check result: has_consent={has_consent}, consent_status={consent_status}")
+            else:
+                logger.warning(f"No active appointment found for patient {patient_obj_id} (type: {type(patient_obj_id)}) and doctor {doctor_id}")
+        
+        # If no consent or pending, return error response (no patient data shown)
+        if not has_consent:
+            # Get consent status from appointment
+            consent_status = "pending"
+            patient_email = patient.get("email", "")
+            
+            if appointment:
+                consent_status = appointment.get("consentStatus", "pending")
+            
+            # Return structured JSON error response that frontend can use to show popup
+            # Format matches FastAPI error response with additional consent-specific fields
+            return JSONResponse(
+                status_code=status.HTTP_403_FORBIDDEN,
+                content={
+                    "detail": {
+                        "error": "CONSENT_NOT_GRANTED",
+                        "consentStatus": consent_status,
+                        "patientEmail": patient_email,
+                        "message": f"Consent is not granted by patient. Consent status: {consent_status}. Please ask the patient to grant access. Consent request was sent to: {patient_email}"
+                    },
+                    "success": False,
+                    "error": "CONSENT_NOT_GRANTED",
+                    "consentStatus": consent_status,
+                    "patientEmail": patient_email,
+                    "message": f"Consent is not granted by patient. Consent status: {consent_status}. Please ask the patient to grant access. Consent request was sent to: {patient_email}"
+                }
+            )
+
+    # Add consent flag for doctors
+    if user_role == "doctor":
+        patient["consentGranted"] = has_consent
 
     # Enrich patient response with current medical history fields from the
     # patient_medical_history collection.
-    try:
-        from app.services.patient_medical_history_service import PatientMedicalHistoryService
+    # Only attach if consent is granted for doctors
+    if user_role != "doctor" or has_consent:
+        try:
+            from app.services.patient_medical_history_service import PatientMedicalHistoryService
 
-        history_service = PatientMedicalHistoryService(db)
-        # patient_id here is the human-readable ID (e.g. P001), so we need
-        # the actual Mongo ObjectId for fetching history.
-        patient_obj_id = patient.get("_id")
-        if patient_obj_id:
-            current_history = await history_service.get_current_medical_history(patient_obj_id)
-            if current_history:
-                if "medicalHistory" in current_history:
-                    patient["medicalHistory"] = current_history["medicalHistory"]
-                if "familyHistory" in current_history:
-                    patient["familyHistory"] = current_history["familyHistory"]
-                if "previousSurgeries" in current_history:
-                    patient["previousSurgeries"] = current_history["previousSurgeries"]
-    except Exception as e:
-        logger.warning(f"Failed to enrich patient (by patientId) with medical history: {e}", exc_info=True)
+            history_service = PatientMedicalHistoryService(db)
+            # patient_id here is the human-readable ID (e.g. P001), so we need
+            # the actual Mongo ObjectId for fetching history.
+            if patient_obj_id:
+                current_history = await history_service.get_current_medical_history(patient_obj_id)
+                if current_history:
+                    if "medicalHistory" in current_history:
+                        patient["medicalHistory"] = current_history["medicalHistory"]
+                    if "familyHistory" in current_history:
+                        patient["familyHistory"] = current_history["familyHistory"]
+                    if "previousSurgeries" in current_history:
+                        patient["previousSurgeries"] = current_history["previousSurgeries"]
+        except Exception as e:
+            logger.warning(f"Failed to enrich patient (by patientId) with medical history: {e}", exc_info=True)
     
     return success_response(
         message="Patient retrieved successfully",

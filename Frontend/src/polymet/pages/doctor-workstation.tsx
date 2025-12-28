@@ -119,6 +119,7 @@ export function DoctorWorkstation() {
   const [error, setError] = useState<string | null>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [consultationStarted, setConsultationStarted] = useState(false);
   const [showConsultationHistory, setShowConsultationHistory] = useState(false);
   const [latestVitals, setLatestVitals] = useState<any>(null);
   const [isLoadingVitals, setIsLoadingVitals] = useState(false);
@@ -180,9 +181,9 @@ export function DoctorWorkstation() {
                   if (response.success) {
                     const rawAppointments = extractList<any>(response.data);
                     if (rawAppointments.length > 0) {
-                      // Only consider appointments that are strictly in the past (date < today)
+                      // Consider appointments up to and including today (date <= today)
                       const todayDateOnly = new Date();
-                      todayDateOnly.setHours(0, 0, 0, 0);
+                      todayDateOnly.setHours(23, 59, 59, 999); // End of today
                       const todayTime = todayDateOnly.getTime();
 
                       const pastAppointments = rawAppointments.filter((apt) => {
@@ -193,7 +194,7 @@ export function DoctorWorkstation() {
                           apt.timestamp;
                         if (!dateString) return false;
                         const time = new Date(dateString).getTime();
-                        return !isNaN(time) && time < todayTime;
+                        return !isNaN(time) && time <= todayTime; // Include today's appointments
                       });
 
                       if (pastAppointments.length > 0) {
@@ -624,6 +625,9 @@ export function DoctorWorkstation() {
             index === currentIndex ? { ...p, status: "in-consultation" } : p
           )
         );
+        
+        // Mark consultation as started
+        setConsultationStarted(true);
         
         // Navigate to consultation page
         navigate(`/consultation/${currentPatient.patientId}?queueId=${currentPatient.id}`);

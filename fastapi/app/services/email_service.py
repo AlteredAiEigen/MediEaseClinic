@@ -50,6 +50,7 @@ class EmailService:
         body: str,
         reply_to: Optional[str] = None,
         attachments: Optional[Sequence[EmailAttachment]] = None,
+        html: Optional[str] = None,
     ) -> dict:
         """
         Send an email using SMTP.
@@ -60,6 +61,7 @@ class EmailService:
             body: Plain-text body.
             reply_to: Optional reply-to address.
             attachments: Optional list of attachments (filename/content/mime_type).
+            html: Optional HTML content for the email body.
         """
         if not self.is_configured():
             message = "Email service is not configured. Skip sending."
@@ -82,7 +84,13 @@ class EmailService:
         email["Subject"] = subject
         if reply_to:
             email["Reply-To"] = reply_to
-        email.set_content(body)
+        
+        # Set content - HTML if provided, otherwise plain text
+        if html:
+            email.set_content(body)  # Plain text fallback
+            email.add_alternative(html, subtype="html")
+        else:
+            email.set_content(body)
 
         if attachments:
             for attachment in attachments:

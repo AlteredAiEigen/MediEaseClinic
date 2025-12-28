@@ -159,8 +159,14 @@ async function parseResponse<T>(response: Response, parseJson: boolean) {
         ? payload.errors
         : undefined) ||
       `Request failed with status ${response.status}`;
-    const error = new Error(errorMessage) as Error & { status?: number };
+    const error = new Error(errorMessage) as Error & { 
+      status?: number;
+      response?: Response;
+      data?: any;
+    };
     error.status = response.status;
+    error.response = response;
+    error.data = payload; // Attach the full response payload
     throw error;
   }
 

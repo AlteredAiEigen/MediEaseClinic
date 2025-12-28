@@ -103,6 +103,11 @@ export function ConsultationSession() {
   const [resolvedPatientObjectId, setResolvedPatientObjectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [consentError, setConsentError] = useState<{
+    consentStatus: string;
+    patientEmail: string;
+    message: string;
+  } | null>(null);
   const [labResults, setLabResults] = useState<LabResultDisplay[]>([]);
   const [visitHistory, setVisitHistory] = useState<VisitHistoryItem[]>([]);
   const [latestVitals, setLatestVitals] = useState<any>(null);
@@ -210,6 +215,7 @@ export function ConsultationSession() {
 
       setIsLoading(true);
       setError(null);
+      setConsentError(null);
 
       const fetchPatientByMongoId = async (id?: string | null) => {
         if (!id) return null;
@@ -218,8 +224,21 @@ export function ConsultationSession() {
           if (response.success && response.data?.patient) {
             return response.data.patient;
           }
-        } catch (err) {
+        } catch (err: any) {
           console.warn(`Failed to fetch patient by ID ${id}:`, err);
+          // Check if it's a consent error
+          if (err?.status === 403) {
+            const errorData = err?.data || {};
+            if (errorData.error === "CONSENT_NOT_GRANTED" || errorData.detail?.error === "CONSENT_NOT_GRANTED") {
+              setConsentError({
+                consentStatus: errorData.consentStatus || errorData.detail?.consentStatus || "pending",
+                patientEmail: errorData.patientEmail || errorData.detail?.patientEmail || "",
+                message: errorData.message || errorData.detail?.message || "Consent not granted",
+              });
+              setIsLoading(false);
+              return null;
+            }
+          }
         }
         return null;
       };
@@ -231,8 +250,21 @@ export function ConsultationSession() {
           if (response.success && response.data?.patient) {
             return response.data.patient;
           }
-        } catch (err) {
+        } catch (err: any) {
           console.warn(`Failed to fetch patient by patientId ${id}:`, err);
+          // Check if it's a consent error
+          if (err?.status === 403) {
+            const errorData = err?.data || {};
+            if (errorData.error === "CONSENT_NOT_GRANTED" || errorData.detail?.error === "CONSENT_NOT_GRANTED") {
+              setConsentError({
+                consentStatus: errorData.consentStatus || errorData.detail?.consentStatus || "pending",
+                patientEmail: errorData.patientEmail || errorData.detail?.patientEmail || "",
+                message: errorData.message || errorData.detail?.message || "Consent not granted",
+              });
+              setIsLoading(false);
+              return null;
+            }
+          }
         }
         return null;
       };
@@ -1341,6 +1373,61 @@ export function ConsultationSession() {
           <Loader2Icon className="w-16 h-16 text-[#00C4B3] mx-auto mb-4 animate-spin" />
           <h2 className="text-2xl font-bold text-foreground mb-2">Loading Consultation Session</h2>
           <p className="text-muted-foreground">Please wait...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show consent error popup
+  if (consentError) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        {/* Blurred background */}
+        <div 
+          className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity"
+          onClick={() => navigate("/doctor-workstation")}
+        />
+        
+        {/* Consent popup */}
+        <div 
+          className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-lg w-full mx-4 z-10 border border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-yellow-100 dark:bg-yellow-900/30 mb-4">
+              <AlertCircleIcon className="w-10 h-10 text-yellow-600 dark:text-yellow-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+              Consent Not Granted
+            </h2>
+            <div className="space-y-3 mb-6">
+              <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
+                {consentError.message}
+              </p>
+              {consentError.patientEmail && (
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 border border-gray-200 dark:border-gray-600">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+                    Consent request was sent to:
+                  </p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 break-all">
+                    {consentError.patientEmail}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3 mt-6">
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate("/doctor-workstation");
+              }}
+              className="flex-1 bg-[#00C4B3] hover:bg-[#00a896] text-white font-semibold py-2.5 px-6 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105"
+            >
+              Back to Work Station
+            </Button>
+          </div>
         </div>
       </div>
     );

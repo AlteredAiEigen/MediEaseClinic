@@ -7,6 +7,7 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional
 from datetime import datetime
 import asyncio
+import logging
 
 from app.database import get_db
 from app.schemas.appointment import (
@@ -26,6 +27,8 @@ from app.middleware.auth import get_current_active_user, require_any_role, requi
 from app.utils.response import success_response, paginated_response
 from app.utils.cache import cache
 from bson import ObjectId
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -62,6 +65,18 @@ async def create_appointment(
         )
 
         await _invalidate_appointments_cache()
+
+        # Send appointment consent email after appointment is created
+        try:
+            from app.services.consent_service import ConsentService
+            appointment_obj_id = appointment.get("_id") or appointment.get("id")
+            if appointment_obj_id:
+                consent_service = ConsentService(db)
+                await consent_service.send_appointment_consent(str(appointment_obj_id))
+                logger.info(f"Appointment consent email sent for appointment {appointment_obj_id}")
+        except Exception as e:
+            logger.error(f"Failed to send appointment consent email: {e}", exc_info=True)
+            # Don't fail the request, but log the error
 
         # Emit WebSocket event so doctor/receptionist workstations update instantly
         try:

@@ -20,6 +20,8 @@ import {
   UploadIcon,
   ArrowLeftIcon,
   ShieldCheckIcon,
+  MailIcon,
+  RefreshCwIcon,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -211,6 +213,8 @@ export function ReceptionistDashboardNew() {
     useState<"checked-in" | "consultation" | "lab-results">("checked-in");
   const [patients, setPatients] = useState<Patient[]>([]);
   const [processingAppointmentId, setProcessingAppointmentId] = useState<string | null>(null);
+  const [resendingConsentId, setResendingConsentId] = useState<string | null>(null);
+  const [reconsentCooldowns, setReconsentCooldowns] = useState<Record<string, number>>({});
   const [checkoutDialog, setCheckoutDialog] = useState(false);
   const [selectedQueueEntry, setSelectedQueueEntry] = useState<QueueEntry | null>(null);
   const [prescriptionFile, setPrescriptionFile] = useState<File | null>(null);
@@ -641,6 +645,91 @@ export function ReceptionistDashboardNew() {
     });
   };
 
+  // Handle resending consent email
+  const handleResendConsent = async (appointment: any) => {
+    const appointmentMongoId =
+      appointment?.mongoId || appointment?.id || appointment?.appointmentId;
+    if (!appointmentMongoId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Unable to identify the selected appointment.",
+      });
+      return;
+    }
+
+    // Check cooldown
+    const cooldownEndTime = reconsentCooldowns[appointmentMongoId];
+    if (cooldownEndTime && Date.now() < cooldownEndTime) {
+      const remainingMinutes = Math.ceil((cooldownEndTime - Date.now()) / 60000);
+      toast({
+        variant: "destructive",
+        title: "Please wait",
+        description: `Reconsent is on cooldown. Please wait ${remainingMinutes} minute(s) before trying again.`,
+      });
+      return;
+    }
+
+    try {
+      setResendingConsentId(appointmentMongoId);
+      const response = await post(`/api/consent/resend-appointment-consent?appointmentId=${appointmentMongoId}`);
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: "Consent email has been resent to the patient.",
+        });
+        
+        // Set 5-minute cooldown
+        const cooldownEnd = Date.now() + 5 * 60 * 1000; // 5 minutes
+        setReconsentCooldowns((prev) => ({
+          ...prev,
+          [appointmentMongoId]: cooldownEnd,
+        }));
+        
+        // Refresh appointments to get updated consent status
+        fetchTodayAppointments();
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: response.message || "Failed to resend consent email.",
+        });
+      }
+    } catch (error: any) {
+      console.error("Failed to resend consent:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error?.message || "Failed to resend consent email. Please try again.",
+      });
+    } finally {
+      setResendingConsentId(null);
+    }
+  };
+
+  // Cleanup expired cooldowns
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setReconsentCooldowns((prev) => {
+        const now = Date.now();
+        const updated = { ...prev };
+        let changed = false;
+        
+        Object.keys(updated).forEach((key) => {
+          if (updated[key] <= now) {
+            delete updated[key];
+            changed = true;
+          }
+        });
+        
+        return changed ? updated : prev;
+      });
+    }, 10000); // Check every 10 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
+
   // Handle saving vitals
   const handleSaveVitals = async () => {
     if (!selectedAppointmentForVitals?.patientId) {
@@ -772,6 +861,10 @@ export function ReceptionistDashboardNew() {
       if (response.success) {
         const rawAppointments = extractList<any>(response.data);
         const mappedAppointments = rawAppointments.map((apt: any) => {
+          // Debug: Log consent status for troubleshooting
+          if (apt.appointmentId === "APT58107446" || apt.consentStatus) {
+            console.log(`📋 Appointment ${apt.appointmentId || apt._id}: consentStatus =`, apt.consentStatus, "raw apt:", apt);
+          }
           // Extract valid MongoDB ObjectId (must be 24 hex characters)
           const mongoId = extractMongoObjectId(apt);
           const appointmentIdentifier = normalizeId(apt.appointmentId);
@@ -821,6 +914,8 @@ export function ReceptionistDashboardNew() {
             doctorId: doctorId,
             doctorName: doctorName || "Not assigned",
             bookingKind: isLabByBookingKind || isLabByIndicators ? "lab-test" : "doctor",
+            consentStatus: apt.consentStatus !== undefined && apt.consentStatus !== null ? apt.consentStatus : "pending",
+            consentDate: apt.consentDate,
           };
         });
         setAppointmentsList(mappedAppointments);
@@ -851,6 +946,38 @@ export function ReceptionistDashboardNew() {
     return () => clearInterval(interval);
   }, [cleanupOldAppointments, fetchQueueData, fetchQueueStats, fetchPatients, fetchTodayAppointments]);
 
+  // Poll appointments to update consent status in real-time
+  useEffect(() => {
+    // Immediate refresh on mount
+    fetchTodayAppointments();
+    
+    // More aggressive polling for consent updates - check every 1 second
+    const interval = setInterval(() => {
+      fetchTodayAppointments();
+    }, 1000); // Poll every 1 second to catch consent status updates instantly
+    
+    // Refresh when tab becomes visible (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchTodayAppointments();
+      }
+    };
+    
+    // Refresh on window focus
+    const handleFocus = () => {
+      fetchTodayAppointments();
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchTodayAppointments]);
+
   // Handle WebSocket messages for real-time updates
   useEffect(() => {
     if (!lastMessage) return;
@@ -860,12 +987,14 @@ export function ReceptionistDashboardNew() {
         if (lastMessage.type === 'patient_checked_in' ||
             lastMessage.type === 'patient_status_updated' ||
             lastMessage.type === 'queue_reordered' ||
-            lastMessage.type === 'appointment_status_updated') {
+            lastMessage.type === 'appointment_status_updated' ||
+            lastMessage.type === 'consent_updated') {
           // Refresh queue data and stats silently (no loading state)
           console.log('🔄 Refreshing queue data due to:', lastMessage.type);
           await Promise.all([
             fetchQueueData(),
-            fetchQueueStats()
+            fetchQueueStats(),
+            fetchTodayAppointments() // Also refresh appointments for consent updates
           ]);
         }
       } catch (error) {
@@ -1734,11 +1863,71 @@ const confirmCheckoutWithoutPrescription = () => {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="capitalize">
-                        Status: {appointment.status?.replace("-", " ") ?? "scheduled"}
-                      </span>
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-200/50">
+                      {/* Consent Status and Reconsent */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheckIcon className="h-3.5 w-3.5 text-slate-500" />
+                          <Badge
+                            variant="outline"
+                            className={`text-xs px-2.5 py-1 font-medium ${
+                              appointment.consentStatus === "accepted"
+                                ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+                                : appointment.consentStatus === "rejected"
+                                ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800"
+                                : "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800"
+                            }`}
+                          >
+                            {appointment.consentStatus === "accepted"
+                              ? "Approved"
+                              : appointment.consentStatus === "rejected"
+                              ? "Rejected"
+                              : "Pending"}
+                          </Badge>
+                        </div>
+                        {(() => {
+                          const appointmentMongoId = appointment.mongoId || appointment.id || appointment.appointmentId;
+                          const isOnCooldown = reconsentCooldowns[appointmentMongoId] && Date.now() < reconsentCooldowns[appointmentMongoId];
+                          const isDisabled = appointment.consentStatus === "accepted" || isOnCooldown || resendingConsentId === appointmentMongoId;
+                          const cooldownRemaining = isOnCooldown 
+                            ? Math.ceil((reconsentCooldowns[appointmentMongoId] - Date.now()) / 60000)
+                            : 0;
+                          
+                          return (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`text-xs px-2 py-1 h-auto ${
+                                isDisabled
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : "text-orange-600 hover:text-orange-800 hover:bg-orange-50 border-orange-200 dark:text-orange-400 dark:hover:text-orange-300 dark:hover:bg-orange-900/20 dark:border-orange-800"
+                              }`}
+                              disabled={isDisabled}
+                              onClick={() => handleResendConsent(appointment)}
+                              title={isOnCooldown ? `Reconsent available in ${cooldownRemaining} minute(s)` : undefined}
+                            >
+                              {resendingConsentId === appointmentMongoId ? (
+                                <>
+                                  <Loader2Icon className="mr-1 h-3 w-3 animate-spin" />
+                                  Sending...
+                                </>
+                              ) : isOnCooldown ? (
+                                <>
+                                  <RefreshCwIcon className="mr-1 h-3 w-3" />
+                                  {cooldownRemaining}m
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCwIcon className="mr-1 h-3 w-3" />
+                                  Reconsent
+                                </>
+                              )}
+                            </Button>
+                          );
+                        })()}
+                      </div>
+                      {/* Add Vitals Button */}
+                      <div className="flex items-center">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -1747,14 +1936,6 @@ const confirmCheckoutWithoutPrescription = () => {
                         >
                           <ActivityIcon className="mr-1 h-3 w-3" />
                           Add Vitals
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="px-0 text-xs font-medium text-slate-600 hover:text-slate-900"
-                          onClick={() => navigate("/receptionist-appointments")}
-                        >
-                          View in appointments
                         </Button>
                       </div>
                     </div>
@@ -1902,11 +2083,71 @@ const confirmCheckoutWithoutPrescription = () => {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-slate-200/50">
-                      <span className="capitalize">
-                        Status: {appointment.status?.replace("-", " ") ?? "scheduled"}
-                      </span>
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-200/50">
+                      {/* Consent Status and Reconsent */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheckIcon className="h-3.5 w-3.5 text-slate-500" />
+                          <Badge
+                            variant="outline"
+                            className={`text-xs px-2.5 py-1 font-medium ${
+                              appointment.consentStatus === "accepted"
+                                ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800"
+                                : appointment.consentStatus === "rejected"
+                                ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800"
+                                : "bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800"
+                            }`}
+                          >
+                            {appointment.consentStatus === "accepted"
+                              ? "Approved"
+                              : appointment.consentStatus === "rejected"
+                              ? "Rejected"
+                              : "Pending"}
+                          </Badge>
+                        </div>
+                        {(() => {
+                          const appointmentMongoId = appointment.mongoId || appointment.id || appointment.appointmentId;
+                          const isOnCooldown = reconsentCooldowns[appointmentMongoId] && Date.now() < reconsentCooldowns[appointmentMongoId];
+                          const isDisabled = appointment.consentStatus === "accepted" || isOnCooldown || resendingConsentId === appointmentMongoId;
+                          const cooldownRemaining = isOnCooldown 
+                            ? Math.ceil((reconsentCooldowns[appointmentMongoId] - Date.now()) / 60000)
+                            : 0;
+                          
+                          return (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className={`text-xs px-2 py-1 h-auto ${
+                                isDisabled
+                                  ? "opacity-50 cursor-not-allowed"
+                                  : "text-orange-600 hover:text-orange-800 hover:bg-orange-50 border-orange-200 dark:text-orange-400 dark:hover:text-orange-300 dark:hover:bg-orange-900/20 dark:border-orange-800"
+                              }`}
+                              disabled={isDisabled}
+                              onClick={() => handleResendConsent(appointment)}
+                              title={isOnCooldown ? `Reconsent available in ${cooldownRemaining} minute(s)` : undefined}
+                            >
+                              {resendingConsentId === appointmentMongoId ? (
+                                <>
+                                  <Loader2Icon className="mr-1 h-3 w-3 animate-spin" />
+                                  Sending...
+                                </>
+                              ) : isOnCooldown ? (
+                                <>
+                                  <RefreshCwIcon className="mr-1 h-3 w-3" />
+                                  {cooldownRemaining}m
+                                </>
+                              ) : (
+                                <>
+                                  <RefreshCwIcon className="mr-1 h-3 w-3" />
+                                  Reconsent
+                                </>
+                              )}
+                            </Button>
+                          );
+                        })()}
+                      </div>
+                      {/* Add Vitals Button */}
+                      <div className="flex items-center">
                         <Button
                           variant="ghost"
                           size="sm"

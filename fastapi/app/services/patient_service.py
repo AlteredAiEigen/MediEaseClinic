@@ -606,6 +606,7 @@ class PatientService:
             "chiefComplaint": 1,
             "carePlanSummary": 1,
             "insights": 1,
+            "emailVerified": 1,
             "createdAt": 1,
             "updatedAt": 1,
         }

@@ -849,7 +849,29 @@ class RecordingService:
         
         formatted = []
         for recording in recordings:
-            formatted.append(await recording_helper(recording))
+            formatted_recording = await recording_helper(recording)
+            
+            # Populate basic patient information if not already present
+            if not formatted_recording.get("patientName") and recording.get("patientId"):
+                try:
+                    patient = await self.patients_collection.find_one({"_id": ObjectId(recording["patientId"])})
+                    if patient:
+                        formatted_recording["patientName"] = f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip()
+                        # Add basic patient info for frontend
+                        formatted_recording["patient"] = {
+                            "_id": str(patient["_id"]),
+                            "patientId": patient.get("patientId", str(patient["_id"])),
+                            "fullName": formatted_recording["patientName"],
+                            "firstName": patient.get("firstName", ""),
+                            "lastName": patient.get("lastName", ""),
+                            "age": patient.get("age"),
+                            "gender": patient.get("gender"),
+                        }
+                except Exception as e:
+                    # If patient fetch fails, continue without patient info
+                    pass
+            
+            formatted.append(formatted_recording)
         
         return formatted, total
     
