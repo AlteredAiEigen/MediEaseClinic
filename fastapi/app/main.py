@@ -175,7 +175,6 @@ from app.routers import (
     lab_reports,
     messages,
     websocket,
-    whatsapp,
     patient_insurances,
     insurance_coverage,
     patient_reviews,
@@ -203,7 +202,6 @@ app.include_router(receptionists.router, prefix="/api/receptionists", tags=["Rec
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(lab_reports.router, prefix="/api/lab-reports", tags=["Lab Reports"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
-app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
 app.include_router(
     patient_insurances.router,
     prefix="/api/patient-insurances",

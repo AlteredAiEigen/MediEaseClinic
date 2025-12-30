@@ -8,13 +8,13 @@ from twilio.base.exceptions import TwilioException
 
 # Your Twilio account SID and Auth Token (get from Twilio Console)
 # TODO: Move these to environment variables for security
-account_sid = 'AC47e82de0ba5327a5fac86554acfeda39'
-auth_token = '0088daf76a526058f5d87130abdeaa3f'
+account_sid = 'ACc6309a621434dec520a840daabcdbf32'
+auth_token = '3be1af5cdd250a452a521adf562c9348'
 
 # Twilio sandbox WhatsApp number and recipient's WhatsApp number
 # Format: 'whatsapp:+[country code][phone number]'
-from_whatsapp_number = 'whatsapp:+14155238886'  # Your Twilio WhatsApp number
-to_whatsapp_number = 'whatsapp:+48572634499'  # Replace with the recipient's number
+from_whatsapp_number = 'whatsapp:+15557927067'  # Your Twilio WhatsApp number
+to_whatsapp_number = 'whatsapp:+917006590467'  # Replace with the recipient's number
 # to_whatsapp_number = 'whatsapp:+48572634499'  # Poland number
 
 # Message to send (reminders, surveys, etc.)

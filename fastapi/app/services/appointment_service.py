@@ -5,6 +5,7 @@ Appointment service for scheduling and managing appointments.
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 import mimetypes
+import re
 from fastapi import HTTPException, status, UploadFile
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
