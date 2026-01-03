@@ -173,6 +173,7 @@ class WhatsAppTemplateService:
                 to=to,
                 content_sid=content_sid,
                 content_variables=json.dumps(content_vars),
+                status_callback=f"{settings.frontend_base_url}/api/whatsapp/webhooks/status",
             )
             return {
                 "success": True,

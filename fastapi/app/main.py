@@ -53,7 +53,10 @@ async def lifespan(app: FastAPI):
             await queue_service.cleanup_all_stale_entries()
             logger.info("Startup cleanup completed successfully")
 
-            notification_scheduler = AppointmentNotificationScheduler(db)
+            notification_scheduler = AppointmentNotificationScheduler(
+                db, 
+                interval_seconds=settings.whatsapp_scheduler_interval_seconds
+            )
             await notification_scheduler.start()
         except Exception as cleanup_error:
             logger.error(f"Startup cleanup failed: {cleanup_error}")
@@ -185,6 +188,7 @@ from app.routers import (
     contact,
     subscribe,
     consent,
+    whatsapp,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -202,6 +206,7 @@ app.include_router(receptionists.router, prefix="/api/receptionists", tags=["Rec
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(lab_reports.router, prefix="/api/lab-reports", tags=["Lab Reports"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
+app.include_router(whatsapp.router, prefix="/api/whatsapp", tags=["WhatsApp"])
 app.include_router(
     patient_insurances.router,
     prefix="/api/patient-insurances",

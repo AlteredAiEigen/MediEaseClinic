@@ -2,8 +2,11 @@
 WhatsApp messaging API endpoints.
 """
 
-from fastapi import APIRouter, Depends, status, HTTPException
-from typing import Dict, Any
+from fastapi import APIRouter, Depends, status, HTTPException, Request, Form
+from typing import Dict, Any, Optional
+from datetime import datetime
+import logging
+
 
 from app.schemas.whatsapp import (
     WhatsAppMessageRequest,
@@ -14,8 +17,12 @@ from app.schemas.whatsapp import (
 from app.services.whatsapp_service import WhatsAppService
 from app.middleware.auth import get_current_user, require_roles
 from app.utils.response import success_response, error_response
+from app.database import get_db
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from bson import ObjectId
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Initialize WhatsApp service
 whatsapp_service = WhatsAppService()

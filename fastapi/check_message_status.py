@@ -7,11 +7,11 @@ from twilio.rest import Client
 from twilio.base.exceptions import TwilioException
 
 # Your Twilio credentials
-account_sid = 'AC47e82de0ba5327a5fac86554acfeda39'
-auth_token = '0088daf76a526058f5d87130abdeaa3f'
+account_sid = 'ACc6309a621434dec520a840daabcdbf32'
+auth_token = '3be1af5cdd250a452a521adf562c9348'
 
 # Message SID from the previous send (replace with your actual SID)
-message_sid = 'SM658978dfdfabe4830cb391f4ca879b72'  # Replace with your message SID
+message_sid = 'MM37a246449aaa4fabce6697d4cc8919d0'  # Replace with your message SID
 
 
 def check_message_status(message_sid):

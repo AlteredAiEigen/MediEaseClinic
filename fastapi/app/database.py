@@ -192,6 +192,11 @@ class Database:
             await cls.database.s3_prescriptions.create_index("appointmentId")
             await cls.database.s3_prescriptions.create_index("clinicId")
             await cls.database.s3_prescriptions.create_index("s3Key", unique=True)
+
+            # WhatsApp messages collection indexes
+            await cls.database.whatsapp_messages.create_index("message_sid", unique=True)
+            await cls.database.whatsapp_messages.create_index("patient_id")
+            await cls.database.whatsapp_messages.create_index("received_at")
             
             logger.info("Database indexes created successfully")
             
