@@ -202,12 +202,32 @@ class AppointmentUpdate(BaseModel):
     whatsappLogs: Optional[Dict[str, Any]] = None
 
 
-async def appointment_helper(appointment: dict) -> dict:
+async def appointment_helper(appointment: dict, db=None) -> dict:
     """Helper to format appointment document."""
     if not appointment:
         return None
     
-    return {
+    # Fetch medications from s3_prescriptions if available
+    prescription_medications = []
+    if db is not None:
+        try:
+            from bson import ObjectId
+            appointment_id = str(appointment.get("_id") or appointment.get("appointmentId", ""))
+            if appointment_id and ObjectId.is_valid(appointment_id):
+                # Get the most recent prescription for this appointment
+                s3_prescription = await db.s3_prescriptions.find_one(
+                    {"appointmentId": appointment_id},
+                    sort=[("createdAt", -1)]
+                )
+                if s3_prescription and s3_prescription.get("structuredDetails"):
+                    structured_details = s3_prescription.get("structuredDetails", {})
+                    prescription_medications = structured_details.get("medicines", [])
+        except Exception as e:
+            # Log but don't fail if prescription fetch fails
+            import logging
+            logging.warning(f"Failed to fetch prescription medications for appointment: {e}")
+    
+    result = {
         "_id": str(appointment["_id"]),
         "appointmentId": appointment.get("appointmentId", ""),
         "patientId": str(appointment["patientId"]),
@@ -271,5 +291,9 @@ async def appointment_helper(appointment: dict) -> dict:
         # HIPAA Consent fields
         "consentStatus": appointment.get("consentStatus"),
         "consentDate": appointment.get("consentDate"),
+        # Prescription medications from s3_prescriptions structuredDetails
+        "prescriptionMedications": prescription_medications,
     }
+    
+    return result
 

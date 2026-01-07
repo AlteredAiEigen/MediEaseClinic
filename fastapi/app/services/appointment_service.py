@@ -227,7 +227,7 @@ class AppointmentService:
         # Retrieve created appointment
         created_appointment = await self.appointments_collection.find_one({"_id": result.inserted_id})
         
-        return await appointment_helper(created_appointment)
+        return await appointment_helper(created_appointment, self.db)
     
     async def get_appointment(self, appointment_id: str) -> Optional[dict]:
         """Get appointment by ID."""
@@ -239,7 +239,7 @@ class AppointmentService:
         if not appointment:
             return None
         
-        return await appointment_helper(appointment)
+        return await appointment_helper(appointment, self.db)
     
     async def list_appointments(
         self,
@@ -303,7 +303,7 @@ class AppointmentService:
         formatted_appointments = []
         for appointment in appointments:
             appointment = await self.populate_names(appointment)
-            formatted_appointments.append(await appointment_helper(appointment))
+            formatted_appointments.append(await appointment_helper(appointment, self.db))
         
         return formatted_appointments, total
     
@@ -626,27 +626,17 @@ class AppointmentService:
         s3_prescriptions_collection = self.db.s3_prescriptions
         await s3_prescriptions_collection.insert_one(s3_prescription_entry)
 
-        # Update appointment status to "completed" since prescription is now uploaded
+        # DO NOT update appointment status to "completed" here
+        # Status should only be updated when "complete consultation" is called
+        # This allows doctor to continue consultation after uploading prescription
+        # Only update the prescription-related fields
         await self.appointments_collection.update_one(
             {"_id": ObjectId(appointment_id)},
-            {"$set": {"status": "completed", "completedAt": timestamp, "updatedAt": timestamp}}
+            {"$set": {"updatedAt": timestamp}}  # Only update timestamp, not status
         )
 
-        # Also update queue status to "completed" if queue entry exists
-        try:
-            from app.services.queue_service import QueueService
-            queue_service = QueueService(self.db)
-            queue_entry = await queue_service.get_queue_entry_by_appointment(appointment_id)
-            if queue_entry:
-                from app.schemas.queue import QueueStatusUpdate
-                await queue_service.update_queue_status(
-                    str(queue_entry.get("_id")),
-                    QueueStatusUpdate(status="completed")
-                )
-        except Exception as e:
-            # Log but don't fail if queue update fails
-            import logging
-            logging.warning(f"Failed to update queue status after prescription upload: {e}", exc_info=True)
+        # DO NOT update queue status here - keep patient in consultation list
+        # Queue status will be updated when consultation is completed
 
         updated_appointment = await self.appointments_collection.find_one({"_id": ObjectId(appointment_id)})
         return await appointment_helper(updated_appointment)
@@ -859,7 +849,7 @@ class AppointmentService:
         
         formatted_appointments = []
         for appointment in appointments:
-            formatted_appointments.append(await appointment_helper(appointment))
+            formatted_appointments.append(await appointment_helper(appointment, self.db))
         
         return formatted_appointments
 

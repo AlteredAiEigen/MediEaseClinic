@@ -3,7 +3,7 @@ Queue API endpoints.
 """
 
 import json
-from fastapi import APIRouter, Depends, status, HTTPException
+from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -181,9 +181,20 @@ async def start_consultation(
 async def check_out_patient(
     entry_id: str,
     current_user: dict = Depends(require_roles(["receptionist", "admin"])),
-    db: AsyncIOMotorDatabase = Depends(get_db)
+    db: AsyncIOMotorDatabase = Depends(get_db),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
-    """Check out patient from queue."""
+    """
+    Check out patient from queue.
+    
+    **Prescription Analysis**: If a prescription was uploaded during checkout and hasn't been analyzed,
+    it will be analyzed in the background (same as when doctor ends consultation).
+    This updates the s3_prescription table and patient's currentMedications.
+    """
+    from bson import ObjectId
+    import logging
+    logger = logging.getLogger(__name__)
+    
     queue_service = QueueService(db)
     entry = await queue_service.check_out_patient(entry_id)
     if not entry:
@@ -191,6 +202,56 @@ async def check_out_patient(
             message="Queue entry not found",
             status_code=status.HTTP_404_NOT_FOUND
         )
+    
+    # After checkout, check if there's a prescription that needs analysis
+    # This handles the case where receptionist uploads prescription at checkout
+    try:
+        # Get appointment ID from queue entry
+        # appointment can be: ObjectId, string (ObjectId), or dict with _id
+        appointment_value = entry.get("appointment")
+        appointment_id = None
+        
+        if appointment_value:
+            if isinstance(appointment_value, dict):
+                # If it's a dict, get _id from it
+                appointment_id = appointment_value.get("_id")
+            elif isinstance(appointment_value, ObjectId):
+                appointment_id = str(appointment_value)
+            elif isinstance(appointment_value, str):
+                appointment_id = appointment_value
+            else:
+                appointment_id = str(appointment_value)
+        
+        if appointment_id:
+            # Ensure it's a string for the query
+            if isinstance(appointment_id, ObjectId):
+                appointment_id = str(appointment_id)
+            
+            # Find the most recent s3_prescription for this appointment
+            s3_prescription = await db.s3_prescriptions.find_one(
+                {"appointmentId": appointment_id},
+                sort=[("createdAt", -1)]  # Get the most recent one
+            )
+            
+            if s3_prescription and s3_prescription.get("s3Key"):
+                # Check if already analyzed
+                if not s3_prescription.get("structuredDetails"):
+                    logger.info(f"Prescription found at checkout for appointment {appointment_id}, scheduling analysis in background...")
+                    # Import the analysis function from appointments router
+                    from app.routers.appointments import _analyze_prescription_background
+                    # Schedule prescription analysis in background
+                    background_tasks.add_task(
+                        _analyze_prescription_background,
+                        db,
+                        str(s3_prescription["_id"]),
+                        appointment_id
+                    )
+                else:
+                    logger.info(f"Prescription for appointment {appointment_id} already analyzed, skipping")
+    except Exception as analysis_error:
+        logger.error(f"Failed to schedule prescription analysis during checkout for entry {entry_id}: {analysis_error}", exc_info=True)
+        # Don't fail checkout if analysis scheduling fails
+    
     return success_response(data=entry, message="Patient checked out successfully")
 
 

@@ -37,6 +37,21 @@ class Medication(BaseModel):
     instructions: Optional[str] = ""
 
 
+class PrescriptionTest(BaseModel):
+    """Structured test / investigation extracted from prescription."""
+    name: str = Field(..., min_length=1)
+    instructions: Optional[str] = ""
+
+
+class PrescriptionStructuredDetails(BaseModel):
+    """
+    AI-extracted structured details from a prescription.
+    Separates medicines and diagnostic tests.
+    """
+    medicines: List[Medication] = Field(default_factory=list)
+    tests: List[PrescriptionTest] = Field(default_factory=list)
+
+
 class PrescriptionBase(BaseModel):
     """Base prescription fields."""
     patientId: str
@@ -66,6 +81,8 @@ class PrescriptionInDB(PrescriptionBase):
     prescribedAt: datetime = Field(default_factory=datetime.utcnow)
     createdAt: datetime = Field(default_factory=datetime.utcnow)
     updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    # AI / GPT structured extraction from prescription image or text
+    structuredDetails: Optional[PrescriptionStructuredDetails] = None
     
     class Config:
         populate_by_name = True
@@ -93,6 +110,7 @@ class PrescriptionResponse(BaseModel):
     prescribedAt: datetime
     createdAt: datetime
     updatedAt: datetime
+    structuredDetails: Optional[PrescriptionStructuredDetails] = None
     
     class Config:
         populate_by_name = True
@@ -133,5 +151,6 @@ async def prescription_helper(prescription: dict) -> dict:
         "prescribedAt": prescription.get("prescribedAt"),
         "createdAt": prescription.get("createdAt"),
         "updatedAt": prescription.get("updatedAt"),
+        "structuredDetails": prescription.get("structuredDetails"),
     }
 

@@ -434,6 +434,11 @@ export function PatientOverview() {
     return params.get("queueId") || "";
   }, [location.search]);
 
+  const appointmentId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("appointmentId") || "";
+  }, [location.search]);
+
   const isEmbedded = useMemo(() => {
     const params = new URLSearchParams(location.search);
     return params.get("embedded") === "1";
@@ -1010,9 +1015,17 @@ export function PatientOverview() {
   // Fetch patient data on component mount
   useEffect(() => {
     const fetchPatientDetails = async (id: string): Promise<Patient | null> => {
+      // Build query params with appointment_id if available
+      const queryParams = new URLSearchParams();
+      if (appointmentId) {
+        queryParams.set("appointment_id", appointmentId);
+      }
+      const queryString = queryParams.toString();
+      const urlSuffix = queryString ? `?${queryString}` : "";
+
       // First attempt: /api/patients/{id} (works for MongoDB ObjectIds)
       try {
-        const response = await get<{ patient: Patient }>(`/api/patients/${id}`);
+        const response = await get<{ patient: Patient }>(`/api/patients/${id}${urlSuffix}`);
         if (response.success && response.data?.patient) {
           return response.data.patient;
         }
@@ -1022,7 +1035,7 @@ export function PatientOverview() {
 
       // Second attempt: /api/patients/patient-id/{id} (works for patient IDs like P001)
       try {
-        const response = await get<{ patient: Patient }>(`/api/patients/patient-id/${id}`);
+        const response = await get<{ patient: Patient }>(`/api/patients/patient-id/${id}${urlSuffix}`);
         if (response.success && response.data?.patient) {
           return response.data.patient;
         }

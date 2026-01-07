@@ -173,6 +173,153 @@ Important:
                 detail=f"Failed to generate AI response: {str(e)}",
             )
 
+    async def analyze_prescription_image(self, image_url: str) -> Dict[str, Any]:
+        """
+        Analyze a prescription image using GPT-4o with vision and extract
+        structured medicines and tests.
+
+        This uses the existing OpenAI setup (OPENAI_API_KEY) and requires
+        network-accessible image URLs (e.g., S3 HTTPS URLs).
+        """
+        if not self.provider or self.provider != "openai":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OpenAI provider not configured. Please set OPENAI_API_KEY for GPT-4o image analysis.",
+            )
+
+        if not image_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Image URL is required for prescription analysis.",
+            )
+
+        system_prompt = (
+            "You are a medical AI assistant specialized in extracting structured information from prescription images. "
+            "Your task is to accurately read and extract all relevant details from the prescription in a clean, structured JSON format suitable for an Electronic Health Record (EHR) system. "
+            "Accuracy and precision are critical - do not guess or infer information that is not clearly visible."
+        )
+
+        user_text = """
+Your job is to extract and accurately transcribe the following details from the provided prescription image:
+
+1. Patient's full name
+2. Patient's age (handle different formats like "42y", "42yrs", "42", "42 years")
+3. Patient's gender
+4. Doctor's full name
+5. Doctor's license number
+6. Prescription date (in YYYY-MM-DD format)
+7. List of medications including:
+   - Medication name
+   - Dosage
+   - Frequency
+   - Duration
+8. Additional notes or instructions. Provide detailed and enhanced notes using bullet points. Organize the notes in clear bullet points for better readability.
+   - Provide detailed and enhanced notes using bullet points.
+   - If there are headings or categories within the notes, ensure the bullet points are organized under those headings.
+   - Use clear and concise language to enhance readability.
+   - Ensure the notes are structured in a way that makes them easy to follow and understand.
+
+IMPORTANT INSTRUCTIONS:
+- Before extracting information, mentally enhance the image for better readability if needed. Pay close attention to details, adjust your focus to different areas of the prescription, and carefully examine each section.
+- Ensure that each extracted field is accurate and clear. If any information is not legible or missing, indicate it as 'Not available' (not null).
+- Do not guess or infer any information that is not clearly legible.
+- Do not make assumptions or guesses about missing information.
+- Pay close attention to details like medication names, dosages, and frequencies. Extract them exactly as written.
+- For medication names, preserve the exact spelling and capitalization as shown on the prescription.
+- For dosages, include both the number and unit (e.g., "500 mg", "10 ml", "2 tablets").
+- For frequencies, preserve the exact format used (e.g., "1-0-1", "BD", "TDS", "twice daily").
+- For dates, if only partial information is available (e.g., only day and month), use the current year and mark as estimated if needed.
+
+Extract ALL structured details with this exact JSON schema:
+
+{
+  "patientName": "Patient's full name as written on prescription (string, or 'Not available' if not legible or missing)",
+  "patientAge": "Patient's age - normalize to number format like '42' (handle formats: '42y', '42yrs', '42 years', '42', etc.) (string, or 'Not available' if not legible or missing)",
+  "patientGender": "Patient's gender - normalize to 'Male', 'Female', 'M', or 'F' (string, or 'Not available' if not legible or missing)",
+  "doctorName": "Doctor's full name as written on prescription (string, or 'Not available' if not legible or missing)",
+  "doctorLicenseNumber": "Doctor's license/registration number if visible (string, or 'Not available' if not legible or missing)",
+  "prescriptionDate": "Prescription date in YYYY-MM-DD format (e.g., '2024-01-15'). If only partial date available, use best estimate with current year (string, or 'Not available' if not legible or missing)",
+  "medicines": [
+    {
+      "name": "Medicine name - extract exactly as written, preserve spelling and capitalization (string)",
+      "dosage": "Dose and units exactly as written, e.g. '500 mg', '10 ml', '2 tablets' (string)",
+      "frequency": "How often exactly as written, e.g. '1-0-1', 'twice daily', 'BD', 'TDS' (string)",
+      "duration": "Duration exactly as written, e.g. '5 days', '2 weeks', '1 month' (string)",
+      "instructions": "Any additional instructions such as 'before food', 'after food', 'with meals' - extract exactly as written (string, can be empty if none)"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Lab or imaging test name exactly as written, e.g. 'CBC', 'X-Ray Chest', 'Blood Sugar' (string)",
+      "instructions": "Any instructions for the test exactly as written, e.g. 'Fasting required', 'Morning sample' (string, can be empty if none)"
+    }
+  ],
+  "additionalNotes": "Any additional notes, instructions, or remarks from the prescription. Format with clear bullet points (•) for better readability. If there are headings or categories, organize bullet points under those headings. Use clear and concise language. If no additional notes, return 'Not available' (string, or 'Not available' if not found)"
+}
+
+CRITICAL RULES:
+1. Use the EXACT keys as shown above: patientName, patientAge, patientGender, doctorName, doctorLicenseNumber, prescriptionDate, medicines, tests, additionalNotes
+2. For patientAge: Normalize all age formats to a simple number string (e.g., "42y" → "42", "42 years" → "42", "42yrs" → "42")
+3. For prescriptionDate: Always convert to YYYY-MM-DD format. If only day/month visible, use current year. If date is completely unclear or missing, return 'Not available'
+4. For additionalNotes: 
+   - Format with bullet points (•) for each point
+   - If there are categories/headings, organize bullets under headings
+   - Use clear, concise language
+   - If multiple paragraphs exist, convert to bullet points
+   - Preserve the meaning and intent of the original notes
+5. If a field is not found, not legible, or unclear, use 'Not available' (NOT null, NOT empty string)
+6. If there are no medicines, return "medicines": []
+7. If there are no tests, return "tests": []
+8. Do NOT add any other top-level fields
+9. Do NOT return markdown or code fences, only a single valid JSON object
+10. Be thorough - extract ALL visible information from the prescription
+11. Extract medication details EXACTLY as written - do not abbreviate or modify
+12. Pay special attention to medication names, dosages, and frequencies - these are critical for patient safety
+13. If you cannot clearly read a medication name, dosage, or frequency, mark the entire medicine entry with 'Not available' for unclear fields
+
+Example additionalNotes format:
+"• Take medications with food to avoid stomach upset
+• Complete the full course even if symptoms improve
+• Avoid alcohol while on medication
+• Follow-up appointment recommended after 1 week"
+
+Remember: Accuracy is paramount. When in doubt, use 'Not available' rather than guessing.
+""".strip()
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_text},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": image_url,
+                                },
+                            },
+                        ],
+                    },
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+
+            raw = response.choices[0].message.content
+            result = json.loads(raw)
+            logger.info("Successfully analyzed prescription image with GPT-4o")
+            return result
+
+        except Exception as e:
+            logger.error(f"GPT-4o prescription image analysis failed: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to analyze prescription image: {str(e)}",
+            )
+
     async def _generate_with_openai(self, prompt: str) -> Dict:
         """Generate clinical notes using OpenAI."""
         try:

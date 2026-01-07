@@ -1720,6 +1720,7 @@ export function ConsultationSession() {
                 const idForOverview = resolvedPatientObjectId || patientId || "";
                 const params = new URLSearchParams();
                 if (qid) params.set("queueId", qid);
+                if (appointmentId) params.set("appointmentId", appointmentId);
                 params.set("embedded", "1");
                 return `/embedded/patient-overview/${encodeURIComponent(
                   idForOverview

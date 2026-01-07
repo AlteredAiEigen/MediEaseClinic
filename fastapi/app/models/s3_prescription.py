@@ -4,7 +4,7 @@ Structure matches s3_reports model for consistency.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from pydantic import BaseModel, Field
 from bson import ObjectId
 
@@ -30,6 +30,43 @@ class PyObjectId(ObjectId):
         return ObjectId(value)
 
 
+class PrescriptionMedication(BaseModel):
+    """Medication details extracted from prescription."""
+    name: str
+    dosage: str
+    frequency: str
+    duration: str
+    instructions: Optional[str] = ""
+
+
+class PrescriptionTest(BaseModel):
+    """Test/investigation details extracted from prescription."""
+    name: str
+    instructions: Optional[str] = ""
+
+
+class PrescriptionStructuredDetails(BaseModel):
+    """AI-extracted structured details from prescription image."""
+    # Patient Information
+    patientName: Optional[str] = None
+    patientAge: Optional[str] = None  # Age in years (handles formats like "42y", "42yrs", "42", "42 years")
+    patientGender: Optional[str] = None  # e.g., "Male", "Female", "M", "F"
+    
+    # Doctor Information
+    doctorName: Optional[str] = None
+    doctorLicenseNumber: Optional[str] = None
+    
+    # Prescription Metadata
+    prescriptionDate: Optional[str] = None  # Date in YYYY-MM-DD format
+    
+    # Medications and Tests
+    medicines: List[PrescriptionMedication] = Field(default_factory=list)
+    tests: List[PrescriptionTest] = Field(default_factory=list)
+    
+    # Additional Notes and Instructions
+    additionalNotes: Optional[str] = None  # Formatted with bullet points for readability
+
+
 class S3PrescriptionBase(BaseModel):
     """Base model for S3 prescription - matches s3_reports structure."""
     patientId: str
@@ -49,6 +86,7 @@ class S3PrescriptionBase(BaseModel):
     lastAccessedAt: Optional[datetime] = None
     metadata: Optional[Dict[str, Any]] = None
     clinicId: Optional[str] = None
+    structuredDetails: Optional[PrescriptionStructuredDetails] = None  # AI-extracted medicines and tests
 
 
 class S3PrescriptionInDB(S3PrescriptionBase):
@@ -102,6 +140,7 @@ async def s3_prescription_helper(document: dict) -> dict:
         "lastAccessedAt": document.get("lastAccessedAt"),
         "metadata": document.get("metadata") or {},
         "clinicId": document.get("clinicId"),
+        "structuredDetails": document.get("structuredDetails"),  # AI-extracted medicines and tests
         "createdAt": document.get("createdAt"),
         "updatedAt": document.get("updatedAt"),
     }
