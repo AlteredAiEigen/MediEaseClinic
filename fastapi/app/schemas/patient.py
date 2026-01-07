@@ -10,11 +10,11 @@ from app.models.patient import Lifestyle, MedicalHistoryEntry
 class PatientCreateRequest(BaseModel):
     """Patient creation request schema."""
     firstName: str = Field(..., min_length=1, max_length=50)
-    lastName: str = Field(..., min_length=1, max_length=50)
+    lastName: Optional[str] = Field(None, max_length=50)  # Made optional
     gender: str = Field(..., pattern="^(Male|Female|Other)$")
-    age: str
+    age: str  # Mandatory - if provided, will calculate dateOfBirth if not provided
     bloodGroup: str = Field(..., pattern="^(A\\+|A-|B\\+|B-|AB\\+|AB-|O\\+|O-)$")
-    dateOfBirth: str
+    dateOfBirth: Optional[str] = None  # Made optional - can be calculated from age, or provided as month/year only
     email: EmailStr
     phone: str
     address: str

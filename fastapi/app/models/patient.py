@@ -65,11 +65,11 @@ DEFAULT_PATIENT_INSIGHTS = PatientInsights().model_dump()
 class PatientBase(BaseModel):
     """Base patient fields."""
     firstName: str = Field(..., min_length=1, max_length=50)
-    lastName: str = Field(..., min_length=1, max_length=50)
+    lastName: Optional[str] = Field(None, max_length=50)  # Made optional
     gender: str = Field(..., pattern="^(Male|Female|Other)$")
-    age: str
+    age: str  # Mandatory - if dateOfBirth not provided, will be calculated from age
     bloodGroup: str = Field(..., pattern="^(A\\+|A-|B\\+|B-|AB\\+|AB-|O\\+|O-)$")
-    dateOfBirth: str
+    dateOfBirth: Optional[str] = None  # Made optional - can be calculated from age, or provided as month/year only (format: YYYY-MM-01)
     email: EmailStr
     phone: str
     address: str
@@ -142,12 +142,12 @@ class PatientResponse(BaseModel):
     id: str = Field(alias="_id")
     patientId: str
     firstName: str
-    lastName: str
+    lastName: Optional[str] = None  # Made optional
     fullName: str
     gender: str
     age: str
     bloodGroup: str
-    dateOfBirth: str
+    dateOfBirth: Optional[str] = None  # Made optional
     email: str
     phone: str
     address: str
@@ -263,19 +263,24 @@ async def patient_helper(patient: dict) -> dict:
     elif isinstance(recommendations, str) and recommendations.strip():
         insights["recommendations"] = [recommendations.strip()]
 
+    # Handle optional lastName and dateOfBirth
+    lastName_value = patient.get("lastName") or None
+    date_of_birth_value = patient.get("dateOfBirth") or None
+    first_name = patient.get("firstName", "")
+    
     return {
         "_id": str(patient["_id"]),
         "patientId": patient.get("patientId", ""),
-        "firstName": patient.get("firstName", ""),
-        "lastName": patient.get("lastName", ""),
-        "fullName": f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip(),
+        "firstName": first_name,
+        "lastName": lastName_value,  # Optional - can be None
+        "fullName": f"{first_name} {lastName_value or ''}".strip(),  # Handle None lastName
         # Patients are universal - clinic info is for reference only
         "createdByClinicId": patient.get("createdByClinicId"),
         "createdByClinicName": patient.get("createdByClinicName"),
         "gender": patient.get("gender", ""),
         "age": patient.get("age", ""),
         "bloodGroup": patient.get("bloodGroup", ""),
-        "dateOfBirth": patient.get("dateOfBirth", ""),
+        "dateOfBirth": date_of_birth_value,  # Optional - can be None
         "email": patient.get("email", ""),
         "phone": patient.get("phone", ""),
         "address": patient.get("address", ""),

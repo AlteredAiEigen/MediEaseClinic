@@ -33,7 +33,8 @@ export function RegisterPatient() {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
-    dateOfBirth: "",
+    age: "",  // Mandatory field
+    dateOfBirth: "",  // Optional - month/year only (YYYY-MM format)
     gender: "",
     phone: "",
     email: "",
@@ -67,32 +68,37 @@ export function RegisterPatient() {
     setIsSubmitting(true);
 
     try {
-      // Calculate age from date of birth
-      const calculateAge = (dateOfBirth: string) => {
-        const birthDate = new Date(dateOfBirth);
-        const today = new Date();
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-          age--;
+      // Calculate dateOfBirth from age if provided and dateOfBirth not set
+      // Format: YYYY-MM (month/year only) or calculate from age
+      let dateOfBirthValue: string | undefined = undefined;
+      
+      if (formData.dateOfBirth) {
+        // User provided month/year (YYYY-MM format)
+        dateOfBirthValue = formData.dateOfBirth;
+      } else if (formData.age) {
+        // Calculate dateOfBirth from age (use January 1st as default)
+        const age = parseInt(formData.age);
+        if (!isNaN(age) && age > 0) {
+          const today = new Date();
+          const birthYear = today.getFullYear() - age;
+          dateOfBirthValue = `${birthYear}-01-01`;  // Use January 1st as default
         }
-        return age.toString();
-      };
+      }
 
       // Prepare the data for the API
       const patientData = {
         firstName: formData.firstName,
-        lastName: formData.lastName,
+        lastName: formData.lastName || undefined,  // Optional
         gender: formData.gender,
-        dateOfBirth: formData.dateOfBirth,
-        age: calculateAge(formData.dateOfBirth),
+        dateOfBirth: dateOfBirthValue,  // Optional - can be calculated from age
+        age: formData.age,  // Mandatory
         phone: `+91 ${formData.phone.replace(/\s/g, '')}`.trim(),
-        email: formData.email || `${formData.firstName.toLowerCase()}.${formData.lastName.toLowerCase()}@example.com`,
+        email: formData.email || `${formData.firstName.toLowerCase()}.${(formData.lastName || "").toLowerCase()}@example.com`,
         address: formData.address,
         bloodGroup: formData.bloodGroup || "A+", // Default to A+ if not selected
         allergies: formData.allergies || "",
-        emergencyContact: formData.emergencyContact,
-        emergencyContactPhone: formData.emergencyPhone ? `+91 ${formData.emergencyPhone.replace(/\s/g, '')}`.trim() : "",
+        emergencyContact: formData.emergencyContact || undefined,  // Optional
+        emergencyContactPhone: formData.emergencyPhone ? `+91 ${formData.emergencyPhone.replace(/\s/g, '')}`.trim() : undefined,  // Optional
         agreedToDataStorage: true, // Patient has agreed via checkbox
         // Communication consent preferences
         consentWhatsApp: communicationConsents.whatsapp,
@@ -117,6 +123,7 @@ export function RegisterPatient() {
       setFormData({
         firstName: "",
         lastName: "",
+        age: "",
         dateOfBirth: "",
         gender: "",
         phone: "",
@@ -221,29 +228,78 @@ export function RegisterPatient() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">
-                    Last Name <span className="text-red-500">*</span>
+                    Last Name
                   </Label>
                   <Input
                     id="lastName"
-                    required
                     value={formData.lastName}
                     onChange={(e) => handleChange("lastName", e.target.value)}
-                    placeholder="Enter last name"
+                    placeholder="Enter last name (optional)"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="age">
+                    Age (in years) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="age"
+                    type="number"
+                    min="0"
+                    max="150"
+                    required
+                    value={formData.age}
+                    onChange={(e) => {
+                      // Only update the age value while typing
+                      handleChange("age", e.target.value);
+                    }}
+                    onBlur={(e) => {
+                      // Calculate dateOfBirth when user leaves the age field
+                      // Always recalculate if age is provided, regardless of existing dateOfBirth
+                      const ageValue = e.target.value;
+                      if (ageValue) {
+                        const age = parseInt(ageValue);
+                        if (!isNaN(age) && age > 0) {
+                          const today = new Date();
+                          const birthYear = today.getFullYear() - age;
+                          // Use January as default month (or preserve existing month if dateOfBirth already set)
+                          let monthYear = `${birthYear}-01`;
+                          if (formData.dateOfBirth) {
+                            // Preserve the month from existing dateOfBirth if it exists
+                            const existingMonth = formData.dateOfBirth.substring(5, 7);
+                            monthYear = `${birthYear}-${existingMonth}`;
+                          }
+                          setFormData((prev) => ({ ...prev, dateOfBirth: monthYear }));
+                        }
+                      }
+                    }}
+                    placeholder="Enter age"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dateOfBirth">
-                    Date of Birth <span className="text-red-500">*</span>
+                    Date of Birth (Month/Year)
                   </Label>
                   <Input
                     id="dateOfBirth"
-                    type="date"
-                    required
+                    type="month"
                     value={formData.dateOfBirth}
-                    onChange={(e) =>
-                      handleChange("dateOfBirth", e.target.value)
-                    }
+                    onChange={(e) => {
+                      setFormData({ ...formData, dateOfBirth: e.target.value });
+                      // Recalculate age if dateOfBirth changes
+                      if (e.target.value) {
+                        const [year, month] = e.target.value.split('-');
+                        const birthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+                        const today = new Date();
+                        let age = today.getFullYear() - birthDate.getFullYear();
+                        const monthDiff = today.getMonth() - birthDate.getMonth();
+                        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                          age--;
+                        }
+                        setFormData((prev) => ({ ...prev, age: age > 0 ? age.toString() : prev.age, dateOfBirth: e.target.value }));
+                      }
+                    }}
                   />
+                  <p className="text-xs text-muted-foreground">Optional - Month and year only</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="gender">
@@ -318,25 +374,24 @@ export function RegisterPatient() {
 
             {/* Emergency Contact */}
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Emergency Contact</h3>
+              <h3 className="text-lg font-semibold">Emergency Contact (Optional)</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="emergencyContact">
-                    Contact Name <span className="text-red-500">*</span>
+                    Contact Name
                   </Label>
                   <Input
                     id="emergencyContact"
-                    required
                     value={formData.emergencyContact}
                     onChange={(e) =>
                       handleChange("emergencyContact", e.target.value)
                     }
-                    placeholder="Emergency contact name"
+                    placeholder="Emergency contact name (optional)"
                   />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="emergencyPhone">
-                    Contact Phone <span className="text-red-500">*</span>
+                    Contact Phone
                   </Label>
                   <div className="flex items-center gap-1">
                     <span className="text-sm font-medium text-muted-foreground px-3 py-2 border border-input rounded-md bg-muted">
@@ -345,7 +400,6 @@ export function RegisterPatient() {
                     <Input
                       id="emergencyPhone"
                       type="tel"
-                      required
                       value={formData.emergencyPhone}
                       onChange={(e) => handleEmergencyPhoneChange(e.target.value)}
                       placeholder="98765 43210"

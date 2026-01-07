@@ -149,12 +149,15 @@ const [, setPatients] = useState<Patient[]>([]);
   const [newPatient, setNewPatient] = useState({
     firstName: "",
     lastName: "",
+    age: "",  // Mandatory field
     email: "",
     phone: "",
-    dateOfBirth: "",
+    dateOfBirth: "",  // Optional - month/year only (YYYY-MM format)
     gender: "",
     address: "",
     bloodGroup: "",
+    emergencyContact: "",
+    emergencyPhone: "",
   });
   const [createAppointmentOnRegister, setCreateAppointmentOnRegister] = useState(false);
   const [appointmentDate, setAppointmentDate] = useState("");
@@ -481,10 +484,10 @@ const [, setPatients] = useState<Patient[]>([]);
 
   // Handle register patient
   const handleRegisterPatient = async () => {
-    if (!newPatient.firstName || !newPatient.lastName || !newPatient.phone) {
+    if (!newPatient.firstName || !newPatient.phone || !newPatient.age) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Please fill in all required fields (First Name, Phone, Age)",
         variant: "destructive",
       });
       return;
@@ -492,28 +495,36 @@ const [, setPatients] = useState<Patient[]>([]);
 
     try {
       setIsRegistering(true);
-      const calculateAge = (dateOfBirth: string) => {
-        if (!dateOfBirth) return "0";
-        const birthDate = new Date(dateOfBirth);
-        const today = new Date();
-        let age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-          age--;
+      
+      // Calculate dateOfBirth from age if provided and dateOfBirth not set
+      // Format: YYYY-MM (month/year only) or calculate from age
+      let dateOfBirthValue: string | undefined = undefined;
+      
+      if (newPatient.dateOfBirth) {
+        // User provided month/year (YYYY-MM format)
+        dateOfBirthValue = newPatient.dateOfBirth;
+      } else if (newPatient.age) {
+        // Calculate dateOfBirth from age (use January 1st as default)
+        const age = parseInt(newPatient.age);
+        if (!isNaN(age) && age > 0) {
+          const today = new Date();
+          const birthYear = today.getFullYear() - age;
+          dateOfBirthValue = `${birthYear}-01-01`;  // Use January 1st as default
         }
-        return age.toString();
-      };
+      }
 
       const patientData = {
         firstName: newPatient.firstName,
-        lastName: newPatient.lastName,
+        lastName: newPatient.lastName || undefined,  // Optional
         gender: newPatient.gender || "Other",
-        dateOfBirth: newPatient.dateOfBirth || undefined,
-        age: newPatient.dateOfBirth ? calculateAge(newPatient.dateOfBirth) : undefined,
+        dateOfBirth: dateOfBirthValue,  // Optional - can be calculated from age
+        age: newPatient.age,  // Mandatory
         phone: `+91 ${newPatient.phone.replace(/\s/g, '')}`.trim(),
-        email: newPatient.email || `${newPatient.firstName.toLowerCase()}.${newPatient.lastName.toLowerCase()}@example.com`,
+        email: newPatient.email || `${newPatient.firstName.toLowerCase()}.${(newPatient.lastName || "").toLowerCase()}@example.com`,
         address: newPatient.address || "",
         bloodGroup: newPatient.bloodGroup || "A+",
+        emergencyContact: newPatient.emergencyContact || undefined,  // Optional
+        emergencyContactPhone: newPatient.emergencyPhone ? `+91 ${newPatient.emergencyPhone.replace(/\s/g, '')}`.trim() : undefined,  // Optional
         agreedToDataStorage: true, // Patient has agreed via checkbox
       };
 
@@ -564,12 +575,15 @@ const [, setPatients] = useState<Patient[]>([]);
         setNewPatient({
           firstName: "",
           lastName: "",
+          age: "",
           email: "",
           phone: "",
           dateOfBirth: "",
           gender: "",
           address: "",
           bloodGroup: "",
+          emergencyContact: "",
+          emergencyPhone: "",
         });
         setCreateAppointmentOnRegister(false);
         setAppointmentDate("");
@@ -1106,14 +1120,71 @@ const [, setPatients] = useState<Patient[]>([]);
                 />
               </div>
               <div className="space-y-2">
-                <Label>Last Name *</Label>
+                <Label>Last Name</Label>
                 <Input
                   value={newPatient.lastName}
                   onChange={(e) =>
                     setNewPatient({ ...newPatient, lastName: e.target.value })
                   }
-                  placeholder="Enter last name"
+                  placeholder="Enter last name (optional)"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Age (in years) *</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="150"
+                  value={newPatient.age}
+                  onChange={(e) => {
+                    // Only update the age value while typing
+                    setNewPatient({ ...newPatient, age: e.target.value });
+                  }}
+                  onBlur={(e) => {
+                    // Calculate dateOfBirth when user leaves the age field
+                    // Always recalculate if age is provided, regardless of existing dateOfBirth
+                    const ageValue = e.target.value;
+                    if (ageValue) {
+                      const age = parseInt(ageValue);
+                      if (!isNaN(age) && age > 0) {
+                        const today = new Date();
+                        const birthYear = today.getFullYear() - age;
+                        // Use January as default month (or preserve existing month if dateOfBirth already set)
+                        let monthYear = `${birthYear}-01`;
+                        if (newPatient.dateOfBirth) {
+                          // Preserve the month from existing dateOfBirth if it exists
+                          const existingMonth = newPatient.dateOfBirth.substring(5, 7);
+                          monthYear = `${birthYear}-${existingMonth}`;
+                        }
+                        setNewPatient((prev) => ({ ...prev, dateOfBirth: monthYear }));
+                      }
+                    }
+                  }}
+                  placeholder="Enter age"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Date of Birth (Month/Year)</Label>
+                <Input
+                  type="month"
+                  value={newPatient.dateOfBirth}
+                  onChange={(e) => {
+                    setNewPatient({ ...newPatient, dateOfBirth: e.target.value });
+                    // Recalculate age if dateOfBirth changes
+                    if (e.target.value) {
+                      const [year, month] = e.target.value.split('-');
+                      const birthDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+                      const today = new Date();
+                      let age = today.getFullYear() - birthDate.getFullYear();
+                      const monthDiff = today.getMonth() - birthDate.getMonth();
+                      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+                        age--;
+                      }
+                      setNewPatient((prev) => ({ ...prev, age: age > 0 ? age.toString() : prev.age, dateOfBirth: e.target.value }));
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">Optional - Month and year only</p>
               </div>
               <div className="space-y-2">
                 <Label>Phone *</Label>
@@ -1138,16 +1209,6 @@ const [, setPatients] = useState<Patient[]>([]);
                     setNewPatient({ ...newPatient, email: e.target.value })
                   }
                   placeholder="patient@example.com"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Date of Birth</Label>
-                <Input
-                  type="date"
-                  value={newPatient.dateOfBirth}
-                  onChange={(e) =>
-                    setNewPatient({ ...newPatient, dateOfBirth: e.target.value })
-                  }
                 />
               </div>
               <div className="space-y-2">
@@ -1177,6 +1238,41 @@ const [, setPatients] = useState<Patient[]>([]);
                   }
                   placeholder="Enter address"
                 />
+              </div>
+            </div>
+
+            {/* Emergency Contact Section */}
+            <div className="border-t pt-4 space-y-4">
+              <h3 className="text-sm font-semibold">Emergency Contact (Optional)</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Emergency Contact Name</Label>
+                  <Input
+                    value={newPatient.emergencyContact}
+                    onChange={(e) =>
+                      setNewPatient({ ...newPatient, emergencyContact: e.target.value })
+                    }
+                    placeholder="Enter contact name (optional)"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Emergency Contact Phone</Label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium text-muted-foreground px-3 py-2 border border-input rounded-md bg-muted">
+                      +91
+                    </span>
+                    <Input
+                      value={newPatient.emergencyPhone}
+                      onChange={(e) => {
+                        const formatted = formatPhoneNumber(e.target.value);
+                        setNewPatient({ ...newPatient, emergencyPhone: formatted });
+                      }}
+                      placeholder="98765 43210 (optional)"
+                      maxLength={11}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

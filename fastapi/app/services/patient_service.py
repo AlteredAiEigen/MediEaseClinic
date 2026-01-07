@@ -241,6 +241,49 @@ class PatientService:
         # Prepare patient document
         patient_dict = patient_data.model_dump()
         
+        # Handle lastName - set to empty string if None (for email generation)
+        if not patient_dict.get("lastName"):
+            patient_dict["lastName"] = ""
+        
+        # Calculate dateOfBirth from age if age is provided
+        # If dateOfBirth is also provided, recalculate year but preserve month/day if it's a full date
+        if patient_dict.get("age"):
+            try:
+                age = int(patient_dict["age"])
+                from datetime import date
+                today = date.today()
+                # Calculate birth year: today's year minus age
+                birth_year = today.year - age
+                
+                # If dateOfBirth already exists, preserve month and day if it's a full date (YYYY-MM-DD)
+                existing_dob = patient_dict.get("dateOfBirth")
+                if existing_dob and len(existing_dob) >= 7 and existing_dob[4] == "-":
+                    # Extract month and day if it's a full date (YYYY-MM-DD)
+                    if len(existing_dob) == 10 and existing_dob[7] == "-":
+                        # Full date format: preserve month and day
+                        month_day = existing_dob[5:]
+                        patient_dict["dateOfBirth"] = f"{birth_year}-{month_day}"
+                    else:
+                        # Month/year format (YYYY-MM): preserve month
+                        month = existing_dob[5:7]
+                        patient_dict["dateOfBirth"] = f"{birth_year}-{month}-01"
+                    logger.info(f"Recalculated dateOfBirth year from age {age}, preserved month/day: {patient_dict['dateOfBirth']}")
+                else:
+                    # No existing dateOfBirth or invalid format: use January 1st as default
+                    patient_dict["dateOfBirth"] = f"{birth_year}-01-01"
+                    logger.info(f"Calculated dateOfBirth from age {age}: {patient_dict['dateOfBirth']}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to calculate dateOfBirth from age '{patient_dict.get('age')}': {e}")
+                # Set a default dateOfBirth if age conversion fails (optional field)
+                if not patient_dict.get("dateOfBirth"):
+                    patient_dict["dateOfBirth"] = None
+        elif patient_dict.get("dateOfBirth"):
+            # Handle month/year only format (YYYY-MM) - convert to YYYY-MM-01
+            date_str = patient_dict["dateOfBirth"]
+            if date_str and len(date_str) == 7 and date_str[4] == "-":  # Format: YYYY-MM
+                patient_dict["dateOfBirth"] = f"{date_str}-01"  # Convert to YYYY-MM-01
+                logger.info(f"Converted month/year dateOfBirth to full date: {patient_dict['dateOfBirth']}")
+        
         # Extract medical history fields that should be stored in separate table
         medical_history_fields = {}
         for field in ["familyHistory", "previousSurgeries", "pastMedications"]:
@@ -251,10 +294,13 @@ class PatientService:
         patient_dict["email"] = patient_dict["email"].lower()
         
         # Generate unique MediEase clinic email
+        # Use empty string if lastName is None
+        last_name_for_email = patient_dict.get("lastName") or ""
+        date_of_birth_for_email = patient_dict.get("dateOfBirth") or ""
         clinic_email = await self.generate_mediease_clinic_email(
             first_name=patient_data.firstName,
-            last_name=patient_data.lastName,
-            date_of_birth=patient_data.dateOfBirth
+            last_name=last_name_for_email,
+            date_of_birth=date_of_birth_for_email
         )
         patient_dict["medieaseClinicEmail"] = clinic_email
         
