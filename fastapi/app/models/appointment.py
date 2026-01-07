@@ -41,6 +41,8 @@ class AppointmentBase(BaseModel):
     insurance: bool = False
     followUpRequired: bool = False
     followUpNotes: Optional[str] = None
+    followUpDuration: Optional[str] = None  # Original duration text from prescription (e.g., "1 week", "10 days", "1 month")
+    followUpInDays: Optional[int] = None  # Calculated days (e.g., 7 for "1 week", 10 for "10 days", 30 for "1 month")
     clinicId: Optional[str] = None
     type: Optional[str] = None
     appointmentType: Optional[str] = Field(None, description="Type of appointment: 'doctor' or 'lab-test'")
@@ -131,6 +133,8 @@ class AppointmentResponse(BaseModel):
     consultationSummary: Optional[Dict[str, Any]] = None
     followUpRequired: bool
     followUpNotes: Optional[str] = None
+    followUpDuration: Optional[str] = None
+    followUpInDays: Optional[int] = None
     createdAt: datetime
     updatedAt: datetime
     preVisitReminderSentAt: Optional[datetime] = None
@@ -177,6 +181,8 @@ class AppointmentUpdate(BaseModel):
     cancellationReason: Optional[str] = None
     followUpRequired: Optional[bool] = None
     followUpNotes: Optional[str] = None
+    followUpDuration: Optional[str] = None
+    followUpInDays: Optional[int] = None
     type: Optional[str] = None
     appointmentType: Optional[str] = None
     bookingKind: Optional[str] = None
@@ -252,6 +258,9 @@ async def appointment_helper(appointment: dict, db=None) -> dict:
         "consultationTimeMinutes": appointment.get("consultationTimeMinutes"),
         "followUpRequired": appointment.get("followUpRequired", False),
         "followUpNotes": appointment.get("followUpNotes"),
+        "followUpDuration": appointment.get("followUpDuration"),
+        "followUpInDays": appointment.get("followUpInDays"),
+        "followUpInstructions": appointment.get("followUpInstructions"),
         "clinicId": appointment.get("clinicId"),
         "createdAt": appointment.get("createdAt"),
         "updatedAt": appointment.get("updatedAt"),

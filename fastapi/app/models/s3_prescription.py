@@ -63,6 +63,11 @@ class PrescriptionStructuredDetails(BaseModel):
     medicines: List[PrescriptionMedication] = Field(default_factory=list)
     tests: List[PrescriptionTest] = Field(default_factory=list)
     
+    # Follow-up Information
+    followUpRequired: bool = False  # Whether follow-up is mentioned in prescription
+    followUpDuration: Optional[str] = None  # Original duration text from prescription (e.g., "1 week", "10 days", "1 month")
+    followUpDays: Optional[int] = None  # Number of days until follow-up (converted from weeks/months if mentioned)
+    
     # Additional Notes and Instructions
     additionalNotes: Optional[str] = None  # Formatted with bullet points for readability
 

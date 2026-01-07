@@ -88,6 +88,10 @@ async def _analyze_s3_prescription(
     # Extract additional notes (handle "Not available" as None)
     additional_notes = ai_result.get("additionalNotes")
     
+    # Extract follow-up information
+    follow_up_required = ai_result.get("followUpRequired", False)
+    follow_up_duration_text = ai_result.get("followUpDuration")
+    
     # Helper function to normalize "Not available" to None
     def normalize_value(value):
         if not value or not isinstance(value, str):
@@ -96,6 +100,49 @@ async def _analyze_s3_prescription(
         if value.lower() in ["not available", "n/a", "na", ""]:
             return None
         return value
+    
+    # Helper function to convert follow-up duration to days
+    def convert_followup_duration_to_days(duration_text: str) -> Optional[int]:
+        """
+        Convert follow-up duration text (e.g., '2 weeks', '5 days', '1 month') to number of days.
+        Returns None if duration cannot be parsed or if follow-up not required.
+        """
+        if not duration_text or not isinstance(duration_text, str):
+            return None
+        
+        duration_text = duration_text.strip()
+        if duration_text.lower() in ["not specified", "not available", "n/a", "na", ""]:
+            return None
+        
+        import re
+        text = duration_text.lower()
+        
+        # Match patterns like "2 weeks", "5 days", "1 month", "3 months"
+        match = re.match(r"(\d+)\s*(day|days|week|weeks|month|months)", text)
+        if not match:
+            return None
+        
+        amount = int(match.group(1))
+        unit = match.group(2)
+        
+        if "day" in unit:
+            return amount
+        elif "week" in unit:
+            return amount * 7
+        elif "month" in unit:
+            return amount * 30  # Approximate months as 30 days
+        else:
+            return None
+    
+    # Calculate follow-up days if follow-up is required
+    follow_up_days = None
+    if follow_up_required:
+        if follow_up_duration_text:
+            follow_up_days = convert_followup_duration_to_days(follow_up_duration_text)
+            if follow_up_days:
+                logger.info(f"Follow-up required: {follow_up_duration_text} = {follow_up_days} days")
+        else:
+            logger.info("Follow-up required but no duration specified")
     
     structured = PrescriptionStructuredDetails(
         # Patient Information
@@ -132,6 +179,14 @@ async def _analyze_s3_prescription(
             for t in tests_data
             if isinstance(t, dict) and (t.get("name") or "").strip()
         ],
+        
+        # Follow-up Information
+        followUpRequired=bool(follow_up_required),
+        followUpDuration=(
+            None if not follow_up_duration_text or follow_up_duration_text.lower() in ["not specified", "not available", "n/a", "na", ""]
+            else follow_up_duration_text.strip()
+        ),  # Original duration text (e.g., "1 week", "10 days", "1 month")
+        followUpDays=follow_up_days,
         
         # Additional Notes
         additionalNotes=normalize_value(additional_notes),
@@ -287,6 +342,31 @@ async def _analyze_s3_prescription(
         except Exception as e:
             logger.error(f"Failed to add tests to appointment: {e}", exc_info=True)
             # Don't fail the whole operation if test update fails
+    
+    # Update appointment with follow-up information if follow-up is required
+    if structured.followUpRequired:
+        try:
+            update_fields = {
+                "followUpRequired": True,
+                "updatedAt": datetime.utcnow(),
+            }
+            
+            # Add followUpDuration (original duration text from prescription)
+            if follow_up_duration_text and follow_up_duration_text.lower() not in ["not specified", "not available", "n/a", "na"]:
+                update_fields["followUpDuration"] = follow_up_duration_text.strip()
+            
+            # Add followUpInDays (calculated days)
+            if follow_up_days:
+                update_fields["followUpInDays"] = follow_up_days
+            
+            await db.appointments.update_one(
+                {"_id": ObjectId(appointment_id)},
+                {"$set": update_fields}
+            )
+            logger.info(f"Updated appointment {appointment_id} with follow-up information: followUpRequired=True, followUpDuration='{follow_up_duration_text}', followUpInDays={follow_up_days}")
+        except Exception as e:
+            logger.error(f"Failed to update appointment with follow-up information: {e}", exc_info=True)
+            # Don't fail the whole operation if follow-up update fails
     
     return structured.model_dump()
 

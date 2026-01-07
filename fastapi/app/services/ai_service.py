@@ -254,28 +254,32 @@ Extract ALL structured details with this exact JSON schema:
       "instructions": "Any instructions for the test exactly as written, e.g. 'Fasting required', 'Morning sample' (string, can be empty if none)"
     }
   ],
+  "followUpRequired": "Boolean: true if follow-up appointment or review is mentioned anywhere in the prescription (e.g., 'follow up in 2 weeks', 'review after 5 days', 'come back in 1 month', 'repeat visit', 'follow-up needed'). false if no follow-up is mentioned (boolean)",
+  "followUpDuration": "If followUpRequired is true, extract the duration text exactly as written (e.g., '2 weeks', '5 days', '1 month', '3 months'). If follow-up is mentioned but no specific duration is given, use 'Not specified'. If followUpRequired is false, use null (string or null)",
   "additionalNotes": "Any additional notes, instructions, or remarks from the prescription. Format with clear bullet points (•) for better readability. If there are headings or categories, organize bullet points under those headings. Use clear and concise language. If no additional notes, return 'Not available' (string, or 'Not available' if not found)"
 }
 
 CRITICAL RULES:
-1. Use the EXACT keys as shown above: patientName, patientAge, patientGender, doctorName, doctorLicenseNumber, prescriptionDate, medicines, tests, additionalNotes
+1. Use the EXACT keys as shown above: patientName, patientAge, patientGender, doctorName, doctorLicenseNumber, prescriptionDate, medicines, tests, followUpRequired, followUpDuration, additionalNotes
 2. For patientAge: Normalize all age formats to a simple number string (e.g., "42y" → "42", "42 years" → "42", "42yrs" → "42")
 3. For prescriptionDate: Always convert to YYYY-MM-DD format. If only day/month visible, use current year. If date is completely unclear or missing, return 'Not available'
-4. For additionalNotes: 
+4. For followUpRequired: Look for phrases like "follow up", "follow-up", "review", "come back", "repeat visit", "revisit", "check back", "followup" (case-insensitive). Set to true if ANY mention of follow-up is found, false otherwise.
+5. For followUpDuration: Extract the duration text EXACTLY as written (e.g., "2 weeks", "5 days", "1 month", "3 months"). If follow-up is mentioned but no duration specified, use "Not specified". If followUpRequired is false, use null.
+6. For additionalNotes: 
    - Format with bullet points (•) for each point
    - If there are categories/headings, organize bullets under headings
    - Use clear, concise language
    - If multiple paragraphs exist, convert to bullet points
    - Preserve the meaning and intent of the original notes
-5. If a field is not found, not legible, or unclear, use 'Not available' (NOT null, NOT empty string)
-6. If there are no medicines, return "medicines": []
-7. If there are no tests, return "tests": []
-8. Do NOT add any other top-level fields
-9. Do NOT return markdown or code fences, only a single valid JSON object
-10. Be thorough - extract ALL visible information from the prescription
-11. Extract medication details EXACTLY as written - do not abbreviate or modify
-12. Pay special attention to medication names, dosages, and frequencies - these are critical for patient safety
-13. If you cannot clearly read a medication name, dosage, or frequency, mark the entire medicine entry with 'Not available' for unclear fields
+7. If a field is not found, not legible, or unclear, use 'Not available' (NOT null, NOT empty string) - EXCEPT for followUpDuration which can be null if followUpRequired is false
+8. If there are no medicines, return "medicines": []
+9. If there are no tests, return "tests": []
+10. Do NOT add any other top-level fields
+11. Do NOT return markdown or code fences, only a single valid JSON object
+12. Be thorough - extract ALL visible information from the prescription
+13. Extract medication details EXACTLY as written - do not abbreviate or modify
+14. Pay special attention to medication names, dosages, and frequencies - these are critical for patient safety
+15. If you cannot clearly read a medication name, dosage, or frequency, mark the entire medicine entry with 'Not available' for unclear fields
 
 Example additionalNotes format:
 "• Take medications with food to avoid stomach upset
