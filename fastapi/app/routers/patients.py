@@ -61,6 +61,25 @@ async def create_patient(
                 detail="Patient consent for data storage is required. agreedToDataStorage must be True."
             )
         
+        # Check if email is verified before registration
+        try:
+            from app.services.consent_service import ConsentService
+            consent_service = ConsentService(db)
+            email = patient_data.email.strip().lower() if patient_data.email else None
+            
+            if email:
+                is_verified = await consent_service.check_pre_registration_email_verified(email)
+                if not is_verified:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email address must be verified before registration. Please verify your email address first."
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Error checking email verification: {e}", exc_info=True)
+            # Don't fail registration if verification check fails, but log it
+        
         # Convert camelCase to snake_case for backend model
         patient_payload = patient_data.model_dump(exclude_none=True)
         if "agreedToDataStorage" in patient_payload:
@@ -74,6 +93,18 @@ async def create_patient(
             patient_payload["consent_sms"] = patient_payload.pop("consentSMS")
         if "consentPhoneCall" in patient_payload:
             patient_payload["consent_phone_call"] = patient_payload.pop("consentPhoneCall")
+        
+        # Set emailVerified to True since email was verified before registration
+        email = patient_data.email.strip().lower() if patient_data.email else None
+        if email:
+            try:
+                from app.services.consent_service import ConsentService
+                consent_service = ConsentService(db)
+                is_verified = await consent_service.check_pre_registration_email_verified(email)
+                if is_verified:
+                    patient_payload["emailVerified"] = True
+            except Exception as e:
+                logger.warning(f"Error checking email verification status: {e}", exc_info=True)
         
         patient_service = PatientService(db)
         logger.info("patient_payload for creating patient %s", patient_payload)
@@ -112,17 +143,8 @@ async def create_patient(
                 logger.error(f"❌ Failed to create medical history during patient creation: {e}", exc_info=True)
                 # Don't fail the request, but log the error clearly
         
-        # Send email verification after patient registration
-        try:
-            from app.services.consent_service import ConsentService
-            patient_obj_id = patient.get("_id") or patient.get("id")
-            if patient_obj_id:
-                consent_service = ConsentService(db)
-                await consent_service.send_email_verification(str(patient_obj_id))
-                logger.info(f"Email verification sent to patient {patient_obj_id}")
-        except Exception as e:
-            logger.error(f"Failed to send email verification: {e}", exc_info=True)
-            # Don't fail the request, but log the error
+        # Email verification is already done before registration, so skip sending verification email
+        # The emailVerified flag is already set to True in the patient record
         
         return success_response(
             message="Patient created successfully",

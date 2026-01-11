@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -17,9 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UserPlusIcon, ArrowLeftIcon, SaveIcon, Loader2Icon, ShieldCheckIcon, CheckCircle2Icon } from "lucide-react";
+import { UserPlusIcon, ArrowLeftIcon, SaveIcon, Loader2Icon, ShieldCheckIcon, CheckCircle2Icon, MailIcon, CheckCircleIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
 import { Link } from "react-router-dom";
-import { post } from "@/lib/api-client";
+import { post, get } from "@/lib/api-client";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -56,16 +56,49 @@ export function RegisterPatient() {
   });
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [registeredPatient, setRegisteredPatient] = useState<{ name: string; patientId?: string } | null>(null);
+  
+  // Email verification state
+  const [emailVerificationStatus, setEmailVerificationStatus] = useState<"pending" | "verified" | "not_sent">("not_sent");
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(false);
+  const [lastVerifiedEmail, setLastVerifiedEmail] = useState<string>("");
+  const [isCheckingVerification, setIsCheckingVerification] = useState(false);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Verification status dialog
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  const [verificationDialogMessage, setVerificationDialogMessage] = useState("");
+  const [verificationDialogType, setVerificationDialogType] = useState<"success" | "error" | "info">("info");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!agreedToTerms) {
-      alert("Please confirm that you agree to the data security terms before registering the patient.");
+      setVerificationDialogMessage("Please confirm that you agree to the data security terms before registering the patient.");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
       return;
     }
     if (!formData.email.trim()) {
-      alert("Email address is required.");
+      setVerificationDialogMessage("Email address is required.");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
+      return;
+    }
+    
+    // Check if consent has been approved
+    if (emailVerificationStatus !== "verified") {
+      setVerificationDialogMessage("Please approve consent before registering. Click 'Send Verification' below the email field to receive the consent link.");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
+      return;
+    }
+    
+    // Ensure the email being registered matches the email that consent was approved for
+    if (formData.email.trim().toLowerCase() !== lastVerifiedEmail) {
+      setVerificationDialogMessage("Email address has been changed. Please send a new consent link and approve it before registering.");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
       return;
     }
     
@@ -151,7 +184,9 @@ export function RegisterPatient() {
       setShowSuccessDialog(true);
     } catch (error) {
       console.error("Error registering patient:", error);
-      alert("Failed to register patient. Please try again.");
+      setVerificationDialogMessage("Failed to register patient. Please try again.");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -159,7 +194,268 @@ export function RegisterPatient() {
 
   const handleChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    
+    // Reset email verification status if email changes (but preserve if same email is verified)
+    if (field === "email") {
+      const emailValue = value.trim().toLowerCase();
+      // Only reset if email changed AND it's not the verified email
+      if (emailValue !== lastVerifiedEmail && emailVerificationStatus === "verified") {
+        setEmailVerificationStatus("not_sent");
+        setVerificationEmailSent(false);
+        setLastVerifiedEmail("");
+        // Stop any active polling
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      } else if (emailValue !== lastVerifiedEmail) {
+        // Email changed but wasn't verified, just reset
+        setEmailVerificationStatus("not_sent");
+        setVerificationEmailSent(false);
+        // Stop any active polling
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+      }
+      // If email matches lastVerifiedEmail and status is verified, keep it verified
+    }
   };
+  
+  // Check email verification status (consent approval status)
+  // Store in ref to ensure it's always accessible
+  const checkEmailVerificationRef = useRef<((email: string, showLoading?: boolean) => Promise<void>) | null>(null);
+  
+  const checkEmailVerification = useCallback(async (email: string, showLoading = false) => {
+    if (!email || !email.trim()) {
+      return;
+    }
+    
+    const emailLower = email.trim().toLowerCase();
+    console.log("checkEmailVerification called for:", emailLower, "showLoading:", showLoading);
+    
+    if (showLoading) {
+      setIsCheckingVerification(true);
+    }
+    
+    try {
+      console.log("Calling API to check verification status for:", emailLower);
+      const response = await get(`/api/consent/check-pre-registration-verification?email=${encodeURIComponent(emailLower)}`);
+      console.log("Verification check response:", response);
+      if (response.success && response.data?.verified) {
+        console.log("Email verified! Stopping polling.");
+        // Stop polling first
+        if (pollingIntervalRef.current) {
+          console.log("Clearing polling interval:", pollingIntervalRef.current);
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        
+        // Use functional updates to check current state before updating
+        setEmailVerificationStatus((currentStatus) => {
+          setLastVerifiedEmail((currentVerifiedEmail) => {
+            // Only update if not already verified for this email
+            if (currentStatus !== "verified" || currentVerifiedEmail !== emailLower) {
+              return emailLower;
+            }
+            return currentVerifiedEmail;
+          });
+          // Only update if not already verified
+          if (currentStatus !== "verified") {
+            return "verified";
+          }
+          return currentStatus;
+        });
+        
+        // Show success dialog if manually checking and consent approved
+        if (showLoading) {
+          setVerificationDialogMessage("Consent has been approved successfully! You can now complete registration.");
+          setVerificationDialogType("success");
+          setShowVerificationDialog(true);
+        }
+      } else {
+        // Only update to pending if not already verified
+        setEmailVerificationStatus((currentStatus) => {
+          if (currentStatus !== "verified") {
+            return "pending";
+          }
+          return currentStatus;
+        });
+        // Show info dialog if manually checking and consent not approved
+        if (showLoading) {
+          setVerificationDialogMessage("Consent approval is still pending. Please check your inbox and click the approval link in the email.");
+          setVerificationDialogType("info");
+          setShowVerificationDialog(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error checking email verification:", error);
+      // Don't change status if already verified
+      setEmailVerificationStatus((currentStatus) => {
+        if (currentStatus !== "verified") {
+          return "pending";
+        }
+        return currentStatus;
+      });
+      if (showLoading) {
+        setVerificationDialogMessage("Failed to check verification status. Please try again.");
+        setVerificationDialogType("error");
+        setShowVerificationDialog(true);
+      }
+    } finally {
+      if (showLoading) {
+        setIsCheckingVerification(false);
+      }
+    }
+  }, []);
+  
+  // Store check function in ref so it's always accessible
+  useEffect(() => {
+    checkEmailVerificationRef.current = checkEmailVerification;
+    console.log("checkEmailVerification stored in ref");
+  }, [checkEmailVerification]);
+  
+  // Manual refresh verification status (check if consent was approved)
+  const handleRefreshVerificationStatus = async () => {
+    const email = formData.email.trim();
+    if (!email) {
+      setVerificationDialogMessage("Please enter an email address");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
+      return;
+    }
+    await checkEmailVerification(email, true);
+  };
+  
+  // Send consent email (consent link)
+  const handleSendVerification = async () => {
+    const email = formData.email.trim();
+    if (!email) {
+      setVerificationDialogMessage("Please enter an email address");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
+      return;
+    }
+    
+    setIsSendingVerification(true);
+    try {
+      const patientName = `${formData.firstName} ${formData.lastName}`.trim() || "Patient";
+      const response = await post("/api/consent/send-pre-registration-verification", {
+        email: email,
+        patientName: patientName || "Patient"
+      });
+      
+      if (response.success) {
+        const emailLower = email.trim().toLowerCase();
+        setVerificationEmailSent(true);
+        
+        // Set to pending if not already verified
+        setEmailVerificationStatus((currentStatus) => {
+          if (currentStatus !== "verified" || lastVerifiedEmail !== emailLower) {
+            return "pending";
+          }
+          return currentStatus;
+        });
+        
+        setVerificationDialogMessage("Consent email sent! Please check your inbox and click the approval link to grant consent.");
+        setVerificationDialogType("success");
+        setShowVerificationDialog(true);
+        
+        // Clear any existing polling interval first
+        if (pollingIntervalRef.current) {
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        
+        // Start polling for verification status - check every 2 seconds
+        console.log("Starting polling for email:", emailLower);
+        
+        // Clear any existing polling first
+        if (pollingIntervalRef.current) {
+          console.log("Clearing existing polling interval:", pollingIntervalRef.current);
+          clearInterval(pollingIntervalRef.current);
+          pollingIntervalRef.current = null;
+        }
+        
+        // Ensure the ref is set before starting polling
+        checkEmailVerificationRef.current = checkEmailVerification;
+        console.log("checkEmailVerification stored in ref before polling starts");
+        
+        // Create the polling interval - capture email in closure
+        // Use a wrapper function to ensure the email is captured correctly
+        const pollFunction = () => {
+          const currentEmail = emailLower; // Capture email in closure
+          console.log("🔵 Polling check executing for email:", currentEmail, "at", new Date().toISOString());
+          
+          // Use ref to call the function (more reliable than direct call)
+          if (checkEmailVerificationRef.current) {
+            console.log("Calling checkEmailVerification via ref");
+            checkEmailVerificationRef.current(currentEmail, false).catch((err) => {
+              console.error("Error in polling check:", err);
+            });
+          } else {
+            console.error("❌ checkEmailVerificationRef.current is null! Cannot check verification.");
+            // Fallback: try direct call
+            console.log("Attempting direct call as fallback");
+            checkEmailVerification(currentEmail, false).catch((err) => {
+              console.error("Error in fallback polling check:", err);
+            });
+          }
+        };
+        
+        // Test immediate execution to verify it works
+        console.log("Testing immediate execution...");
+        pollFunction();
+        
+        // Now set up the interval
+        const pollInterval = setInterval(pollFunction, 2000);
+        
+        pollingIntervalRef.current = pollInterval;
+        console.log("✅ Polling interval set:", pollInterval, "for email:", emailLower, "will check every 2 seconds");
+        
+        // Stop polling after 5 minutes
+        setTimeout(() => {
+          console.log("Stopping polling after 5 minutes for email:", emailLower);
+          if (pollingIntervalRef.current === pollInterval) {
+            clearInterval(pollInterval);
+            pollingIntervalRef.current = null;
+          }
+        }, 300000);
+      } else {
+        setVerificationDialogMessage(response.message || "Failed to send verification email. Please try again.");
+        setVerificationDialogType("error");
+        setShowVerificationDialog(true);
+        setVerificationEmailSent(false);
+      }
+    } catch (error: any) {
+      console.error("Error sending verification email:", error);
+      setVerificationDialogMessage(error.message || "Failed to send verification email. Please try again.");
+      setVerificationDialogType("error");
+      setShowVerificationDialog(true);
+    } finally {
+      setIsSendingVerification(false);
+    }
+  };
+  
+  // Cleanup polling when verified
+  useEffect(() => {
+    if (emailVerificationStatus === "verified" && pollingIntervalRef.current) {
+      console.log("Stopping polling because email is verified");
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+  }, [emailVerificationStatus]);
+  
+  // Cleanup polling on unmount only (separate useEffect to avoid clearing on status changes)
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        console.log("Cleaning up polling interval on component unmount");
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   const formatPhoneNumber = (value: string): string => {
     // Remove all non-digit characters
@@ -354,6 +650,7 @@ export function RegisterPatient() {
                   <Label htmlFor="email">
                     Email Address <span className="text-red-500">*</span>
                   </Label>
+                  <div className="space-y-2">
                   <Input
                     id="email"
                     type="email"
@@ -361,7 +658,78 @@ export function RegisterPatient() {
                     value={formData.email}
                     onChange={(e) => handleChange("email", e.target.value)}
                     placeholder="patient@example.com"
-                  />
+                      className={emailVerificationStatus === "verified" ? "border-green-500" : ""}
+                    />
+                    {formData.email && formData.email.trim() && (
+                      <div className="space-y-2">
+                        {emailVerificationStatus === "verified" ? (
+                          <div className="flex items-center gap-2 text-sm text-green-600">
+                            <CheckCircleIcon className="h-4 w-4" />
+                            <span>Email verified</span>
+                          </div>
+                        ) : emailVerificationStatus === "pending" ? (
+                          <div className="flex items-center gap-2 text-sm text-amber-600">
+                            <Loader2Icon className="h-4 w-4 animate-spin" />
+                            <span>Waiting for email verification...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MailIcon className="h-4 w-4" />
+                            <span>Email verification required</span>
+                          </div>
+                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleSendVerification}
+                            disabled={isSendingVerification || emailVerificationStatus === "verified" || !formData.email.trim() || verificationEmailSent}
+                            className="flex-1"
+                          >
+                            {isSendingVerification ? (
+                              <>
+                                <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
+                                Sending...
+                              </>
+                            ) : emailVerificationStatus === "verified" ? (
+                              <>
+                                <CheckCircleIcon className="h-4 w-4 mr-2" />
+                                Email Verified
+                              </>
+                            ) : verificationEmailSent ? (
+                              <>
+                                <MailIcon className="h-4 w-4 mr-2" />
+                                Consent Pending
+                              </>
+                            ) : (
+                              <>
+                                <MailIcon className="h-4 w-4 mr-2" />
+                                Send Consent Link
+                              </>
+                            )}
+                          </Button>
+                          {(verificationEmailSent || emailVerificationStatus === "pending") && emailVerificationStatus !== "verified" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleRefreshVerificationStatus}
+                              disabled={isCheckingVerification || !formData.email.trim()}
+                              className="px-3"
+                              title="Check consent approval status"
+                            >
+                              {isCheckingVerification ? (
+                                <Loader2Icon className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RefreshCwIcon className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="address">
@@ -611,7 +979,7 @@ export function RegisterPatient() {
               <Button
                 type="submit"
                 className="bg-teal-600 hover:bg-teal-700 text-white"
-                disabled={isSubmitting || !agreedToTerms}
+                disabled={isSubmitting || !agreedToTerms || emailVerificationStatus !== "verified"}
               >
                 {isSubmitting ? (
                   <Loader2Icon className="h-4 w-4 mr-2 animate-spin" />
@@ -624,6 +992,55 @@ export function RegisterPatient() {
           </CardContent>
         </Card>
       </form>
+
+      {/* Verification Status Dialog */}
+      <Dialog open={showVerificationDialog} onOpenChange={setShowVerificationDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex flex-col items-center text-center space-y-4 py-4">
+              {verificationDialogType === "success" ? (
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                  <CheckCircleIcon className="w-10 h-10 text-white" />
+                </div>
+              ) : verificationDialogType === "error" ? (
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-lg">
+                  <XCircleIcon className="w-10 h-10 text-white" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg">
+                  <MailIcon className="w-10 h-10 text-white" />
+                </div>
+              )}
+              <DialogTitle className={`text-xl font-bold ${
+                verificationDialogType === "success" ? "text-teal-700" :
+                verificationDialogType === "error" ? "text-red-700" :
+                "text-blue-700"
+              }`}>
+                {verificationDialogType === "success" ? "Verification Email Sent!" :
+                 verificationDialogType === "error" ? "Verification Failed" :
+                 "Verification Status"}
+              </DialogTitle>
+              <DialogDescription className="text-base">
+                <p className="text-gray-700">
+                  {verificationDialogMessage}
+                </p>
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="flex gap-3 pt-4">
+            <Button
+              onClick={() => setShowVerificationDialog(false)}
+              className={`flex-1 text-white ${
+                verificationDialogType === "success" ? "bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600" :
+                verificationDialogType === "error" ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700" :
+                "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+              }`}
+            >
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Success Dialog */}
       <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>

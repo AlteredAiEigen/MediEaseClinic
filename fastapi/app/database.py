@@ -197,6 +197,11 @@ class Database:
             # WhatsApp messages collection indexes
             await cls.database.whatsapp_messages.create_index("message_sid", unique=True)
             await cls.database.whatsapp_messages.create_index("patient_id")
+            
+            # Pre-registration email verifications collection indexes
+            await cls.database.pre_registration_email_verifications.create_index("email")
+            await cls.database.pre_registration_email_verifications.create_index([("email", 1), ("token", 1)])
+            await cls.database.pre_registration_email_verifications.create_index("expiresAt", expireAfterSeconds=0)
             await cls.database.whatsapp_messages.create_index("received_at")
             
             logger.info("Database indexes created successfully")

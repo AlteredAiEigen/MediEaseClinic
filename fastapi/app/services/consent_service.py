@@ -23,6 +23,7 @@ class ConsentService:
         self.db = db
         self.patients_collection = db.patients
         self.appointments_collection = db.appointments
+        self.pre_registration_verifications_collection = db.pre_registration_email_verifications
         self.email_service = EmailService()
     
     def _generate_verification_token(self) -> str:
@@ -563,5 +564,161 @@ class ConsentService:
             
         except Exception as e:
             logger.error(f"Error checking consent: {e}", exc_info=True)
+            return False
+    
+    async def send_pre_registration_email_verification(self, email: str, patient_name: str = "Patient") -> Dict:
+        """
+        Send email verification link before patient registration.
+        
+        Args:
+            email: Email address to verify
+            patient_name: Patient name (optional, defaults to "Patient")
+            
+        Returns:
+            Dict with success status and message
+        """
+        try:
+            email = email.strip().lower()
+            
+            # Generate verification token
+            token = self._generate_verification_token()
+            
+            # Create or update pre-registration verification record
+            verification_url = f"{settings.frontend_base_url}/api/consent/verify-pre-registration-email?email={email}&token={token}"
+            
+            # Store verification record (expires in 24 hours)
+            expires_at = datetime.utcnow() + timedelta(hours=24)
+            verification_data = {
+                "email": email,
+                "token": token,
+                "verified": False,
+                "createdAt": datetime.utcnow(),
+                "expiresAt": expires_at,
+                "patientName": patient_name
+            }
+            
+            # Upsert verification record
+            await self.pre_registration_verifications_collection.update_one(
+                {"email": email},
+                {"$set": verification_data},
+                upsert=True
+            )
+            
+            # Generate HTML email
+            html_content = self._get_email_verification_html(patient_name, verification_url)
+            
+            # Send email
+            result = await self.email_service.send_email(
+                to=email,
+                subject="Verify Your Email - MediEase Clinic Registration",
+                body=f"Please verify your email by clicking the link: {verification_url}",
+                html=html_content,
+            )
+            
+            if result.get("success"):
+                logger.info(f"Pre-registration email verification sent to {email}")
+                return {
+                    "success": True,
+                    "message": "Verification email sent successfully"
+                }
+            else:
+                logger.error(f"Failed to send pre-registration email verification: {result.get('error')}")
+                return {
+                    "success": False,
+                    "error": result.get("error", "Failed to send verification email")
+                }
+                
+        except Exception as e:
+            logger.error(f"Error sending pre-registration email verification: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def verify_pre_registration_email(self, email: str, token: str, action: str) -> bool:
+        """
+        Verify email before registration based on action (approve/reject).
+        
+        Args:
+            email: Email address
+            token: Verification token
+            action: "approve" or "reject"
+            
+        Returns:
+            True if verification successful, False otherwise
+        """
+        try:
+            if action not in ["approve", "reject"]:
+                raise ValueError("Action must be 'approve' or 'reject'")
+            
+            email = email.strip().lower()
+            
+            # Find verification record
+            verification = await self.pre_registration_verifications_collection.find_one({
+                "email": email,
+                "token": token
+            })
+            
+            if not verification:
+                logger.error(f"Verification record not found for email {email}")
+                return False
+            
+            # Check if expired
+            if verification.get("expiresAt") < datetime.utcnow():
+                logger.error(f"Verification token expired for email {email}")
+                return False
+            
+            # Update verification status
+            update_data = {
+                "verified": action == "approve",
+                "verifiedAt": datetime.utcnow(),
+                "updatedAt": datetime.utcnow()
+            }
+            
+            await self.pre_registration_verifications_collection.update_one(
+                {"email": email, "token": token},
+                {"$set": update_data}
+            )
+            
+            logger.info(f"Pre-registration email verification {'approved' if action == 'approve' else 'rejected'} for {email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error verifying pre-registration email: {e}", exc_info=True)
+            return False
+    
+    async def check_pre_registration_email_verified(self, email: str) -> bool:
+        """
+        Check if email is verified before registration.
+        
+        Args:
+            email: Email address to check
+            
+        Returns:
+            True if email is verified, False otherwise
+        """
+        try:
+            email = email.strip().lower()
+            
+            # Check in pre-registration verifications
+            verification = await self.pre_registration_verifications_collection.find_one({
+                "email": email,
+                "verified": True
+            })
+            
+            if verification:
+                # Check if not expired
+                if verification.get("expiresAt") and verification.get("expiresAt") >= datetime.utcnow():
+                    return True
+            
+            # Also check if patient already exists and is verified
+            patient = await self.patients_collection.find_one({"email": email})
+            if patient and patient.get("emailVerified"):
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking pre-registration email verification: {e}", exc_info=True)
             return False
 
