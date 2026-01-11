@@ -423,10 +423,10 @@ class AWSService:
             - If any category is not mentioned or not applicable, use null or empty array.
             """
 
-            # Use configured OpenAI model (defaults to gpt-4 class models) with strict JSON output
+            # Use configured OpenAI model (defaults to gpt-4o-mini) with strict JSON output
             response = await ai_service.generate_response(
                 prompt,
-                model="gpt-4",
+                model=settings.openai_model,
                 response_format={"type": "json_object"},
             )
 

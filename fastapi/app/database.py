@@ -161,7 +161,8 @@ class Database:
             await cls.database.billing_items.create_index("category")
             await cls.database.billing_items.create_index("key")
             await cls.database.billing_items.create_index("clinicId")
-            await cls.database.billing_items.create_index([("clinicId", 1), ("category", 1), ("key", 1)], unique=True)
+            # Unique constraint: clinicId + key (same key can exist across clinics but not within same clinic)
+            await cls.database.billing_items.create_index([("clinicId", 1), ("key", 1)], unique=True)
             
             # Password reset tokens
             await cls.database.password_reset_tokens.create_index("tokenHash", unique=True)

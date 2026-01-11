@@ -871,6 +871,19 @@ async def get_prescription_presigned_url(
                 detail="Appointment not found"
             )
         
+        # Check clinic-based access control (except for platform admins)
+        user_clinic_id = current_user.get("clinicId")
+        appointment_clinic_id = appointment.get("clinicId")
+        user_role = current_user.get("role")
+        
+        # Platform admins can access any clinic's files
+        if user_role != "admin" and user_clinic_id and appointment_clinic_id:
+            if str(user_clinic_id) != str(appointment_clinic_id):
+                raise HTTPException(
+                    status_code=http_status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to access this prescription file"
+                )
+        
         prescription_file_key = appointment.get("prescriptionFileKey")
         if not prescription_file_key:
             raise HTTPException(

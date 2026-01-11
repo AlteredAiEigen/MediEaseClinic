@@ -3,7 +3,8 @@ Queue API endpoints.
 """
 
 import json
-from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
+from typing import Optional
+from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
@@ -32,7 +33,14 @@ async def check_in_patient(
     """Check in a patient to the queue."""
     try:
         queue_service = QueueService(db)
-        queue_entry = await queue_service.check_in_patient(check_in_data, current_user["_id"])
+        clinic_id = current_user.get("clinicId")
+        if clinic_id:
+            clinic_id = str(clinic_id)
+        queue_entry = await queue_service.check_in_patient(
+            check_in_data,
+            current_user["_id"],
+            clinic_id=clinic_id,
+        )
         # Convert Pydantic model to dict, ensuring ObjectIds are strings
         entry_dict = queue_entry.dict(by_alias=True, exclude_none=False)
         # Ensure all values are JSON-serializable (handles any remaining ObjectIds)
@@ -58,10 +66,14 @@ async def get_queue(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    """Get today's active queue."""
+    """Get today's active queue, filtered by clinic for receptionists."""
     try:
         queue_service = QueueService(db)
-        queue = await queue_service.get_active_queue()
+        # Filter by clinic_id for receptionists and doctors
+        clinic_id = current_user.get("clinicId")
+        if clinic_id:
+            clinic_id = str(clinic_id)
+        queue = await queue_service.get_active_queue(clinic_id=clinic_id)
         return success_response(
             data={"queue": queue},
             message="Queue retrieved successfully"
@@ -83,9 +95,13 @@ async def get_queue_stats(
     current_user: dict = Depends(require_roles(["admin", "doctor", "receptionist"])),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    """Get today's queue statistics."""
+    """Get today's queue statistics, filtered by clinic for receptionists."""
     queue_service = QueueService(db)
-    stats = await queue_service.get_queue_stats()
+    # Filter by clinic_id for receptionists and doctors
+    clinic_id = current_user.get("clinicId")
+    if clinic_id:
+        clinic_id = str(clinic_id)
+    stats = await queue_service.get_queue_stats(clinic_id=clinic_id)
     return success_response(
         data=stats,
         message="Queue statistics retrieved successfully"
@@ -180,6 +196,8 @@ async def start_consultation(
 @router.post("/{entry_id}/check-out", response_model=dict)
 async def check_out_patient(
     entry_id: str,
+    prescription_file: Optional[UploadFile] = File(None),
+    notes: Optional[str] = Form(None),
     current_user: dict = Depends(require_roles(["receptionist", "admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
     background_tasks: BackgroundTasks = BackgroundTasks(),
@@ -187,14 +205,137 @@ async def check_out_patient(
     """
     Check out patient from queue.
     
-    **Prescription Analysis**: If a prescription was uploaded during checkout and hasn't been analyzed,
-    it will be analyzed in the background (same as when doctor ends consultation).
-    This updates the s3_prescription table and patient's currentMedications.
+    **All processing happens in the backend**:
+    - If prescription_file is provided, it will be uploaded to S3 in the background
+    - Appointment status will be updated to "completed" automatically
+    - Prescription analysis will be scheduled in the background
+    - Queue entry will be marked as checked out
+    
+    This endpoint returns immediately after initiating all background tasks.
     """
     from bson import ObjectId
+    from datetime import datetime
     import logging
     logger = logging.getLogger(__name__)
     
+    # First, get the queue entry to find the appointment
+    queue_entry = await db.queue.find_one({"_id": ObjectId(entry_id)})
+    if not queue_entry:
+        return error_response(
+            message="Queue entry not found",
+            status_code=status.HTTP_404_NOT_FOUND
+        )
+    
+    # Get appointment ID from queue entry
+    appointment_value = queue_entry.get("appointment")
+    appointment_id = None
+    
+    if appointment_value:
+        if isinstance(appointment_value, dict):
+            appointment_id = appointment_value.get("_id")
+        elif isinstance(appointment_value, ObjectId):
+            appointment_id = str(appointment_value)
+        elif isinstance(appointment_value, str):
+            appointment_id = appointment_value
+        else:
+            appointment_id = str(appointment_value)
+    
+    # Update appointment status to completed FIRST (before checkout to avoid race conditions)
+    # This ensures queue status sync happens before we explicitly set it to checked-out
+    if appointment_id:
+        try:
+            from app.services.appointment_service import AppointmentService
+            appointment_service = AppointmentService(db)
+            await appointment_service.update_status(
+                appointment_id,
+                "completed"
+            )
+            logger.info(f"Appointment {appointment_id} status updated to completed")
+        except Exception as status_error:
+            logger.error(f"Failed to update appointment status during checkout: {status_error}", exc_info=True)
+            # Don't fail checkout if appointment update fails
+    
+    # Handle prescription upload in background if provided
+    if prescription_file and appointment_id:
+        try:
+            # Read file content before passing to background task
+            file_content = await prescription_file.read()
+            file_name = prescription_file.filename
+            content_type = prescription_file.content_type
+            
+            # Create a background task function
+            async def upload_and_analyze_prescription():
+                try:
+                    from app.services.appointment_service import AppointmentService
+                    from app.services.s3_service import s3_service
+                    from datetime import datetime
+                    import uuid
+                    import mimetypes
+                    
+                    logger.info(f"Uploading prescription file for appointment {appointment_id} (background)")
+                    
+                    # Generate S3 key
+                    file_extension = mimetypes.guess_extension(content_type) or ".jpg"
+                    s3_key = f"prescriptions/{appointment_id}/{uuid.uuid4()}{file_extension}"
+                    
+                    # Upload to S3
+                    await s3_service.upload_file(
+                        file_content=file_content,
+                        s3_key=s3_key,
+                        content_type=content_type
+                    )
+                    
+                    # Create s3_prescription document
+                    s3_prescription_doc = {
+                        "appointmentId": appointment_id,
+                        "s3Key": s3_key,
+                        "fileName": file_name,
+                        "fileType": content_type,
+                        "uploadedBy": str(current_user["_id"]),
+                        "uploadedAt": datetime.utcnow(),
+                        "notes": notes,
+                        "createdAt": datetime.utcnow(),
+                        "updatedAt": datetime.utcnow()
+                    }
+                    
+                    result = await db.s3_prescriptions.insert_one(s3_prescription_doc)
+                    s3_prescription_id = str(result.inserted_id)
+                    
+                    # Update appointment with prescription file info
+                    await db.appointments.update_one(
+                        {"_id": ObjectId(appointment_id)},
+                        {
+                            "$set": {
+                                "prescriptionFileKey": s3_key,
+                                "prescriptionFileName": file_name,
+                                "prescriptionFileType": content_type,
+                                "prescriptionUploadedAt": datetime.utcnow(),
+                                "prescriptionUploadedBy": str(current_user["_id"]),
+                                "updatedAt": datetime.utcnow()
+                            }
+                        }
+                    )
+                    
+                    # Schedule prescription analysis in background
+                    from app.routers.appointments import _analyze_prescription_background
+                    await _analyze_prescription_background(
+                        db,
+                        s3_prescription_id,
+                        appointment_id
+                    )
+                    logger.info(f"Prescription uploaded and analysis scheduled for appointment {appointment_id}")
+                except Exception as upload_error:
+                    logger.error(f"Failed to upload/analyze prescription during checkout: {upload_error}", exc_info=True)
+            
+            # Schedule prescription upload and analysis in background
+            background_tasks.add_task(upload_and_analyze_prescription)
+            logger.info(f"Prescription upload scheduled in background for appointment {appointment_id}")
+        except Exception as e:
+            logger.error(f"Failed to schedule prescription upload: {e}", exc_info=True)
+            # Don't fail checkout if prescription upload scheduling fails
+    
+    # Check out from queue (this is the main operation - must complete synchronously)
+    # This will override the queue status set by appointment update to "checked-out" and ensure is_active=False
     queue_service = QueueService(db)
     entry = await queue_service.check_out_patient(entry_id)
     if not entry:
@@ -203,56 +344,55 @@ async def check_out_patient(
             status_code=status.HTTP_404_NOT_FOUND
         )
     
-    # After checkout, check if there's a prescription that needs analysis
-    # This handles the case where receptionist uploads prescription at checkout
+    # Verify the checkout was successful by checking the entry status
+    verified_entry = await db.queue.find_one({"_id": ObjectId(entry_id)})
+    if verified_entry:
+        logger.info(f"Queue entry {entry_id} checkout verified - status: {verified_entry.get('status')}, is_active: {verified_entry.get('is_active')}")
+        if verified_entry.get("status") != "checked-out" or verified_entry.get("is_active") is not False:
+            logger.warning(f"Queue entry {entry_id} checkout may not have completed correctly - status: {verified_entry.get('status')}, is_active: {verified_entry.get('is_active')}")
+            # Force update to ensure checkout is complete
+            await db.queue.update_one(
+                {"_id": ObjectId(entry_id)},
+                {
+                    "$set": {
+                        "status": "checked-out",
+                        "is_active": False,
+                        "updated_at": datetime.utcnow()
+                    }
+                }
+            )
+            logger.info(f"Force-updated queue entry {entry_id} to checked-out with is_active=False")
+    
+    # Invalidate queue cache to ensure frontend gets updated data
     try:
-        # Get appointment ID from queue entry
-        # appointment can be: ObjectId, string (ObjectId), or dict with _id
-        appointment_value = entry.get("appointment")
-        appointment_id = None
-        
-        if appointment_value:
-            if isinstance(appointment_value, dict):
-                # If it's a dict, get _id from it
-                appointment_id = appointment_value.get("_id")
-            elif isinstance(appointment_value, ObjectId):
-                appointment_id = str(appointment_value)
-            elif isinstance(appointment_value, str):
-                appointment_id = appointment_value
-            else:
-                appointment_id = str(appointment_value)
-        
-        if appointment_id:
-            # Ensure it's a string for the query
-            if isinstance(appointment_id, ObjectId):
-                appointment_id = str(appointment_id)
-            
-            # Find the most recent s3_prescription for this appointment
+        from app.database import cache
+        await cache.clear_pattern("queue:*")
+        logger.info("Queue cache cleared after checkout")
+    except Exception as cache_error:
+        logger.warning(f"Failed to clear queue cache: {cache_error}")
+    
+    # Check if there's an existing prescription that needs analysis
+    if appointment_id:
+        try:
             s3_prescription = await db.s3_prescriptions.find_one(
                 {"appointmentId": appointment_id},
-                sort=[("createdAt", -1)]  # Get the most recent one
+                sort=[("createdAt", -1)]
             )
             
             if s3_prescription and s3_prescription.get("s3Key"):
-                # Check if already analyzed
                 if not s3_prescription.get("structuredDetails"):
-                    logger.info(f"Prescription found at checkout for appointment {appointment_id}, scheduling analysis in background...")
-                    # Import the analysis function from appointments router
+                    logger.info(f"Existing prescription found at checkout for appointment {appointment_id}, scheduling analysis in background...")
                     from app.routers.appointments import _analyze_prescription_background
-                    # Schedule prescription analysis in background
                     background_tasks.add_task(
                         _analyze_prescription_background,
                         db,
                         str(s3_prescription["_id"]),
                         appointment_id
                     )
-                else:
-                    logger.info(f"Prescription for appointment {appointment_id} already analyzed, skipping")
-    except Exception as analysis_error:
-        logger.error(f"Failed to schedule prescription analysis during checkout for entry {entry_id}: {analysis_error}", exc_info=True)
-        # Don't fail checkout if analysis scheduling fails
+        except Exception as analysis_error:
+            logger.error(f"Failed to schedule prescription analysis during checkout: {analysis_error}", exc_info=True)
     
-    return success_response(data=entry, message="Patient checked out successfully")
+    return success_response(data=entry, message="Patient checked out successfully. Prescription processing in progress.")
 
 
 @router.put("/reorder", response_model=dict)

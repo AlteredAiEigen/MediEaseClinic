@@ -220,7 +220,12 @@ class QueueService:
             except Exception as e:
                 logger.warning(f"Failed to update presentInClinic for patient {patient_id}: {e}")
     
-    async def check_in_patient(self, check_in_data: QueueCheckIn, checked_in_by: str) -> QueueInDB:
+    async def check_in_patient(
+        self,
+        check_in_data: QueueCheckIn,
+        checked_in_by: str,
+        clinic_id: Optional[str] = None,
+    ) -> QueueInDB:
         """Check in a patient to the queue via appointment."""
         try:
             # Validate appointment_id
@@ -252,6 +257,9 @@ class QueueService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Cannot check in appointment with status: {appointment.get('status')}"
                 )
+            
+            # Normalize clinic_id from caller (receptionist/doctor user)
+            clinic_id = str(clinic_id) if clinic_id else None
             
             # Get patient and doctor IDs from appointment
             patient_object_id = appointment.get("patientId")
@@ -355,6 +363,21 @@ class QueueService:
                         detail="Selected user is not a doctor"
                     )
             
+            # Resolve clinicId for this queue entry (source of truth: appointment.clinicId)
+            appointment_clinic_id = appointment.get("clinicId")
+            if appointment_clinic_id is not None:
+                appointment_clinic_id = str(appointment_clinic_id)
+
+            # If appointment is missing clinicId, try to infer from doctor, else fall back to caller clinic_id
+            inferred_clinic_id: Optional[str] = appointment_clinic_id
+            doctor_doc = None
+            if not inferred_clinic_id and doctor_object_id:
+                doctor_doc = await self.db["users"].find_one({"_id": doctor_object_id})
+                if doctor_doc and doctor_doc.get("clinicId") is not None:
+                    inferred_clinic_id = str(doctor_doc.get("clinicId"))
+            if not inferred_clinic_id and clinic_id:
+                inferred_clinic_id = clinic_id
+            
             # Generate queue entry
             queue_id = await QueueService.generate_queue_id()
             # For lab appointments, use "lab" as the identifier for queue numbering
@@ -366,6 +389,9 @@ class QueueService:
                 "patient": patient_object_id,
                 "doctor": doctor_object_id,  # Can be None for lab appointments
                 "appointment": appointment_object_id,
+                # Persist clinicId on queue docs so receptionist dashboards can filter fast + safely.
+                # Store as string to avoid ObjectId/string mismatches across environments.
+                "clinicId": inferred_clinic_id,
                 "checked_in_by": ObjectId(checked_in_by) if ObjectId.is_valid(checked_in_by) else checked_in_by,
                 "checked_in_at": datetime.utcnow(),
                 "status": "waiting",
@@ -402,14 +428,24 @@ class QueueService:
             )
             
             # Update appointment status to "checked-in"
-            await self.db["appointments"].update_one(
-                {"_id": appointment_object_id},
-                {
-                    "$set": {
+            # Also ensure appointment has clinicId set (from doctor / caller if missing)
+            appointment_update = {
                         "status": "checked-in",
                         "updatedAt": datetime.utcnow()
                     }
-                }
+            
+            # Ensure appointment has clinicId - get from appointment first, then doctor
+            if not appointment.get("clinicId") and inferred_clinic_id:
+                appointment_update["clinicId"] = inferred_clinic_id
+                logger.info(
+                    "Setting clinicId on appointment %s during check-in: %s",
+                    check_in_data.appointment_id,
+                    inferred_clinic_id,
+                )
+            
+            await self.db["appointments"].update_one(
+                {"_id": appointment_object_id},
+                {"$set": appointment_update}
             )
 
             # Invalidate cached appointment lists so dashboards update immediately
@@ -523,19 +559,107 @@ class QueueService:
             logger.error(f"Error getting populated queue entry {entry_id}: {e}")
             return None
     
-    async def get_active_queue(self) -> List[Dict]:
-        """Get today's active queue."""
+    async def get_active_queue(self, clinic_id: Optional[str] = None) -> List[Dict]:
+        """Get today's active queue, optionally filtered by clinic."""
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             
-            pipeline = [
-                {
-                    "$match": {
+            # Build match stage
+            match_stage = {
                         "checked_in_at": {"$gte": today},
                         "status": {"$in": ["waiting", "in-consultation", "checkout", "checkout-pending", "completed"]},
                         "is_active": True
                     }
+
+            # Prefer filtering by queue.clinicId (persisted at check-in). Use $expr+$toString to handle legacy
+            # ObjectId-vs-string values. We also allow legacy entries without clinicId to flow through and get
+            # filtered later via appointment/doctor lookup.
+            if clinic_id:
+                clinic_id = str(clinic_id)
+                match_stage["$or"] = [
+                    {"$expr": {"$eq": [{"$toString": "$clinicId"}, clinic_id]}},
+                    {"clinicId": {"$exists": False}},
+                    {"clinicId": None},
+                ]
+            
+            pipeline = [
+                {
+                    "$match": match_stage
                 },
+                {
+                    "$lookup": {
+                        "from": "appointments",
+                        "localField": "appointment",
+                        "foreignField": "_id",
+                        "as": "appointment_info"
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$appointment_info",
+                        "preserveNullAndEmptyArrays": True
+                    }
+                }
+            ]
+            
+            # Secondary clinic filter for legacy queue docs (no clinicId on queue entry)
+            if clinic_id:
+                # Add lookup for doctor to get clinicId as fallback
+                pipeline.append({
+                    "$lookup": {
+                        "from": "users",
+                        "localField": "doctor",
+                        "foreignField": "_id",
+                        "as": "doctor_info"
+                    }
+                })
+                pipeline.append({
+                    "$addFields": {
+                        "appointment_clinic_id_str": {"$toString": "$appointment_info.clinicId"},
+                        "doctor_clinic_id_str": {"$toString": {"$arrayElemAt": ["$doctor_info.clinicId", 0]}},
+                    }
+                })
+                # Filter by appointment clinicId first, then doctor clinicId. We only want to apply this
+                # to entries that passed the initial $match (which already included queue.clinicId matches),
+                # so this stage mainly keeps legacy entries (clinicId missing) scoped correctly.
+                pipeline.append({
+                    "$match": {
+                        "$or": [
+                            {"$expr": {"$eq": ["$appointment_clinic_id_str", clinic_id]}},
+                            {"$expr": {"$eq": ["$doctor_clinic_id_str", clinic_id]}},
+                        ]
+                    }
+                })
+
+            # IMPORTANT: never return raw appointment documents from aggregation. They contain ObjectIds and
+            # will crash FastAPI response serialization (PydanticSerializationError).
+            pipeline.append(
+                {
+                    "$project": {
+                        "appointment_info": 0,
+                        "effective_clinic_id_str": 0,
+                        "doctor_clinic_id_str": 0,
+                        "appointment_clinic_id_str": 0,
+                        "effective_clinic_id": 0,
+                        "doctor_clinic_id": 0,
+                    }
+                }
+            )
+            
+            # Continue with patient lookup (doctor lookup already done if clinic filtering)
+            if not clinic_id:
+                # Only add doctor lookup if we didn't already do it for clinic filtering
+                pipeline.append({
+                    "$lookup": {
+                        "from": "users",
+                        "localField": "doctor",
+                        "foreignField": "_id",
+                        "as": "doctor_info"
+                    }
+                })
+            
+            # Always add patient lookup
+            pipeline.extend([
                 {
                     "$lookup": {
                         "from": "patients",
@@ -545,17 +669,9 @@ class QueueService:
                     }
                 },
                 {
-                    "$lookup": {
-                        "from": "users",
-                        "localField": "doctor",
-                        "foreignField": "_id",
-                        "as": "doctor_info"
-                    }
-                },
-                {
                     "$sort": {"priority": -1, "queue_number": 1}
                 }
-            ]
+            ])
             
             cursor = self.queue_collection.aggregate(pipeline)
             queue = await cursor.to_list(length=None)
@@ -1226,8 +1342,8 @@ class QueueService:
         
         return result
     
-    async def get_queue_stats(self) -> Dict:
-        """Get today's queue statistics."""
+    async def get_queue_stats(self, clinic_id: Optional[str] = None) -> Dict:
+        """Get today's queue statistics, optionally filtered by clinic."""
         try:
             today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
             
@@ -1238,13 +1354,62 @@ class QueueService:
                     }
                 },
                 {
+                    "$lookup": {
+                        "from": "appointments",
+                        "localField": "appointment",
+                        "foreignField": "_id",
+                        "as": "appointment_info"
+                    }
+                },
+                {
+                    "$unwind": {
+                        "path": "$appointment_info",
+                        "preserveNullAndEmptyArrays": True
+                    }
+                }
+            ]
+            
+            # Prefer filtering by queue.clinicId (persisted at check-in) but allow legacy docs through.
+            if clinic_id:
+                clinic_id = str(clinic_id)
+                pipeline[0]["$match"]["$or"] = [
+                    {"$expr": {"$eq": [{"$toString": "$clinicId"}, clinic_id]}},
+                    {"clinicId": {"$exists": False}},
+                    {"clinicId": None},
+                ]
+                # Add lookup for doctor to get clinicId as fallback
+                pipeline.append({
+                    "$lookup": {
+                        "from": "users",
+                        "localField": "doctor",
+                        "foreignField": "_id",
+                        "as": "doctor_info"
+                    }
+                })
+                pipeline.append({
+                    "$addFields": {
+                        "appointment_clinic_id_str": {"$toString": "$appointment_info.clinicId"},
+                        "doctor_clinic_id_str": {"$toString": {"$arrayElemAt": ["$doctor_info.clinicId", 0]}},
+                    }
+                })
+                # Secondary filter for legacy docs (clinicId missing on queue)
+                pipeline.append({
+                    "$match": {
+                        "$or": [
+                            {"$expr": {"$eq": ["$appointment_clinic_id_str", clinic_id]}},
+                            {"$expr": {"$eq": ["$doctor_clinic_id_str", clinic_id]}},
+                        ]
+                    }
+                })
+            
+            # Continue with grouping
+            pipeline.append({
                     "$group": {
                         "_id": "$status",
                         "count": {"$sum": 1},
                         "avg_wait_time": {"$avg": "$wait_time"}
                     }
-                }
-            ]
+            })
             
             cursor = self.queue_collection.aggregate(pipeline)
             results = await cursor.to_list(length=None)

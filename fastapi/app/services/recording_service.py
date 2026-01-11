@@ -162,11 +162,11 @@ class RecordingService:
             "createdAt": datetime.utcnow(),
             "updatedAt": datetime.utcnow(),
             "aiProcessing": {
-                "model": "gpt-4",
+                "model": settings.openai_model,
                 "version": "1.0",
                 "language": "en-US",
                 "transcriptionModel": None,  # Will be set by cron job
-                "notesExtractionModel": "GPT-4",
+                "notesExtractionModel": settings.openai_model,
                 "notesExtractionStatus": "pending",
                 "notesExtractionError": None
             }
@@ -220,11 +220,11 @@ class RecordingService:
         update_data = {}
         ai_processing = deepcopy(recording.get("aiProcessing") or {})
         ai_processing.update({
-            "model": "gpt-4",
+            "model": settings.openai_model,
             "version": "1.0",
             "language": "en-US",
             "transcriptionModel": "AWS Transcribe",
-            "notesExtractionModel": "GPT-4",
+            "notesExtractionModel": settings.openai_model,
             "notesExtractionStatus": "pending",
             "notesExtractionError": None,
         })
@@ -571,12 +571,12 @@ class RecordingService:
         notes_result = await aws_service.extract_structured_notes(transcript, patient_context)
 
         ai_processing = {
-            "model": "gpt-4",
+            "model": settings.openai_model,
             "version": "1.0",
             "processingTime": None,  # Could calculate this
             "language": "en-US",
             "transcriptionModel": "AWS Transcribe",
-            "notesExtractionModel": "GPT-4",
+            "notesExtractionModel": settings.openai_model,
             "notesConfidence": notes_result.get("structured_notes") and 0.85 or 0.0,
             "notesExtractionStatus": "pending",
             "notesExtractionError": None,

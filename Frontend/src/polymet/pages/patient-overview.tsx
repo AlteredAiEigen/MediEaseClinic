@@ -5475,11 +5475,60 @@ export function PatientOverview() {
                               </div>
                             ) : null}
 
+                            {/* Extracted Medications Section */}
+                            {appointment.prescriptionMedications && appointment.prescriptionMedications.length > 0 && (
+                              <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <PillIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                  <p className="text-xs font-semibold text-blue-700 dark:text-blue-400">
+                                    Extracted Medications
+                                  </p>
+                                  <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                                    {appointment.prescriptionMedications.length}
+                                  </Badge>
+                                </div>
+                                <div className="space-y-2">
+                                  {appointment.prescriptionMedications.map((med: any, index: number) => (
+                                    <div
+                                      key={index}
+                                      className="p-2 rounded-md border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900/50"
+                                    >
+                                      <div className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                                        {med.name}
+                                      </div>
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs text-muted-foreground">
+                                        {med.dosage && (
+                                          <div>
+                                            <span className="font-medium">Dosage:</span> {med.dosage}
+                                          </div>
+                                        )}
+                                        {med.frequency && (
+                                          <div>
+                                            <span className="font-medium">Frequency:</span> {med.frequency}
+                                          </div>
+                                        )}
+                                        {med.duration && (
+                                          <div>
+                                            <span className="font-medium">Duration:</span> {med.duration}
+                                          </div>
+                                        )}
+                                        {med.instructions && (
+                                          <div className="sm:col-span-2">
+                                            <span className="font-medium">Instructions:</span> {med.instructions}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Prescription Section */}
                             {(appointment.prescription || appointment.prescriptionFileUrl) ? (
                               <div className="rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20 p-3">
                                 <div className="flex items-center gap-2 mb-2">
-                                  <PillIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                  <FileTextIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                                   <p className="text-xs font-semibold text-purple-700 dark:text-purple-400">
                                     Prescription
                                   </p>
@@ -5491,15 +5540,43 @@ export function PatientOverview() {
                                 )}
                                 {appointment.prescriptionFileUrl && (
                                   <div className="mt-2">
-                                    <a
-                                      href={appointment.prescriptionFileUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const appointmentId = appointment._id || appointment.appointmentId;
+                                          if (!appointmentId) {
+                                            toast({
+                                              title: "Error",
+                                              description: "Appointment ID is missing",
+                                              variant: "destructive",
+                                            });
+                                            return;
+                                          }
+                                          const response = await get(
+                                            `/api/appointments/${appointmentId}/prescription/presigned-url`
+                                          );
+                                          if (response.success && response.data?.presignedUrl) {
+                                            window.open(response.data.presignedUrl, "_blank", "noopener,noreferrer");
+                                          } else {
+                                            toast({
+                                              title: "Error",
+                                              description: response.message || "Failed to generate file access URL",
+                                              variant: "destructive",
+                                            });
+                                          }
+                                        } catch (error: any) {
+                                          toast({
+                                            title: "Error",
+                                            description: error?.message || "Failed to access file",
+                                            variant: "destructive",
+                                          });
+                                        }
+                                      }}
                                       className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-purple-700 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/30 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded-md border border-purple-300 dark:border-purple-700 transition-colors"
                                     >
                                       <FileTextIcon className="w-4 h-4" />
                                       {appointment.prescriptionFileName || "View Prescription File"}
-                                    </a>
+                                    </button>
                                   </div>
                                 )}
                               </div>

@@ -751,10 +751,13 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">
+                    Email Address <span className="text-red-500">*</span>
+                  </Label>
                     <Input
                       id="email"
                       type="email"
+                    required
                       placeholder="Enter email"
                       value={newPatient.email}
                       onChange={(e) =>

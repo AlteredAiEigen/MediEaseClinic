@@ -213,6 +213,7 @@ Your job is to extract and accurately transcribe the following details from the 
    - Dosage
    - Frequency
    - Duration
+   IMPORTANT: Prescriptions often contain MULTIPLE medications. You MUST scan the ENTIRE prescription image systematically - look for medications listed in rows, columns, numbered lists, or any other format. Each distinct medication should be extracted as a separate entry in the medicines array.
 8. Additional notes or instructions. Provide detailed and enhanced notes using bullet points. Organize the notes in clear bullet points for better readability.
    - Provide detailed and enhanced notes using bullet points.
    - If there are headings or categories within the notes, ensure the bullet points are organized under those headings.
@@ -221,6 +222,7 @@ Your job is to extract and accurately transcribe the following details from the 
 
 IMPORTANT INSTRUCTIONS:
 - Before extracting information, mentally enhance the image for better readability if needed. Pay close attention to details, adjust your focus to different areas of the prescription, and carefully examine each section.
+- CRITICAL FIRST STEP: Before extracting medications, scan the ENTIRE prescription image and mentally list ALL text that could be a medication. Look for patterns like: medication names, "Tab", "T.", "Capsule", "Syrup", "Injection", dosage numbers, frequency indicators (BD, TDS, OD, etc.), or any text that appears to be prescribing a medication. Count how many distinct medications you can identify before you start extracting.
 - Ensure that each extracted field is accurate and clear. If any information is not legible or missing, indicate it as 'Not available' (not null).
 - Do not guess or infer any information that is not clearly legible.
 - Do not make assumptions or guesses about missing information.
@@ -280,6 +282,9 @@ CRITICAL RULES:
 13. Extract medication details EXACTLY as written - do not abbreviate or modify
 14. Pay special attention to medication names, dosages, and frequencies - these are critical for patient safety
 15. If you cannot clearly read a medication name, dosage, or frequency, mark the entire medicine entry with 'Not available' for unclear fields
+16. CRITICAL: You MUST extract ALL medications listed on the prescription. Scan the entire prescription image carefully - medications may be listed in different sections, rows, columns, numbered lists, bullet points, or formats. Count each distinct medication separately. If you see multiple medications, you MUST include ALL of them in the medicines array. Do not skip any medications, even if they appear in different parts of the prescription or have different formatting.
+17. Before finalizing your response, double-check: Count the number of distinct medications you found. Ensure the medicines array contains exactly that many entries. If you initially found only one medication, re-examine the entire prescription image systematically - scan from top to bottom, left to right, looking for any text that might indicate a medication (look for patterns like "Tab", "T.", "Capsule", "Syrup", medication names, dosages, frequencies). If you find only one medication, ask yourself: "Could there be another medication listed elsewhere on this prescription?" and scan again before finalizing.
+18. Medications can appear in various formats: "Tab XYZ", "T. ABC", "Capsule DEF", "Syrup GHI", numbered lists (1., 2., etc.), or simply as medication names followed by dosage/frequency. Extract ALL of them regardless of format.
 
 Example additionalNotes format:
 "• Take medications with food to avoid stomach upset
@@ -291,8 +296,10 @@ Remember: Accuracy is paramount. When in doubt, use 'Not available' rather than 
 """.strip()
 
         try:
+            # Use configurable vision-capable model (default: gpt-4o-mini for lower cost)
+            vision_model = getattr(settings, "openai_vision_model", None) or settings.openai_model
             response = self.client.chat.completions.create(
-                model="gpt-4o",
+                model=vision_model,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {

@@ -195,7 +195,7 @@ async def create_billing_item(
         )
     except DuplicateKeyError:
         return error_response(
-            message="A pricing entry with this category and key already exists for your clinic. Please use a different key or edit the existing item.",
+            message="A pricing entry with this key already exists for your clinic. Please use a different key or edit the existing item.",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     except Exception as e:
@@ -267,7 +267,7 @@ async def update_billing_item(
         )
     except DuplicateKeyError:
         return error_response(
-            message="Another pricing entry already uses this category and key in your clinic. Please choose a unique key.",
+            message="Another pricing entry already uses this key in your clinic. Please choose a unique key.",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     except Exception as e:

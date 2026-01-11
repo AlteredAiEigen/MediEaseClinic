@@ -1171,6 +1171,11 @@ const consultationEntries = queueList
 const checkoutEntries = queueList
   .filter(
     (entry) => {
+      // Exclude inactive entries (checked out entries have is_active = false)
+      if (entry.is_active === false) {
+        return false;
+      }
+      
       // Exclude lab appointments - they go through direct checkout and shouldn't appear here
       // Check multiple ways to identify lab appointments:
       // 1. No doctor assigned (lab appointments don't have doctors)
@@ -1322,87 +1327,28 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
     return;
   }
 
-  const appointmentId = resolveAppointmentIdForEntry(selectedQueueEntry);
-
   try {
     setIsCheckingOut(true);
     const queueId = selectedQueueEntry.queue_id;
     const queueEntryId = selectedQueueEntry._id;
 
-    // Upload prescription if provided (don't fail checkout if upload fails)
-    if (prescriptionFile && appointmentId) {
-      try {
-        console.log("📤 Uploading prescription file for appointment:", appointmentId);
-        const formData = new FormData();
-        formData.append("file", prescriptionFile);
-        if (selectedQueueEntry.reason) {
-          formData.append("notes", selectedQueueEntry.reason);
-        }
-
-        const uploadResponse = await post(`/api/appointments/${appointmentId}/prescription-upload`, formData);
-        console.log("📤 Prescription upload response:", uploadResponse);
-        
-        if (!uploadResponse.success) {
-          console.error("❌ Prescription upload failed:", {
-            message: uploadResponse.message,
-            data: uploadResponse.data,
-            appointmentId: appointmentId,
-          });
-          toast({
-            title: "Prescription upload warning",
-            description: `Prescription upload failed: ${uploadResponse.message || "Unknown error"}. Checkout will continue.`,
-            variant: "destructive",
-          });
-        } else {
-          console.log("✅ Prescription uploaded successfully:", uploadResponse.data);
-        }
-      } catch (uploadErr: any) {
-        console.error("❌ Prescription upload error:", {
-          error: uploadErr,
-          message: uploadErr?.message,
-          response: uploadErr?.response?.data,
-          appointmentId: appointmentId,
-        });
-        // Continue with checkout even if upload fails
-        toast({
-          title: "Prescription upload failed",
-          description: `Upload error: ${uploadErr?.message || "Unknown error"}. Checkout will continue without the prescription file.`,
-          variant: "destructive",
-        });
-      }
-    } else if (prescriptionFile && !appointmentId) {
-      toast({
-        title: "Prescription not attached",
-        description:
-          "No appointment could be located for this queue entry. Checkout will continue without attaching the prescription file.",
-        variant: "destructive",
-      });
-    }
-
-    // Update appointment status to completed (best-effort; don't block checkout if it fails)
-    if (appointmentId) {
-      try {
-        await patch(`/api/appointments/${appointmentId}/status`, {
-          status: "completed",
-        });
-      } catch (err: any) {
-        console.warn("⚠️ Failed to mark appointment completed, continuing checkout:", err);
-        toast({
-          title: "Appointment update warning",
-          description:
-            "Could not update appointment status, but checkout will continue.",
-          variant: "destructive",
-        });
-      }
-    }
-
-    // Check out from queue (this sets status to "checked-out" and is_active to False)
-    // Use _id (MongoDB ObjectId) for the check-out endpoint, not queue_id
     if (!queueEntryId) {
       throw new Error("Queue entry ID not found");
     }
+
+    // Single backend call: checkout with prescription file (if provided)
+    // All processing (upload, analysis, status update) happens in the backend
+    const formData = new FormData();
+    if (prescriptionFile) {
+      formData.append("prescription_file", prescriptionFile);
+    }
+    if (selectedQueueEntry.reason) {
+      formData.append("notes", selectedQueueEntry.reason);
+    }
     
-    const checkOutResponse = await post(`/api/queue/${queueEntryId}/check-out`, {});
+    // Call checkout endpoint - it handles everything in the backend
+    // If no file, FormData will be empty but that's fine - backend handles Optional[UploadFile]
+    const checkOutResponse = await post(`/api/queue/${queueEntryId}/check-out`, formData);
     if (!checkOutResponse.success) {
       throw new Error(checkOutResponse.message || "Failed to check out patient from queue");
     }
@@ -1440,12 +1386,18 @@ const handleCompleteCheckout = async (skipPrescriptionWarning = false) => {
       })
     );
  
-    // Refresh data to ensure consistency with backend (best-effort; don't show checkout failed if refresh fails)
-    void Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]).catch(
-      (refreshErr) => {
-        console.warn("⚠️ Post-checkout refresh failed:", refreshErr);
+    // Refresh data immediately to ensure UI updates (best-effort; don't show checkout failed if refresh fails)
+    try {
+      await Promise.all([fetchQueueData(), fetchQueueStats(), fetchTodayAppointments()]);
+    } catch (refreshErr) {
+      console.warn("⚠️ Post-checkout refresh failed:", refreshErr);
+      // Still try to refresh queue data even if other calls fail
+      try {
+        await fetchQueueData();
+      } catch (queueErr) {
+        console.warn("⚠️ Queue refresh also failed:", queueErr);
       }
-    );
+    }
   } catch (err) {
     console.error("Checkout error:", err);
     toast({

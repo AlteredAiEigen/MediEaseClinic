@@ -64,6 +64,10 @@ export function RegisterPatient() {
       alert("Please confirm that you agree to the data security terms before registering the patient.");
       return;
     }
+    if (!formData.email.trim()) {
+      alert("Email address is required.");
+      return;
+    }
     
     setIsSubmitting(true);
 
@@ -93,7 +97,7 @@ export function RegisterPatient() {
         dateOfBirth: dateOfBirthValue,  // Optional - can be calculated from age
         age: formData.age,  // Mandatory
         phone: `+91 ${formData.phone.replace(/\s/g, '')}`.trim(),
-        email: formData.email || `${formData.firstName.toLowerCase()}.${(formData.lastName || "").toLowerCase()}@example.com`,
+        email: formData.email.trim(),
         address: formData.address,
         bloodGroup: formData.bloodGroup || "A+", // Default to A+ if not selected
         allergies: formData.allergies || "",
@@ -347,10 +351,13 @@ export function RegisterPatient() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email Address</Label>
+                  <Label htmlFor="email">
+                    Email Address <span className="text-red-500">*</span>
+                  </Label>
                   <Input
                     id="email"
                     type="email"
+                    required
                     value={formData.email}
                     onChange={(e) => handleChange("email", e.target.value)}
                     placeholder="patient@example.com"

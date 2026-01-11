@@ -66,7 +66,9 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     openai_api_key: str = ""
-    openai_model: str = "gpt-4"
+    openai_model: str = "gpt-4o-mini"
+    # Vision model (OpenAI) for image analysis (e.g., prescriptions)
+    openai_vision_model: str = "gpt-4o-mini"
     
     # Google Gemini Configuration
     gemini_api_key: str = ""

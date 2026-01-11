@@ -97,6 +97,13 @@ interface AppointmentDetailsDialogProps {
       plan?: string;
     };
     patientProfileUpdates?: PatientProfileUpdates;
+    prescriptionMedications?: Array<{
+      name: string;
+      dosage?: string;
+      frequency?: string;
+      duration?: string;
+      instructions?: string;
+    }>;
   } | null;
 }
 
@@ -411,12 +418,65 @@ export function AppointmentDetailsDialog({
               </Card>
             </div>
 
+            {/* Prescription Medications Section */}
+            {appointment.prescriptionMedications && appointment.prescriptionMedications.length > 0 && (
+              <Card className="border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <PillIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                      Extracted Medications
+                    </span>
+                    <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-700">
+                      {appointment.prescriptionMedications.length}
+                    </Badge>
+                  </div>
+                  <div className="space-y-3">
+                    {appointment.prescriptionMedications.map((med, index) => (
+                      <div
+                        key={index}
+                        className="p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-white dark:bg-gray-900/50"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                            {med.name}
+                          </h4>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                          {med.dosage && (
+                            <div>
+                              <span className="font-medium">Dosage:</span> {med.dosage}
+                            </div>
+                          )}
+                          {med.frequency && (
+                            <div>
+                              <span className="font-medium">Frequency:</span> {med.frequency}
+                            </div>
+                          )}
+                          {med.duration && (
+                            <div>
+                              <span className="font-medium">Duration:</span> {med.duration}
+                            </div>
+                          )}
+                          {med.instructions && (
+                            <div className="sm:col-span-2">
+                              <span className="font-medium">Instructions:</span> {med.instructions}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Prescription File Section */}
             {appointment.prescriptionFileUrl && (
               <Card className="border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-3">
-                    <PillIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <FileTextIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                     <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">
                       Prescription File
                     </span>

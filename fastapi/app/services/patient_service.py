@@ -224,16 +224,8 @@ class PatientService:
         Raises:
             HTTPException: If patient creation fails
         """
-        # Check if patient already exists
-        existing_patient = await self.patients_collection.find_one(
-            {"email": patient_data.email.lower()}
-        )
-        
-        if existing_patient:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Patient already exists with this email"
-            )
+        # Note: Email is not required to be unique - same email (e.g., Gmail) can be used for multiple patients
+        # This allows family members or multiple patients to share the same email address
         
         # Generate patient ID
         patient_id = await self.generate_patient_id()
