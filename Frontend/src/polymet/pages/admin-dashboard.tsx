@@ -35,6 +35,7 @@ import {
 import { get } from "@/lib/api-client";
 import { MediEaseLoader } from "@/components/mediease-loader";
 import { checkCurrentAvailability } from "@/lib/availability-utils";
+import { WhatsAppMessaging } from "@/polymet/components/whatsapp-messaging";
 
 interface DashboardStats {
   totalPatients: number;
@@ -798,6 +799,13 @@ export function AdminDashboard() {
 
         {/* Right Column - 1/3 width */}
         <div className="space-y-6">
+          {/* WhatsApp Messaging */}
+          <Card className="border-border shadow-sm">
+            <CardContent className="p-4">
+              <WhatsAppMessaging />
+            </CardContent>
+          </Card>
+          
           {/* Patient Search Widget */}
           <PatientSearchWidget
             userRole="admin"

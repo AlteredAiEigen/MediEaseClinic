@@ -18,13 +18,34 @@ class WhatsAppMessageRequest(BaseModel):
     @classmethod
     def validate_phone_number(cls, v: str) -> str:
         """Validate phone number format."""
-        if not v.startswith('whatsapp:+'):
-            raise ValueError("Phone number must start with 'whatsapp:+'")
-        # Remove 'whatsapp:+' and check if remaining is numeric
-        number_part = v.replace('whatsapp:+', '').replace(' ', '').replace('-', '')
+        if not v:
+            raise ValueError("Phone number is required")
+
+        clean = v.strip().replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+
+        # Normalize to whatsapp:+ format
+        if clean.startswith('whatsapp:'):
+            number_part = clean.replace('whatsapp:', '')
+            if not number_part.startswith('+') and number_part.isdigit():
+                number_part = f"+{number_part}"
+            clean = f"whatsapp:{number_part}"
+        elif clean.startswith('+'):
+            clean = f"whatsapp:{clean}"
+        elif clean.isdigit():
+            # Best-effort normalization for common Indian formats
+            if len(clean) == 10:
+                clean = f"whatsapp:+91{clean}"
+            elif len(clean) == 12 and clean.startswith('91'):
+                clean = f"whatsapp:+{clean}"
+            else:
+                raise ValueError("Phone number must include country code. Use: whatsapp:+[country code][number]")
+        else:
+            raise ValueError("Invalid phone number format. Use: whatsapp:+[country code][number]")
+
+        number_part = clean.replace('whatsapp:+', '')
         if not number_part.isdigit() or len(number_part) < 10:
             raise ValueError("Invalid phone number format. Use: whatsapp:+[country code][number]")
-        return v
+        return clean
     
     @field_validator('message')
     @classmethod

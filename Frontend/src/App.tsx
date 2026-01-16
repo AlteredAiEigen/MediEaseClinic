@@ -30,6 +30,7 @@ const ReceptionistAppointments = lazy(() => import("@/polymet/pages/receptionist
 const ReceptionistSettings = lazy(() => import("@/polymet/pages/receptionist-settings").then(module => ({ default: module.ReceptionistSettings })));
 const ReceptionistWorkstation = lazy(() => import("@/polymet/pages/receptionist-workstation").then(module => ({ default: module.ReceptionistWorkstation })));
 const RegisterPatient = lazy(() => import("@/polymet/pages/register-patient").then(module => ({ default: module.RegisterPatient })));
+const WhatsAppMessages = lazy(() => import("@/polymet/pages/whatsapp-messages").then(module => ({ default: module.WhatsAppMessages })));
 const PatientOverview = lazy(() => import("@/polymet/pages/patient-overview").then(module => ({ default: module.PatientOverview })));
 const ConsultationSession = lazy(() => import("@/polymet/pages/consultation-session-new").then(module => ({ default: module.ConsultationSession })));
 const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout").then(module => ({ default: module.HealthcareLayout })));
@@ -390,6 +391,20 @@ export default function MediEaseClinicPrototype() {
                 <Suspense fallback={<LoadingFallback />}>
                   <HealthcareLayout>
                     <ReceptionistSettings />
+                  </HealthcareLayout>
+                </Suspense>
+              </RequireAuth>
+            }
+          />
+
+          {/* WhatsApp Messages - Available for all roles */}
+          <Route
+            path="/whatsapp-messages"
+            element={
+              <RequireAuth role={["admin", "doctor", "receptionist"]}>
+                <Suspense fallback={<LoadingFallback />}>
+                  <HealthcareLayout>
+                    <WhatsAppMessages />
                   </HealthcareLayout>
                 </Suspense>
               </RequireAuth>

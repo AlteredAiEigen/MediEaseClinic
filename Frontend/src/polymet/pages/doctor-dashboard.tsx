@@ -34,6 +34,7 @@ import { useAuth } from "@/context/auth-context";
 import { useToast } from "@/components/ui/use-toast";
 import { useDoctorQueueWebSocket } from "@/hooks/use-websocket";
 import { MediEaseLoader } from "@/polymet/components/mediease-loader";
+import { WhatsAppMessaging } from "@/polymet/components/whatsapp-messaging";
 
 interface QueuePatient {
   id: string;
@@ -907,12 +908,15 @@ export function DoctorDashboard() {
             Welcome back, Dr. {user.firstName} {user.lastName}! Here's your overview for today.
           </p>
         </div>
-        {/* WebSocket connection status */}
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-          <span className="text-xs text-muted-foreground">
-            {isConnected ? 'Live' : 'Offline'}
-          </span>
+        {/* WebSocket connection status and WhatsApp */}
+        <div className="flex items-center gap-3">
+          <WhatsAppMessaging />
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-xs text-muted-foreground">
+              {isConnected ? 'Live' : 'Offline'}
+            </span>
+          </div>
         </div>
       </div>
 

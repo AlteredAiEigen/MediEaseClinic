@@ -18,6 +18,19 @@ export default defineConfig({
       '(components)': path.resolve(__dirname, './src/(components)'),
     }
   },
+  build: {
+    // Ensure assets have hash in filename for cache busting
+    rollupOptions: {
+      output: {
+        // Add hash to chunk filenames for cache busting
+        entryFileNames: 'assets/[name].[hash].js',
+        chunkFileNames: 'assets/[name].[hash].js',
+        assetFileNames: 'assets/[name].[hash].[ext]',
+      }
+    },
+    // Generate manifest for cache busting
+    manifest: true,
+  },
   server: {
     host: '0.0.0.0',
     port: 5173,

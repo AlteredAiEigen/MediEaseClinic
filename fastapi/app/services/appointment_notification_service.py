@@ -43,6 +43,15 @@ class AppointmentNotificationService:
             return None
         phone = patient.get("phone")
         return phone.strip() if isinstance(phone, str) and phone.strip() else None
+    
+    async def _check_whatsapp_consent(self, patient_id: Optional[str]) -> bool:
+        """Check if patient has given consent for WhatsApp messages."""
+        if not patient_id or not ObjectId.is_valid(patient_id):
+            return False
+        patient = await self.patients.find_one({"_id": ObjectId(patient_id)})
+        if not patient:
+            return False
+        return patient.get("consent_whatsapp", False) is True
 
 
     @staticmethod
@@ -110,6 +119,61 @@ class AppointmentNotificationService:
         if extra_set:
             update.update(extra_set)
         await self.appointments.update_one({"_id": appointment["_id"]}, {"$set": update})
+        
+        # Also store in whatsapp_messages collection for robust tracking
+        if success and details.get("message_sid"):
+            message_sid = details.get("message_sid")
+            patient_id = str(appointment.get("patientId", ""))
+            appointment_id = appointment.get("appointmentId", "")
+            
+            # Get message body based on scenario
+            message_body = ""
+            if scenario == "copy_appointment_reminder":
+                message_body = f"Appointment reminder for {appointment.get('date')} {appointment.get('time')}"
+            elif scenario == "copy_post_visit_lab_request":
+                message_body = "Lab result reminder"
+            elif scenario == "copy_followup_appointment_reminder":
+                message_body = "Follow-up appointment reminder"
+            
+            # Get patient phone
+            patient_phone = None
+            if patient_id and ObjectId.is_valid(patient_id):
+                patient = await self.patients.find_one({"_id": ObjectId(patient_id)})
+                if patient:
+                    patient_phone = patient.get("phone", "")
+            
+            message_doc = {
+                "message_sid": message_sid,
+                "direction": "outbound",
+                "from": details.get("from_number", ""),
+                "to": details.get("to", ""),
+                "body": message_body,
+                "patient_id": patient_id if patient_id else None,
+                "appointment_id": appointment_id,
+                "sent_by": "scheduler",
+                "sent_by_role": "system",
+                "sent_by_name": "Automated Scheduler",
+                "status": details.get("status", "sent"),
+                "message_type": "scheduler",
+                "scenario": scenario,
+                "created_at": datetime.utcnow(),
+                "received_at": datetime.utcnow().isoformat(),
+                "processed": True,
+            }
+            await self.db.whatsapp_messages.insert_one(message_doc)
+            logger.info(f"Stored scheduler WhatsApp message in MongoDB: {message_sid} (scenario: {scenario})")
+            
+            # Broadcast WebSocket update for real-time UI refresh
+            try:
+                from app.services.websocket_service import WebSocketService
+                websocket_service = WebSocketService()
+                await websocket_service.broadcast_whatsapp_message_update(
+                    message_doc,
+                    patient_id
+                )
+                logger.info(f"Broadcasted scheduler WhatsApp message update via WebSocket")
+            except Exception as ws_error:
+                logger.warning(f"Failed to broadcast scheduler WhatsApp message update: {ws_error}")
 
     async def _send_template(
         self,
@@ -212,7 +276,14 @@ class AppointmentNotificationService:
 
             logger.info(f"  ✓ Appointment {appointment_id} is within window, sending reminder...")
 
-            patient_phone = await self._get_patient_phone(appointment.get("patientId"))
+            # Check WhatsApp consent first
+            patient_id = appointment.get("patientId")
+            if not await self._check_whatsapp_consent(patient_id):
+                logger.info(f"  ⚠ Skipping {appointment_id} - patient has not consented to WhatsApp messages")
+                skipped_count += 1
+                continue
+
+            patient_phone = await self._get_patient_phone(patient_id)
             provider = await self._get_provider(appointment.get("clinicId"))
             recipient = self._format_whatsapp_number(patient_phone)
             if not recipient:
@@ -299,7 +370,14 @@ class AppointmentNotificationService:
         failed_count = 0
 
         for appointment in appointments:
-            patient_phone = await self._get_patient_phone(appointment.get("patientId"))
+            # Check WhatsApp consent first
+            patient_id = appointment.get("patientId")
+            if not await self._check_whatsapp_consent(patient_id):
+                logger.info(f"Skipping lab result reminder for appointment {appointment.get('appointmentId')} - patient has not consented to WhatsApp messages")
+                failed_count += 1
+                continue
+
+            patient_phone = await self._get_patient_phone(patient_id)
             provider = await self._get_provider(appointment.get("clinicId"))
             recipient = self._format_whatsapp_number(patient_phone)
             if not recipient:
@@ -421,7 +499,14 @@ class AppointmentNotificationService:
                 skipped_count += 1
                 continue
 
-            patient_phone = await self._get_patient_phone(appointment.get("patientId"))
+            # Check WhatsApp consent first
+            patient_id = appointment.get("patientId")
+            if not await self._check_whatsapp_consent(patient_id):
+                logger.info(f"Skipping follow-up reminder for appointment {appointment.get('appointmentId')} - patient has not consented to WhatsApp messages")
+                failed_count += 1
+                continue
+
+            patient_phone = await self._get_patient_phone(patient_id)
             provider = await self._get_provider(appointment.get("clinicId"))
             recipient = self._format_whatsapp_number(patient_phone)
             if not recipient:

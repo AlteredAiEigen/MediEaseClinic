@@ -28,6 +28,7 @@ import {
   PhoneIcon,
   ActivityIcon,
   DollarSignIcon,
+  MessageSquareIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
@@ -97,6 +98,11 @@ export function HealthcareLayout({
         path: "/admin-appointments",
       },
       {
+        icon: MessageSquareIcon,
+        label: "WhatsApp Messages",
+        path: "/whatsapp-messages",
+      },
+      {
         icon: DollarSignIcon,
         label: "Billing & Pricing",
         path: "/admin-billing",
@@ -126,6 +132,11 @@ export function HealthcareLayout({
         label: "Appointments",
         path: "/doctor-appointments",
       },
+      {
+        icon: MessageSquareIcon,
+        label: "WhatsApp Messages",
+        path: "/whatsapp-messages",
+      },
       { icon: SettingsIcon, label: "Settings", path: "/doctor-settings" },
     ],
 
@@ -140,6 +151,11 @@ export function HealthcareLayout({
         icon: CalendarIcon,
         label: "Appointments",
         path: "/receptionist-appointments",
+      },
+      {
+        icon: MessageSquareIcon,
+        label: "WhatsApp Messages",
+        path: "/whatsapp-messages",
       },
       { icon: SettingsIcon, label: "Settings", path: "/receptionist-settings" },
     ],
@@ -469,6 +485,13 @@ export function HealthcareLayout({
                 <div>
                   <h1 className="text-2xl font-bold text-foreground">
                     Settings
+                  </h1>
+                </div>
+              )}
+              {location.pathname === "/whatsapp-messages" && (
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">
+                    WhatsApp Messages
                   </h1>
                 </div>
               )}

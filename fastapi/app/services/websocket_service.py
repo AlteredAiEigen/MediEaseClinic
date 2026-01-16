@@ -221,3 +221,22 @@ class WebSocketService:
                 await self.connection_manager.broadcast_to_channel(message, "doctor_queue", str(doctor_id))
         except Exception as e:
             logger.error(f"Error broadcasting appointment created: {e}")
+
+    async def broadcast_whatsapp_message_update(self, message_data: dict, patient_id: str = None):
+        """Broadcast when a WhatsApp message is sent or received."""
+        try:
+            message = {
+                "type": "whatsapp_message_update",
+                "timestamp": datetime.utcnow().isoformat(),
+                "data": {
+                    "message": message_data,
+                    "patient_id": patient_id,
+                },
+            }
+
+            # Broadcast to general channel for all clients
+            await self.connection_manager.broadcast_to_channel(message, "queue_updates")
+            
+            logger.info(f"Broadcasted WhatsApp message update for patient {patient_id}")
+        except Exception as e:
+            logger.error(f"Error broadcasting WhatsApp message update: {e}")
