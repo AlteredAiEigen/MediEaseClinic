@@ -37,7 +37,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { useAuth } from "@/context/auth-context";
-import { get } from "@/lib/api-client";
+import { get, post } from "@/lib/api-client";
 import {
   getPatientWhatsAppMessages,
   sendWhatsAppMessage,
@@ -151,6 +151,17 @@ export function PatientDashboard() {
   const [insuranceRecords, setInsuranceRecords] = useState<PatientInsuranceRecord[]>([]);
   const [selectedInsuranceId, setSelectedInsuranceId] = useState<string | null>(null);
   const [lastVisitDisplay, setLastVisitDisplay] = useState<string | null>(null);
+  const [isEditingVitals, setIsEditingVitals] = useState(false);
+  const [isSavingVitals, setIsSavingVitals] = useState(false);
+  const [vitalsForm, setVitalsForm] = useState({
+    bloodPressure: "",
+    heartRate: "",
+    temperature: "",
+    weight: "",
+    bloodGlucose: "",
+    oxygenSaturation: "",
+    respiratoryRate: "",
+  });
   const [isInsuranceDialogOpen, setIsInsuranceDialogOpen] = useState(false);
   const [insuranceDialogMode, setInsuranceDialogMode] = useState<"create" | "edit">("create");
   const [editingInsuranceId, setEditingInsuranceId] = useState<string | null>(null);
@@ -217,6 +228,10 @@ export function PatientDashboard() {
   ];
 
   const canManageInsurance = useMemo(() => {
+    return user?.role === "admin" || user?.role === "doctor" || user?.role === "receptionist";
+  }, [user]);
+
+  const canEditVitals = useMemo(() => {
     return user?.role === "admin" || user?.role === "doctor" || user?.role === "receptionist";
   }, [user]);
 
@@ -894,6 +909,109 @@ export function PatientDashboard() {
     }
   };
 
+  // Handle Save Vitals
+  const handleSaveVitals = async () => {
+    if (!patientId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Patient ID is required",
+      });
+      return;
+    }
+
+    setIsSavingVitals(true);
+    try {
+      const vitalsPayload: any = {};
+      if (vitalsForm.bloodPressure) vitalsPayload.bloodPressure = vitalsForm.bloodPressure;
+      if (vitalsForm.heartRate) vitalsPayload.heartRate = vitalsForm.heartRate;
+      if (vitalsForm.temperature) vitalsPayload.temperature = vitalsForm.temperature;
+      if (vitalsForm.weight) vitalsPayload.weight = vitalsForm.weight;
+      if (vitalsForm.bloodGlucose) vitalsPayload.bloodGlucose = vitalsForm.bloodGlucose;
+      if (vitalsForm.oxygenSaturation) vitalsPayload.oxygenSaturation = vitalsForm.oxygenSaturation;
+      if (vitalsForm.respiratoryRate) vitalsPayload.respiratoryRate = vitalsForm.respiratoryRate;
+
+      // Allow saving even if some fields are empty
+      if (Object.keys(vitalsPayload).length === 0) {
+        toast({
+          variant: "default",
+          title: "No vitals entered",
+          description: "Please enter at least one vital sign to save.",
+        });
+        setIsSavingVitals(false);
+        return;
+      }
+
+      const response = await post(
+        `/api/patient-vitals/${patientId}`,
+        vitalsPayload
+      );
+
+      if (response.success) {
+        toast({
+          title: "Vitals Saved",
+          description: "Patient vitals have been recorded successfully",
+        });
+        
+        // Refresh vitals
+        const vitalsResponse = await get<PatientVitals[]>(
+          `/api/patient-vitals/${patientId}?limit=10`
+        );
+        if (vitalsResponse.success && Array.isArray(vitalsResponse.data)) {
+          setVitals(vitalsResponse.data);
+        }
+        
+        setIsEditingVitals(false);
+        setVitalsForm({
+          bloodPressure: "",
+          heartRate: "",
+          temperature: "",
+          weight: "",
+          bloodGlucose: "",
+          oxygenSaturation: "",
+          respiratoryRate: "",
+        });
+      } else {
+        throw new Error(response.message || "Failed to save vitals");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save vitals";
+      toast({
+        variant: "destructive",
+        title: "Save Failed",
+        description: message,
+      });
+    } finally {
+      setIsSavingVitals(false);
+    }
+  };
+
+  const handleCancelEditVitals = () => {
+    setIsEditingVitals(false);
+    setVitalsForm({
+      bloodPressure: "",
+      heartRate: "",
+      temperature: "",
+      weight: "",
+      bloodGlucose: "",
+      oxygenSaturation: "",
+      respiratoryRate: "",
+    });
+  };
+
+  const handleStartEditVitals = () => {
+    setVitalsForm({
+      bloodPressure: activeVitals.bloodPressure || "",
+      heartRate: activeVitals.heartRate || "",
+      temperature: activeVitals.temperature || "",
+      weight: activeVitals.weight || "",
+      bloodGlucose: activeVitals.bloodGlucose || "",
+      oxygenSaturation: activeVitals.oxygenSaturation || "",
+      respiratoryRate: activeVitals.respiratoryRate || "",
+    });
+    setIsEditingVitals(true);
+  };
+
   // Handle Request Profile Update
   const handleRequestProfileUpdate = async () => {
     if (!patient || !patient.phone) {
@@ -1121,11 +1239,24 @@ Thank you!`;
                   <ActivityIcon className="w-4 h-4 text-[#00C4B3]" />
                   Current Vitals
                 </CardTitle>
-                <span className="text-[10px] text-muted-foreground">
-                  {latestVitals?.recordedAt 
-                    ? `Last updated: ${new Date(latestVitals.recordedAt).toLocaleDateString()} ${new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : "No recent updates"}
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-muted-foreground">
+                    {latestVitals?.recordedAt 
+                      ? `Last updated: ${new Date(latestVitals.recordedAt).toLocaleDateString()} ${new Date(latestVitals.recordedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : "No recent updates"}
+                  </span>
+                  {canEditVitals && !isEditingVitals && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleStartEditVitals}
+                      className="text-[#00C4B3] border-[#00C4B3] hover:bg-[#00C4B3] hover:text-white"
+                    >
+                      <EditIcon className="w-3 h-3 mr-1" />
+                      Edit
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {/* Current Vitals - Primary */}
@@ -1150,12 +1281,21 @@ Thank you!`;
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          <p className="text-base font-semibold text-foreground mb-0.5">
-                            {activeVitals.bloodPressure
-                              ? `${activeVitals.bloodPressure} mmHg`
-                              : "—"}
-                          </p>
-                          {(() => {
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="120/80"
+                              value={vitalsForm.bloodPressure}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, bloodPressure: e.target.value })}
+                              className="text-sm"
+                            />
+                          ) : (
+                            <p className="text-base font-semibold text-foreground mb-0.5">
+                              {activeVitals.bloodPressure
+                                ? `${activeVitals.bloodPressure} mmHg`
+                                : "—"}
+                            </p>
+                          )}
+                          {!isEditingVitals && (() => {
                             const status = getVitalStatus(
                               "bloodPressure",
                               activeVitals.bloodPressure
@@ -1174,7 +1314,7 @@ Thank you!`;
                             );
                           })()}
                         </div>
-                        {activeVitals.bloodPressure && (
+                        {!isEditingVitals && activeVitals.bloodPressure && (
                           <div className="mt-1.5">
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div 
@@ -1209,12 +1349,22 @@ Thank you!`;
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          <p className="text-base font-semibold text-foreground mb-0.5">
-                            {activeVitals.heartRate
-                              ? `${activeVitals.heartRate} bpm`
-                              : "—"}
-                          </p>
-                          {(() => {
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="72"
+                              type="number"
+                              value={vitalsForm.heartRate}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, heartRate: e.target.value })}
+                              className="text-sm"
+                            />
+                          ) : (
+                            <p className="text-base font-semibold text-foreground mb-0.5">
+                              {activeVitals.heartRate
+                                ? `${activeVitals.heartRate} bpm`
+                                : "—"}
+                            </p>
+                          )}
+                          {!isEditingVitals && (() => {
                             const status = getVitalStatus(
                               "heartRate",
                               activeVitals.heartRate
@@ -1233,7 +1383,7 @@ Thank you!`;
                             );
                           })()}
                         </div>
-                        {activeVitals.heartRate && (
+                        {!isEditingVitals && activeVitals.heartRate && (
                           <div className="mt-1.5">
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div 
@@ -1268,12 +1418,23 @@ Thank you!`;
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          <p className="text-base font-semibold text-foreground mb-0.5">
-                            {activeVitals.temperature
-                              ? `${activeVitals.temperature}°F`
-                              : "—"}
-                          </p>
-                          {(() => {
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="98.6"
+                              type="number"
+                              step="0.1"
+                              value={vitalsForm.temperature}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, temperature: e.target.value })}
+                              className="text-sm"
+                            />
+                          ) : (
+                            <p className="text-base font-semibold text-foreground mb-0.5">
+                              {activeVitals.temperature
+                                ? `${activeVitals.temperature}°F`
+                                : "—"}
+                            </p>
+                          )}
+                          {!isEditingVitals && (() => {
                             const status = getVitalStatus(
                               "temperature",
                               activeVitals.temperature
@@ -1292,7 +1453,7 @@ Thank you!`;
                             );
                           })()}
                         </div>
-                        {activeVitals.temperature && (
+                        {!isEditingVitals && activeVitals.temperature && (
                           <div className="mt-1.5">
                             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                               <div 
@@ -1327,10 +1488,21 @@ Thank you!`;
                           </div>
                         </div>
                         <div className="mt-1 space-y-1">
-                          <p className="text-base font-semibold text-foreground mb-0.5">
-                            {activeVitals.weight ? `${activeVitals.weight} lbs` : "—"}
-                          </p>
-                          <Badge
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="150"
+                              type="number"
+                              step="0.1"
+                              value={vitalsForm.weight}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, weight: e.target.value })}
+                              className="text-sm"
+                            />
+                          ) : (
+                            <p className="text-base font-semibold text-foreground mb-0.5">
+                              {activeVitals.weight ? `${activeVitals.weight} lbs` : "—"}
+                            </p>
+                          )}
+                          {!isEditingVitals && <Badge
                             className={`text-[10px] px-1.5 py-0 ${
                               activeVitals.weight
                                 ? "bg-[#24B173]/10 text-[#24B173] border-[#24B173]/20"
@@ -1338,7 +1510,7 @@ Thank you!`;
                             }`}
                           >
                             {activeVitals.weight ? "Recorded" : "Not recorded"}
-                          </Badge>
+                          </Badge>}
                         </div>
                       </div>
                     </div>
@@ -1360,14 +1532,26 @@ Thank you!`;
                           <p className="text-[10px] text-muted-foreground mb-0.5">
                             Blood Glucose
                           </p>
-                          <p className="text-xs font-semibold text-foreground">
-                            {activeVitals.bloodGlucose
-                              ? `${activeVitals.bloodGlucose} mg/dL`
-                              : "—"}
-                          </p>
-                          <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
-                            {activeVitals.bloodGlucose ? "Recorded" : "Not recorded"}
-                          </Badge>
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="99"
+                              type="number"
+                              value={vitalsForm.bloodGlucose}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, bloodGlucose: e.target.value })}
+                              className="text-xs text-center"
+                            />
+                          ) : (
+                            <>
+                              <p className="text-xs font-semibold text-foreground">
+                                {activeVitals.bloodGlucose
+                                  ? `${activeVitals.bloodGlucose} mg/dL`
+                                  : "—"}
+                              </p>
+                              <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
+                                {activeVitals.bloodGlucose ? "Recorded" : "Not recorded"}
+                              </Badge>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1380,12 +1564,24 @@ Thank you!`;
                         </div>
                         <div className="text-center">
                           <p className="text-[10px] text-muted-foreground mb-0.5">Oxygen Saturation</p>
-                          <p className="text-xs font-semibold text-foreground">
-                            {activeVitals.oxygenSaturation
-                              ? `${activeVitals.oxygenSaturation}%`
-                              : "—"}
-                          </p>
-                          {(() => {
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="98"
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={vitalsForm.oxygenSaturation}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, oxygenSaturation: e.target.value })}
+                              className="text-xs text-center"
+                            />
+                          ) : (
+                            <>
+                              <p className="text-xs font-semibold text-foreground">
+                                {activeVitals.oxygenSaturation
+                                  ? `${activeVitals.oxygenSaturation}%`
+                                  : "—"}
+                              </p>
+                              {(() => {
                             const status = getVitalStatus(
                               "oxygenSaturation",
                               activeVitals.oxygenSaturation
@@ -1397,11 +1593,13 @@ Thank you!`;
                               gray: "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400",
                             };
                             return (
-                              <Badge className={`mt-0.5 text-[10px] px-1.5 py-0 ${colorMap[status.color] || colorMap.gray}`}>
-                                {status.status}
-                              </Badge>
-                            );
-                          })()}
+                                <Badge className={`mt-0.5 text-[10px] px-1.5 py-0 ${colorMap[status.color] || colorMap.gray}`}>
+                                  {status.status}
+                                </Badge>
+                              );
+                            })()}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1416,19 +1614,63 @@ Thank you!`;
                           <p className="text-[10px] text-muted-foreground mb-0.5">
                             Respiratory Rate
                           </p>
-                          <p className="text-xs font-semibold text-foreground">
-                            {activeVitals.respiratoryRate
-                              ? `${activeVitals.respiratoryRate} bpm`
-                              : "—"}
-                          </p>
-                          <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
-                            {activeVitals.respiratoryRate ? "Recorded" : "Not recorded"}
-                          </Badge>
+                          {isEditingVitals ? (
+                            <Input
+                              placeholder="18"
+                              type="number"
+                              value={vitalsForm.respiratoryRate}
+                              onChange={(e) => setVitalsForm({ ...vitalsForm, respiratoryRate: e.target.value })}
+                              className="text-xs text-center"
+                            />
+                          ) : (
+                            <>
+                              <p className="text-xs font-semibold text-foreground">
+                                {activeVitals.respiratoryRate
+                                  ? `${activeVitals.respiratoryRate} bpm`
+                                  : "—"}
+                              </p>
+                              <Badge className="mt-0.5 bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 text-[10px] px-1.5 py-0">
+                                {activeVitals.respiratoryRate ? "Recorded" : "Not recorded"}
+                              </Badge>
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Edit Actions */}
+                {isEditingVitals && (
+                  <div className="pt-3 border-t border-border/60 flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelEditVitals}
+                      disabled={isSavingVitals}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveVitals}
+                      disabled={isSavingVitals}
+                      className="bg-[#00C4B3] hover:bg-[#009C8F] text-white"
+                    >
+                      {isSavingVitals ? (
+                        <>
+                          <Loader2Icon className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <ActivityIcon className="w-4 h-4 mr-2" />
+                          Save Vitals
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

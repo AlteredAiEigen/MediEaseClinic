@@ -3924,14 +3924,16 @@ export function PatientOverview() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <ClipboardListIcon className="w-5 h-5 text-[#00C4B3]" />
-                    Current Condition
+                    {queueId || appointmentId ? "Last Visit Condition" : "Current Condition"}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {isOverviewEditing ? (
                     <div className="space-y-3">
                       <div>
-                        <Label className="text-xs text-muted-foreground">Condition</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          {queueId || appointmentId ? "Last Visit Condition" : "Condition"}
+                        </Label>
                         <Input
                           value={editForm.condition}
                           onChange={(event) => {
@@ -3944,7 +3946,9 @@ export function PatientOverview() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs text-muted-foreground">Care Plan Summary</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          {queueId || appointmentId ? "Last Visit Care Plan Summary" : "Care Plan Summary"}
+                        </Label>
                         <Textarea
                           rows={3}
                           value={editForm.carePlanSummary}
@@ -3958,7 +3962,9 @@ export function PatientOverview() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs text-muted-foreground">Follow-up Plan</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          {queueId || appointmentId ? "Last Visit Follow-up Plan" : "Follow-up Plan"}
+                        </Label>
                         <Textarea
                           rows={3}
                           value={editForm.followUpPlan}
@@ -3972,7 +3978,9 @@ export function PatientOverview() {
                         />
                       </div>
                       <div>
-                        <Label className="text-xs text-muted-foreground">Chief Complaint</Label>
+                        <Label className="text-xs text-muted-foreground">
+                          {queueId || appointmentId ? "Last Visit Chief Complaint" : "Chief Complaint"}
+                        </Label>
                         <Textarea
                           rows={2}
                           value={editForm.chiefComplaint}
@@ -3992,7 +4000,7 @@ export function PatientOverview() {
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
-                            Condition
+                            {queueId || appointmentId ? "Last Visit Condition" : "Condition"}
                           </p>
                           <p className="text-base text-foreground">
                             {displayPatient.condition || "Not recorded"}
@@ -4000,7 +4008,7 @@ export function PatientOverview() {
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
-                            Chief Complaint
+                            {queueId || appointmentId ? "Last Visit Chief Complaint" : "Chief Complaint"}
                           </p>
                     <p className="text-sm text-muted-foreground">
                             {displayPatient.chiefComplaint || "Not recorded"}
@@ -4012,7 +4020,7 @@ export function PatientOverview() {
                       <div className="space-y-3">
                         <div>
                           <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
-                            Care Plan Summary
+                            {queueId || appointmentId ? "Last Visit Care Plan Summary" : "Care Plan Summary"}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {displayPatient.carePlanSummary || "Not recorded"}
@@ -4020,7 +4028,7 @@ export function PatientOverview() {
                     </div>
                         <div>
                           <p className="text-xs font-semibold text-[#f97316] uppercase tracking-wide">
-                            Follow-up Plan
+                            {queueId || appointmentId ? "Last Visit Follow-up Plan" : "Follow-up Plan"}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             {displayPatient.followUpPlan || "Not recorded"}
