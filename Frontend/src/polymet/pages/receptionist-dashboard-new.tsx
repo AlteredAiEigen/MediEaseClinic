@@ -59,7 +59,6 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import { useQueueWebSocket } from "@/hooks/use-websocket";
 import { todayLocalYYYYMMDD } from "@/lib/date";
-import { WhatsAppMessaging } from "@/polymet/components/whatsapp-messaging";
 
 interface Patient {
   _id: string;
@@ -2786,16 +2785,13 @@ const confirmCheckoutWithoutPrescription = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button 
+            <Button
               onClick={() => setAddPatientDialog(true)}
               className="w-full h-14 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-md hover:shadow-xl transition-all duration-300 rounded-xl font-semibold"
             >
               <UserPlusIcon className="w-5 h-5 mr-2" />
               Register New Patient
             </Button>
-            <div className="w-full">
-              <WhatsAppMessaging />
-            </div>
             <Link to="/receptionist-appointments" className="w-full">
               <Button className="w-full h-14 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-md hover:shadow-xl transition-all duration-300 rounded-xl font-semibold">
                 <CalendarIcon className="w-5 h-5 mr-2" />

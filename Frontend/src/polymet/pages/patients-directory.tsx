@@ -1053,11 +1053,11 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                         </div>
 
                         <div className="pt-3 border-t border-border/60 mt-auto">
-                          <div className="flex justify-center">
+                          <div className="flex justify-center gap-2">
                             <Button
                               variant="outline"
                               size="sm"
-                              className="w-full max-w-[220px] border-[#00C4B3] text-[#0f766e] hover:bg-[#00C4B3]/10"
+                              className="flex-1 max-w-[220px] border-[#00C4B3] text-[#0f766e] hover:bg-[#00C4B3]/10"
                               onClick={() => {
                                 // Open the same "New Appointment" form from the appointments page,
                                 // with the patient preselected via ?patientId=
@@ -1070,6 +1070,17 @@ export function PatientsDirectory({ mode = "doctor" }: PatientsDirectoryProps) {
                             >
                               <CalendarIcon className="w-4 h-4 mr-2" />
                               Schedule
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 max-w-[220px] border-[#10b981] text-[#059669] hover:bg-[#10b981]/10"
+                              onClick={() => {
+                                navigate(`/patient-dashboard/${patient.recordId}`);
+                              }}
+                            >
+                              <UserIcon className="w-4 h-4 mr-2" />
+                              View
                             </Button>
                           </div>
                         </div>

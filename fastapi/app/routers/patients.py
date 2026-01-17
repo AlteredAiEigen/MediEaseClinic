@@ -262,6 +262,7 @@ async def search_patients(
 async def get_patient(
     patient_id: str,
     appointment_id: Optional[str] = Query(None, description="Appointment ID for consent check"),
+    skip_consent: bool = Query(False, description="Skip consent check (for dashboard views)"),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -270,9 +271,11 @@ async def get_patient(
     
     Requires authentication. PHI access is logged for audit trail.
     
-    For doctors: Requires valid appointment with consent granted.
+    For doctors: Requires valid appointment with consent granted (unless skip_consent=true).
     If appointment_id is provided, consent will be checked for that appointment.
     Otherwise, checks for active appointment with current doctor.
+    
+    skip_consent: If True, bypasses consent check (useful for dashboard views).
     """
     from bson import ObjectId
     from app.services.consent_service import ConsentService
@@ -326,7 +329,11 @@ async def get_patient(
     has_consent = False
     appointment = None
     
-    if user_role == "doctor":
+    # Skip consent check if skip_consent parameter is set (for dashboard views)
+    if skip_consent:
+        has_consent = True
+        logger.info(f"Skipping consent check for patient {patient_id} (skip_consent=true)")
+    elif user_role == "doctor":
         consent_service = ConsentService(db)
         
         if appointment_id:

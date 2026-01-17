@@ -388,7 +388,14 @@ export function HealthcareLayout({
             </Button>
 
             <div className="flex-1 lg:flex-none">
-              {location.pathname.includes("-dashboard") && (
+              {location.pathname.includes("/patient-dashboard/") && (
+                <div>
+                  <h1 className="text-2xl font-bold text-foreground">
+                    Patient Details
+                  </h1>
+                </div>
+              )}
+              {location.pathname.includes("-dashboard") && !location.pathname.includes("/patient-dashboard/") && (
                 <div>
                   <h1 className="text-2xl font-bold text-foreground">
                     {location.pathname === "/receptionist-dashboard"
