@@ -111,7 +111,7 @@ variables = {
 
 send_template(
     to="whatsapp:+1234567890",
-    scenario="copy_appointment_reminder",
+    scenario="appointment_reminder",
     values=variables
 )
 ```
@@ -120,7 +120,7 @@ send_template(
 ```python
 update_appointment({
     "appointmentReminderSent": True,
-    "whatsappLogs.copy_appointment_reminder": {
+    "whatsappLogs.appointment_reminder": {
         "status": "sent",
         "attemptedAt": datetime.utcnow(),
         "details": {...}

@@ -28,17 +28,17 @@
 1. **Appointment Reminders** (24h before)
    - Checks appointments 23-25 hours before
    - Requires: `consent_whatsapp: true` ✅ (just added)
-   - Template: `copy_appointment_reminder`
+   - Template: `appointment_reminder`
 
 2. **Lab Result Reminders** (24h after completion)
    - Runs at 10 AM daily
    - Requires: `consent_whatsapp: true` ✅ (just added)
-   - Template: `copy_post_visit_lab_request`
+   - Template: `post_visit_lab_request`
 
 3. **Follow-up Reminders** (3 days before follow-up date)
    - Runs at 10 AM daily
    - Requires: `consent_whatsapp: true` ✅ (just added)
-   - Template: `copy_followup_appointment_reminder`
+   - Template: `followup_appointment_reminder`
 
 ### 4. **Database Collections** ✅
 - ✅ `whatsapp_messages` - Indexes created
@@ -53,7 +53,7 @@
 **Status:** Cannot verify without MongoDB access or Twilio API access
 
 **Required Templates:**
-1. `copy_appointment_reminder`
+1. `appointment_reminder`
    - Variables needed:
      - `patient_name` (position 1)
      - `clinic_name` (position 2)
@@ -61,13 +61,13 @@
      - `appointment_datetime` (position 4)
      - `header_clinic_name` (position 5)
 
-2. `copy_post_visit_lab_request`
+2. `post_visit_lab_request`
    - Variables needed:
      - `patient_name`
      - `clinic_email`
      - `clinic_name`
 
-3. `copy_followup_appointment_reminder`
+3. `followup_appointment_reminder`
    - Variables needed:
      - `patient_name`
      - `clinic_name`
@@ -79,7 +79,7 @@
 **Action Required:**
 - [ ] Verify templates exist in MongoDB `whatsapp_templates` collection
 - [ ] Each template must have:
-  - `template_name`: (e.g., "copy_appointment_reminder")
+  - `template_name`: (e.g., "appointment_reminder")
   - `content_sid`: Twilio Content SID
   - `variables`: Array of variable definitions
 
@@ -149,9 +149,9 @@
 db.whatsapp_templates.find({}).pretty()
 
 # Should see 3 templates:
-# 1. copy_appointment_reminder
-# 2. copy_post_visit_lab_request  
-# 3. copy_followup_appointment_reminder
+# 1. appointment_reminder
+# 2. post_visit_lab_request  
+# 3. followup_appointment_reminder
 ```
 
 **If templates don't exist**, you need to:
@@ -160,7 +160,7 @@ db.whatsapp_templates.find({}).pretty()
 3. Insert into MongoDB with this structure:
 ```javascript
 {
-  template_name: "copy_appointment_reminder",
+  template_name: "appointment_reminder",
   content_sid: "HX...", // From Twilio
   variables: [
     {position: "1", name: "patient_name"},

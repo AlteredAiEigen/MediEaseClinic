@@ -427,11 +427,11 @@ async def get_patient_whatsapp_messages(
                     if message_sid:
                         # Determine message content based on scenario
                         message_body = ""
-                        if scenario == "copy_appointment_reminder":
+                        if scenario == "appointment_reminder":
                             message_body = f"Appointment reminder for {apt.get('date')} {apt.get('time')}"
-                        elif scenario == "copy_post_visit_lab_request":
+                        elif scenario == "post_visit_lab_request":
                             message_body = "Lab result reminder"
-                        elif scenario == "copy_followup_appointment_reminder":
+                        elif scenario == "followup_appointment_reminder":
                             message_body = "Follow-up appointment reminder"
                         
                         scheduler_messages.append({

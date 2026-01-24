@@ -24,9 +24,9 @@
 - Both endpoints accessible and responding (HTTP 200)
 
 ### 2. **Templates** ✅
-- `copy_appointment_reminder` - ✅ Working
-- `copy_post_visit_lab_request` - ✅ Ready
-- `copy_followup_appointment_reminder` - ✅ Ready
+- `appointment_reminder` - ✅ Working
+- `post_visit_lab_request` - ✅ Ready
+- `followup_appointment_reminder` - ✅ Ready
 
 ### 3. **Services** ✅
 - WhatsApp Service: Configured and working
@@ -52,19 +52,19 @@
    - Sends 24 hours before appointment
    - Checks every hour
    - Requires: `consent_whatsapp: true`
-   - Template: `copy_appointment_reminder`
+   - Template: `appointment_reminder`
 
 2. **Lab Result Reminders**
    - Sends 24 hours after appointment completion
    - Runs daily at 10 AM
    - Requires: `consent_whatsapp: true`
-   - Template: `copy_post_visit_lab_request`
+   - Template: `post_visit_lab_request`
 
 3. **Follow-up Reminders**
    - Sends 3 days before follow-up date
    - Runs daily at 10 AM
    - Requires: `consent_whatsapp: true`
-   - Template: `copy_followup_appointment_reminder`
+   - Template: `followup_appointment_reminder`
 
 ### Manual Messaging
 
@@ -142,7 +142,7 @@ cd /home/ec2-user/MediEaseClinic
 
 **Test Date:** January 16, 2025  
 **Test Phone:** +917006590467  
-**Template:** copy_appointment_reminder  
+**Template:** appointment_reminder  
 **Message SID:** MM3d73175628040435dc560c660a1e2c3a  
 **Status:** ✅ **DELIVERED**  
 **Patient Received:** ✅ **YES**

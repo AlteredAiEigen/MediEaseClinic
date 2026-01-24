@@ -30,9 +30,9 @@ async def check_templates():
             print("\n⚠️  NO TEMPLATES FOUND!")
             print("\nYou need to insert templates into the 'whatsapp_templates' collection.")
             print("\nRequired templates:")
-            print("  1. copy_appointment_reminder")
-            print("  2. copy_post_visit_lab_request")
-            print("  3. copy_followup_appointment_reminder")
+            print("  1. appointment_reminder")
+            print("  2. post_visit_lab_request")
+            print("  3. followup_appointment_reminder")
             print("\nEach template needs:")
             print("  - template_name: string")
             print("  - content_sid: string (from Twilio Content API)")
@@ -40,7 +40,7 @@ async def check_templates():
             print("\nExample template structure:")
             print("""
 {
-  "template_name": "copy_appointment_reminder",
+  "template_name": "appointment_reminder",
   "content_sid": "HX...",  // Get this from Twilio Content API
   "variables": [
     {"position": "1", "name": "patient_name"},

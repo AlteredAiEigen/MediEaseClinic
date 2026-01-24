@@ -128,11 +128,11 @@ class AppointmentNotificationService:
             
             # Get message body based on scenario
             message_body = ""
-            if scenario == "copy_appointment_reminder":
+            if scenario == "appointment_reminder":
                 message_body = f"Appointment reminder for {appointment.get('date')} {appointment.get('time')}"
-            elif scenario == "copy_post_visit_lab_request":
+            elif scenario == "post_visit_lab_request":
                 message_body = "Lab result reminder"
-            elif scenario == "copy_followup_appointment_reminder":
+            elif scenario == "followup_appointment_reminder":
                 message_body = "Follow-up appointment reminder"
             
             # Get patient phone
@@ -290,7 +290,7 @@ class AppointmentNotificationService:
                 logger.warning(f"  ✗ No valid phone number for {appointment_id}")
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "copy_appointment_reminder",
+                    "appointment_reminder",
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
@@ -305,7 +305,7 @@ class AppointmentNotificationService:
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="copy_appointment_reminder",
+                scenario="appointment_reminder",
                 to=recipient,
                 content_values=variables,
                 flag_field="appointmentReminderSent",
@@ -384,7 +384,7 @@ class AppointmentNotificationService:
                 failed_count += 1
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "copy_post_visit_lab_request",
+                    "post_visit_lab_request",
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
@@ -405,7 +405,7 @@ class AppointmentNotificationService:
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="copy_post_visit_lab_request",
+                scenario="post_visit_lab_request",
                 to=recipient,
                 content_values=variables,
                 flag_field="labResultReminderSent",
@@ -513,7 +513,7 @@ class AppointmentNotificationService:
                 failed_count += 1
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "copy_followup_appointment_reminder",
+                    "followup_appointment_reminder",
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
@@ -529,7 +529,7 @@ class AppointmentNotificationService:
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="copy_followup_appointment_reminder",
+                scenario="followup_appointment_reminder",
                 to=recipient,
                 content_values=variables,
                 flag_field="followupWhatsappSent",

@@ -4,7 +4,7 @@
 
 **Date:** January 16, 2025  
 **Test Phone Number:** +917006590467  
-**Template Used:** `copy_appointment_reminder`
+**Template Used:** `appointment_reminder`
 
 ---
 
@@ -34,7 +34,7 @@
 - [x] Verify phone number format is correct
 
 ### Step 2: Send Test Message
-- [ ] Send ONE test message using `copy_appointment_reminder` template
+- [ ] Send ONE test message using `appointment_reminder` template
 - [ ] Use test appointment data:
   - Patient Name: Test Patient
   - Clinic Name: MediEase Clinic
@@ -61,7 +61,7 @@
 
 ## ✅ Expected Results
 
-### Message Content (Template: copy_appointment_reminder)
+### Message Content (Template: appointment_reminder)
 The patient should receive a WhatsApp message containing:
 - Patient name
 - Clinic name
@@ -131,7 +131,7 @@ tail -f /var/log/fastapi/app.log | grep -i "whatsapp\|webhook"
 ## ⚠️ Important Notes
 
 1. **SINGLE MESSAGE ONLY** - To avoid Meta blocking, sending only ONE test message
-2. **Template Used:** `copy_appointment_reminder` (most common use case)
+2. **Template Used:** `appointment_reminder` (most common use case)
 3. **Phone Format:** Must include country code (+91 for India)
 4. **Consent Required:** Patient must have `consent_whatsapp: true`
 5. **Rate Limiting:** Twilio has rate limits, but one message is safe
