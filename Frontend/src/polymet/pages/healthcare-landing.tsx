@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   RocketIcon,
   ArrowRightIcon,
@@ -19,11 +20,8 @@ import {
   ActivityIcon,
   UserIcon,
   ShieldCheckIcon,
-  ClipboardListIcon,
-  BarChart3Icon,
   Loader2Icon,
   MenuIcon,
-  XIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -187,41 +185,41 @@ export function HealthcareLanding() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50/30 to-white">
       {/* Header */}
-      <header className="border-b border-border sticky top-0 z-50 bg-white/80 backdrop-blur-sm">
+      <header className="border-b border-border sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md shadow-sm">
         <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Link to={getLogoLink()} onClick={() => !user && window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <MediEaseLogo size="md" />
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden md:flex items-center gap-6 lg:gap-8">
             <button
               onClick={() => scrollToSection('features')}
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors duration-200"
             >
               Features
             </button>
             <button
               onClick={() => scrollToSection('pricing')}
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors duration-200"
             >
               Pricing
             </button>
             <button
               onClick={() => scrollToSection('roadmap')}
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors duration-200"
             >
               Roadmap
             </button>
             <button
               onClick={() => scrollToSection('security')}
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors duration-200"
             >
               Security
             </button>
             <Link
               to="/about-us#founders"
-              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-teal-600 dark:hover:text-teal-400 transition-colors duration-200"
             >
               About Us
             </Link>
@@ -229,7 +227,7 @@ export function HealthcareLanding() {
               <Button
                 variant="ghost"
                 size="default"
-                className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 font-medium px-4 py-2"
+                className="text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 font-medium px-4 py-2 transition-all duration-200"
               >
                 Sign In
               </Button>
@@ -237,7 +235,7 @@ export function HealthcareLanding() {
             <Button
               size="default"
               onClick={() => setLeadModalOpen(true)}
-              className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl transition-all duration-300 font-medium px-6 py-2"
+              className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 font-medium px-6 py-2"
             >
               Book a Demo
             </Button>
@@ -332,123 +330,73 @@ export function HealthcareLanding() {
       </header>
 
       {/* Hero Section */}
-      <section className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
-        <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
-          <div className="space-y-6 sm:space-y-8">
-            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-600 text-xs sm:text-sm">
-              <RocketIcon className="w-3 h-3 sm:w-4 sm:h-4" />✨ Live Now - Transform
-              Your Healthcare Practice
-            </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold leading-tight">
-              <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
-                Connecting Clinics
-              </span>
-              <br />
-
-              <span className="text-foreground">& Hospitals Digitally</span>
-            </h1>
-            <p className="text-base sm:text-lg lg:text-xl text-muted-foreground leading-relaxed">
-              Empowering Indian healthcare providers with seamless digital
-              solutions for appointments, EHR, e-prescriptions, and AI-powered
-              consultations
-            </p>
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs sm:text-sm font-semibold">
-                <MicIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                <span className="whitespace-nowrap">Multilingual AI Transcription</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm font-semibold">
-                <FileTextIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
-                <span className="whitespace-nowrap">Structured clinical notes</span>
-              </div>
-            </div>
-            <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-teal-100 dark:border-teal-900">
-              <p className="text-sm sm:text-base text-foreground">
-                Streamline your clinic operations with{" "}
-                <span className="text-teal-600 dark:text-teal-400 font-bold">
-                  faster consults, fewer clicks,
-                </span>{" "}
-                and{" "}
-                <span className="text-teal-600 dark:text-teal-400 font-bold">
-                  structured data from day one.
-                </span>
-              </p>
-            </div>
-            <div className="flex gap-3 sm:gap-4">
-              <Button
-                size="lg"
-                onClick={() => setLeadModalOpen(true)}
-                className="bg-teal-500 hover:bg-teal-600 text-white px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg font-semibold w-full sm:w-auto"
-              >
-                Book a Demo <ArrowRightIcon className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
-              </Button>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 pt-6 sm:pt-8">
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">40%</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Faster Consultations
+      <section className="relative min-h-[82vh] flex items-center overflow-hidden">
+        {/* Full-size blurred background image */}
+        <div className="absolute inset-0 z-0">
+          <img
+            src="https://v3b.fal.media/files/b/tiger/4Aaws8gqX_jL_XZCFdEk0.jpg"
+            alt="Indian doctor and patient professional consultation"
+            className="w-full h-full object-cover blur-3xl scale-110 opacity-15"
+          />
+          {/* Overlay for better text readability */}
+          <div className="absolute inset-0 bg-gradient-to-b from-white/85 via-white/70 to-white/85 dark:from-slate-950/92 dark:via-slate-950/80 dark:to-slate-950/92"></div>
+        </div>
+        
+        {/* Content - Full Width */}
+        <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-20 lg:py-24 relative z-10 w-full">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-16 items-center">
+              <div className="space-y-6 sm:space-y-8 text-center lg:text-left">
+                <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight">
+                  <span className="bg-gradient-to-r from-teal-600 via-teal-500 to-emerald-600 bg-clip-text text-transparent">
+                    All-in-One Platform
+                  </span>
+                  <br />
+                  <span className="text-foreground">Transform Today. Scale Tomorrow.</span>
+                </h1>
+                <p className="text-lg sm:text-xl lg:text-2xl text-muted-foreground leading-relaxed max-w-2xl mx-auto lg:mx-0">
+                  Real-time patient flow. AI-powered transcription. Built for Indian clinics.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 pt-2 justify-center lg:justify-start">
+                  <Button
+                    size="lg"
+                    onClick={() => setLeadModalOpen(true)}
+                    className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white px-8 py-6 text-lg font-bold shadow-xl hover:shadow-2xl hover:scale-[1.03] transition-all duration-300 w-full sm:w-auto rounded-xl"
+                  >
+                    Book a Demo <ArrowRightIcon className="w-5 h-5 ml-2" />
+                  </Button>
                 </div>
               </div>
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">30min</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Saved Daily
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">99.9%</div>
-                <div className="text-xs text-muted-foreground mt-1">Uptime</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">HIPAA</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Compliant
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="relative mt-8 lg:mt-0">
-            {/* Decorative elements */}
-            <div className="absolute -top-4 -right-4 w-48 sm:w-72 h-48 sm:h-72 bg-teal-500/10 rounded-full blur-3xl"></div>
-            <div className="absolute -bottom-4 -left-4 w-48 sm:w-72 h-48 sm:h-72 bg-emerald-500/10 rounded-full blur-3xl"></div>
 
-            <div className="relative rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl ring-1 ring-teal-100 dark:ring-teal-900">
-              <img
-                src="https://v3b.fal.media/files/b/tiger/4Aaws8gqX_jL_XZCFdEk0.jpg"
-                alt="Indian doctor and patient professional consultation"
-                className="w-full h-auto"
-              />
-
-              {/* Floating card */}
-              <div className="absolute bottom-3 sm:bottom-6 left-3 sm:left-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-xl sm:rounded-2xl shadow-2xl p-3 sm:p-5 flex items-center gap-2 sm:gap-3 border border-teal-100 dark:border-teal-900 max-w-[calc(100%-1.5rem)] sm:max-w-none">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg flex-shrink-0">
-                  <PlayIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs sm:text-sm font-semibold truncate">
-                    AI Transcription Active
+              <div className="flex justify-center lg:justify-end">
+                <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-3xl p-8 shadow-2xl border border-teal-200/40 dark:border-teal-800/40 w-full max-w-md">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                      <ShieldCheckIcon className="w-8 h-8 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-2xl font-extrabold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
+                        HIPAA Compliant
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Protected Health Information
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[10px] sm:text-xs text-muted-foreground truncate">
-                    Recording consultation...
+                  <div className="mt-6 grid grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-teal-200/40 dark:border-teal-800/40 bg-white/70 dark:bg-slate-900/70 px-4 py-3 text-sm font-semibold text-foreground text-center">
+                      End-to-end encryption
+                    </div>
+                    <div className="rounded-xl border border-emerald-200/40 dark:border-emerald-800/40 bg-white/70 dark:bg-slate-900/70 px-4 py-3 text-sm font-semibold text-foreground text-center">
+                      99.9% uptime
+                    </div>
+                    <div className="rounded-xl border border-cyan-200/40 dark:border-cyan-800/40 bg-white/70 dark:bg-slate-900/70 px-4 py-3 text-sm font-semibold text-foreground text-center">
+                      Audit logs
+                    </div>
+                    <div className="rounded-xl border border-teal-200/40 dark:border-teal-800/40 bg-white/70 dark:bg-slate-900/70 px-4 py-3 text-sm font-semibold text-foreground text-center">
+                      Role-based access
+                    </div>
                   </div>
-                </div>
-                <div className="flex gap-0.5 ml-2 sm:ml-4 flex-shrink-0">
-                  <div className="w-0.5 sm:w-1 h-4 sm:h-6 bg-teal-500 rounded-full animate-pulse"></div>
-                  <div
-                    className="w-0.5 sm:w-1 h-3 sm:h-4 bg-teal-400 rounded-full animate-pulse"
-                    style={{ animationDelay: "0.1s" }}
-                  ></div>
-                  <div
-                    className="w-0.5 sm:w-1 h-5 sm:h-8 bg-teal-500 rounded-full animate-pulse"
-                    style={{ animationDelay: "0.2s" }}
-                  ></div>
-                  <div
-                    className="w-0.5 sm:w-1 h-3 sm:h-5 bg-teal-400 rounded-full animate-pulse"
-                    style={{ animationDelay: "0.3s" }}
-                  ></div>
                 </div>
               </div>
             </div>
@@ -462,7 +410,7 @@ export function HealthcareLanding() {
       </div>
 
       {/* Why Healthcare Providers Choose Us - Keeping original for continuity */}
-      <section className="relative bg-gradient-to-b from-white to-teal-50/30 dark:from-slate-950 dark:to-teal-950/20 py-8 sm:py-12 lg:py-16">
+      <section className="relative bg-gradient-to-b from-white to-teal-50/30 dark:from-slate-950 dark:to-teal-950/20 py-16 sm:py-20 lg:py-24">
         {/* Decorative background pattern */}
         <div
           className="absolute inset-0 bg-grid-slate-100 dark:bg-grid-slate-800 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))] dark:[mask-image:linear-gradient(0deg,rgba(0,0,0,0.8),rgba(0,0,0,0.4))]"
@@ -478,42 +426,40 @@ export function HealthcareLanding() {
               <SparklesIcon className="w-3 h-3 sm:w-4 sm:h-4" />
               Why Choose MediEase
             </div>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 px-4">
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-6 px-4">
               Why Healthcare Providers{" "}
               <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
                 Choose Us
               </span>
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto px-4">
-              Built for efficiency, designed for care. Experience the difference
-              with our unified platform.
+            <p className="text-xl text-muted-foreground max-w-xl mx-auto px-4">
+              Built for efficiency. Designed for care.
             </p>
           </div>
 
           {/* Feature Cards */}
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
-            <Card className="p-6 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-2 border-transparent hover:border-teal-200 dark:hover:border-teal-800">
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg flex-shrink-0">
-                  <ClockIcon className="w-6 h-6 text-white" />
+          <div className="grid md:grid-cols-3 gap-6 lg:gap-8 mb-16">
+            <Card className="group p-8 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-2 border-transparent hover:border-teal-200 dark:hover:border-teal-800 rounded-2xl">
+              <div className="flex items-start gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform duration-300 flex-shrink-0">
+                  <ClockIcon className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-3">Faster Consults</h3>
+                  <h3 className="text-xl font-bold mb-3 text-foreground">Faster Consults</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
-                    Reduce consultation time by 40% with AI-powered workflows
-                    and instant access to patient history
+                    40% faster with AI workflows and instant patient history
                   </p>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-6 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-2 border-transparent hover:border-emerald-200 dark:hover:border-emerald-800">
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">
-                  <ZapIcon className="w-6 h-6 text-white" />
+            <Card className="group p-8 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-2 border-transparent hover:border-emerald-200 dark:hover:border-emerald-800 rounded-2xl">
+              <div className="flex items-start gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform duration-300 flex-shrink-0">
+                  <ZapIcon className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-3">
+                  <h3 className="text-xl font-bold mb-3 text-foreground">
                     Smart Workflow Automation
                   </h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
@@ -524,53 +470,53 @@ export function HealthcareLanding() {
               </div>
             </Card>
 
-            <Card className="p-6 hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-2 border-transparent hover:border-cyan-200 dark:hover:border-cyan-800">
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center shadow-lg flex-shrink-0">
-                  <CheckCircle2Icon className="w-6 h-6 text-white" />
+            <Card className="group p-8 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm border-2 border-transparent hover:border-cyan-200 dark:hover:border-cyan-800 rounded-2xl">
+              <div className="flex items-start gap-5">
+                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform duration-300 flex-shrink-0">
+                  <CheckCircle2Icon className="w-7 h-7 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-xl font-bold mb-3">
-                    Structured Data from Day One
+                  <h3 className="text-xl font-bold mb-3 text-foreground">
+                    Structured Data
                   </h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">
-                    Automatically organize patient data with AI transcription
-                    and smart categorization
+                    Auto-organized patient data with AI transcription
                   </p>
                 </div>
               </div>
             </Card>
+
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-            <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/50 dark:to-emerald-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-teal-100 dark:border-teal-900 hover:shadow-lg transition-shadow">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2 sm:mb-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 lg:gap-8">
+            <div className="bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/50 dark:to-emerald-950/50 rounded-xl sm:rounded-2xl p-6 sm:p-8 lg:p-10 text-center border border-teal-100 dark:border-teal-900 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <div className="text-4xl sm:text-5xl lg:text-6xl font-extrabold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-3">
                 2x
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
+              <div className="text-sm sm:text-base text-muted-foreground font-medium">
                 Patient Throughput
               </div>
             </div>
-            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-emerald-100 dark:border-emerald-900 hover:shadow-lg transition-shadow">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
+            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-6 sm:p-8 lg:p-10 text-center border border-emerald-100 dark:border-emerald-900 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <div className="text-4xl sm:text-5xl lg:text-6xl font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-3">
                 85%
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
+              <div className="text-sm sm:text-base text-muted-foreground font-medium">
                 Less Documentation Time
               </div>
             </div>
-            <div className="bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-cyan-100 dark:border-cyan-900 hover:shadow-lg transition-shadow">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
+            <div className="bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-6 sm:p-8 lg:p-10 text-center border border-cyan-100 dark:border-cyan-900 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <div className="text-4xl sm:text-5xl lg:text-6xl font-extrabold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-3">
                 100%
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Data Accuracy</div>
+              <div className="text-sm sm:text-base text-muted-foreground font-medium">Data Accuracy</div>
             </div>
-            <div className="bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center border border-purple-100 dark:border-purple-900 hover:shadow-lg transition-shadow">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
+            <div className="bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-950/50 dark:to-teal-950/50 rounded-xl sm:rounded-2xl p-6 sm:p-8 lg:p-10 text-center border border-purple-100 dark:border-purple-900 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+              <div className="text-4xl sm:text-5xl lg:text-6xl font-extrabold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-3">
                 24/7
               </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
+              <div className="text-sm sm:text-base text-muted-foreground font-medium">
                 Support Available
               </div>
             </div>
@@ -583,247 +529,346 @@ export function HealthcareLanding() {
         <SolutionsSection />
       </div>
 
-      {/* Complete Care Journey - Keeping original for continuity */}
-      <section className="bg-teal-50/30 py-8 sm:py-12">
+      {/* Complete Care Journey */}
+      <section className="bg-gradient-to-b from-white to-teal-50/30 dark:from-slate-950 dark:to-teal-950/20 py-16 sm:py-20 lg:py-24">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="text-center mb-8 sm:mb-10">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
-              Complete <span className="text-teal-500">Care Journey</span>
+          <div className="text-center mb-16">
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-6">
+              Complete <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Care Journey</span>
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
-              From patient intake to follow-up, every step is streamlined and
-              connected
+            <p className="text-xl text-muted-foreground max-w-xl mx-auto">
+              Streamlined from intake to follow-up
             </p>
           </div>
 
-          {/* Journey Steps */}
-          <div className="relative">
-            {/* Connection Line */}
-            <div
-              className="hidden md:block absolute top-16 left-0 right-0 h-0.5 bg-gradient-to-r from-teal-200 via-teal-400 to-teal-200"
-              style={{ top: "64px" }}
-            ></div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4 sm:gap-6 relative">
+          {/* Zigzag Flowchart */}
+          <div className="relative max-w-4xl mx-auto">
+            <div className="flex flex-col gap-6 relative">
               {[
                 {
                   icon: UsersIcon,
                   title: "Intake",
                   desc: "Patient registration and insurance verification",
-                  color: "bg-teal-500",
+                  bgColor: "bg-orange-500",
+                  borderColor: "border-orange-600",
+                  stepLabel: "STEP ONE",
                   number: "1",
                 },
                 {
                   icon: CalendarIcon,
                   title: "Visit",
                   desc: "Check-in and queue management",
-                  color: "bg-emerald-500",
+                  bgColor: "bg-purple-500",
+                  borderColor: "border-purple-600",
+                  stepLabel: "STEP TWO",
                   number: "2",
                 },
                 {
                   icon: MicIcon,
                   title: "Consultation",
-                  desc: "AI-powered recording and transcription",
-                  color: "bg-cyan-500",
+                  desc: "AI-powered triaging and transcription",
+                  bgColor: "bg-pink-500",
+                  borderColor: "border-pink-600",
+                  stepLabel: "STEP THREE",
                   number: "3",
                 },
                 {
                   icon: FileTextIcon,
                   title: "Documentation",
-                  desc: "Structured notes and EHR updates",
-                  color: "bg-teal-600",
+                  desc: "Structured notes and EMR updates",
+                  bgColor: "bg-teal-500",
+                  borderColor: "border-teal-600",
+                  stepLabel: "STEP FOUR",
                   number: "4",
                 },
                 {
                   icon: TrendingUpIcon,
                   title: "Follow-up",
                   desc: "Automated reminders and care plans",
-                  color: "bg-emerald-600",
+                  bgColor: "bg-emerald-500",
+                  borderColor: "border-emerald-600",
+                  stepLabel: "STEP FIVE",
                   number: "5",
                 },
-              ].map((step, i) => (
-                <div key={i} className="relative">
-                  <div className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow relative">
-                    {/* Number Badge */}
-                    <div className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-teal-500 text-white flex items-center justify-center text-sm font-bold shadow-lg">
-                      {step.number}
-                    </div>
+              ].map((step, i) => {
+                const isEven = i % 2 === 0;
+                return (
+                  <div key={i} className={`relative group z-10 ${isEven ? 'flex justify-start' : 'flex justify-end'}`}>
+                    {/* Elegant Flowing Arrow Connector */}
+                    {i < 4 && (
+                      <div className={`absolute top-full ${isEven ? 'left-0' : 'right-0'} z-0 w-1/2 h-20`}>
+                        <svg
+                          className="w-full h-full"
+                          viewBox="0 0 300 100"
+                          preserveAspectRatio="none"
+                        >
+                          <defs>
+                            <linearGradient id={`flow-gradient-${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                              <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0.9" />
+                              <stop offset="50%" stopColor="#14b8a6" stopOpacity="1" />
+                              <stop offset="100%" stopColor="#10b981" stopOpacity="0.9" />
+                            </linearGradient>
+                            <filter id={`arrow-shadow-${i}`}>
+                              <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#10b981" floodOpacity="0.3"/>
+                            </filter>
+                            <marker
+                              id={`flow-arrow-${i}`}
+                              markerWidth="14"
+                              markerHeight="14"
+                              refX="12"
+                              refY="7"
+                              orient="auto"
+                              markerUnits="strokeWidth"
+                            >
+                              <path
+                                d="M 0 0 L 14 7 L 0 14 L 4 7 Z"
+                                fill="url(#flow-gradient-${i})"
+                                filter={`url(#arrow-shadow-${i})`}
+                              />
+                            </marker>
+                          </defs>
+                          {/* Elegant flowing curve with smooth transitions */}
+                          <path
+                            d={isEven 
+                              ? "M 15 8 C 50 15, 80 35, 120 50 C 160 65, 200 75, 285 92" 
+                              : "M 285 8 C 250 15, 220 35, 180 50 C 140 65, 100 75, 15 92"}
+                            fill="none"
+                            stroke={`url(#flow-gradient-${i})`}
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            markerEnd={`url(#flow-arrow-${i})`}
+                            filter={`url(#arrow-shadow-${i})`}
+                            className="group-hover:stroke-[5] transition-all duration-500 ease-in-out animate-pulse"
+                          />
+                          {/* Subtle glow effect for depth */}
+                          <path
+                            d={isEven 
+                              ? "M 15 8 C 50 15, 80 35, 120 50 C 160 65, 200 75, 285 92" 
+                              : "M 285 8 C 250 15, 220 35, 180 50 C 140 65, 100 75, 15 92"}
+                            fill="none"
+                            stroke="#2dd4bf"
+                            strokeWidth="6"
+                            strokeLinecap="round"
+                            opacity="0.15"
+                            className="blur-md"
+                          />
+                        </svg>
+                      </div>
+                    )}
+                    
+                    <div className={`relative ${step.bgColor} rounded-xl border-2 ${step.borderColor} p-6 shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-300 w-full max-w-xs group`}>
+                      {/* Step Label */}
+                      <div className="text-white/90 text-xs font-bold uppercase tracking-wider mb-3">
+                        {step.stepLabel}
+                      </div>
+                      
+                      {/* Number Badge */}
+                      <div className={`absolute top-4 right-4 w-10 h-10 ${step.bgColor} border-2 border-white rounded-lg flex items-center justify-center text-white text-base font-extrabold shadow-lg group-hover:scale-110 transition-transform duration-300`}>
+                        {step.number}
+                      </div>
 
-                    <div
-                      className={`w-16 h-16 rounded-2xl ${step.color} flex items-center justify-center mb-4 mx-auto`}
-                    >
-                      <step.icon className="w-8 h-8 text-white" />
+                      {/* Icon */}
+                      <div className="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center mb-5 border-2 border-white/30 group-hover:bg-white/30 transition-colors duration-300">
+                        <step.icon className="w-7 h-7 text-white" />
+                      </div>
+
+                      {/* Title */}
+                      <h3 className="text-xl font-bold text-white mb-3">
+                        {step.title}
+                      </h3>
+
+                      {/* Description */}
+                      <p className="text-sm text-white/95 leading-relaxed">
+                        {step.desc}
+                      </p>
                     </div>
-                    <h3 className="font-bold text-center mb-2">{step.title}</h3>
-                    <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                      {step.desc}
-                    </p>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
-
         </div>
       </section>
 
       {/* Built for Every Role */}
-      <section className="bg-white py-8 sm:py-12">
+      <section className="bg-white dark:bg-slate-950 py-16 sm:py-20 lg:py-24">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="text-center mb-8 sm:mb-10">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
-              Built for <span className="text-teal-500">Every Role</span>
+          <div className="text-center mb-12 sm:mb-16">
+            <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold mb-6">
+              Built for <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">Every Role</span>
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto">
-              Tailored experiences for administrators, healthcare providers, and
-              front desk staff
+            <p className="text-xl text-muted-foreground max-w-xl mx-auto">
+              Tailored for every healthcare professional
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {/* Clinic Administrator */}
-            <Card className="overflow-hidden hover:shadow-xl transition-shadow">
-              <div className="relative h-48 overflow-hidden">
-                <img
-                  src="https://v3b.fal.media/files/b/elephant/6cXkcUeGi2JDy_oOaXjID.jpg"
-                  alt="Clinic Administrator"
-                  className="w-full h-full object-cover"
-                />
+          <Tabs defaultValue="admin" className="w-full max-w-6xl mx-auto">
+            <TabsList className="grid w-full grid-cols-3 bg-slate-800 dark:bg-slate-900 p-1.5 rounded-xl mb-10 shadow-lg">
+              <TabsTrigger 
+                value="admin" 
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-lg text-white data-[state=inactive]:text-slate-300 data-[state=inactive]:hover:text-slate-100 transition-all duration-300 rounded-lg font-medium py-3"
+              >
+                <SettingsIcon className="w-4 h-4 mr-2" />
+                Clinic Administrator
+              </TabsTrigger>
+              <TabsTrigger 
+                value="doctor"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-lg text-white data-[state=inactive]:text-slate-300 data-[state=inactive]:hover:text-slate-100 transition-all duration-300 rounded-lg font-medium py-3"
+              >
+                <ActivityIcon className="w-4 h-4 mr-2" />
+                Healthcare Provider
+              </TabsTrigger>
+              <TabsTrigger 
+                value="receptionist"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-teal-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-lg text-white data-[state=inactive]:text-slate-300 data-[state=inactive]:hover:text-slate-100 transition-all duration-300 rounded-lg font-medium py-3"
+              >
+                <UserIcon className="w-4 h-4 mr-2" />
+                Front Desk
+              </TabsTrigger>
+            </TabsList>
 
-                <div className="absolute top-4 left-4 bg-teal-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
-                  <SettingsIcon className="w-4 h-4" />
-                  Clinic Administrator
+            {/* Clinic Administrator Tab */}
+            <TabsContent value="admin" className="mt-0">
+              <Card className="overflow-hidden border-2 border-teal-200 dark:border-teal-800 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300">
+                <div className="grid md:grid-cols-2 gap-0">
+                  <div className="relative h-64 md:h-auto overflow-hidden">
+                    <img
+                      src="https://v3b.fal.media/files/b/elephant/6cXkcUeGi2JDy_oOaXjID.jpg"
+                      alt="Clinic Administrator"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="p-8 sm:p-10">
+                    <div className="flex items-center gap-3 mb-6">
+                      <SettingsIcon className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                      <span className="text-sm font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wide">Clinic Administrator</span>
+                    </div>
+                    <h3 className="text-2xl sm:text-3xl font-bold mb-6 text-foreground leading-tight">
+                      Manage staff, operations, and analytics
+                    </h3>
+                    <ul className="space-y-3 mb-8">
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-teal-500 flex-shrink-0" />
+                        <span>Staff Management</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-teal-500 flex-shrink-0" />
+                        <span>Revenue Analytics</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-teal-500 flex-shrink-0" />
+                        <span>Appointment Overview</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-teal-500 flex-shrink-0" />
+                        <span>Compliance Reports</span>
+                      </li>
+                    </ul>
+                    <Link to="/admin-dashboard">
+                      <Button size="lg" className="w-full bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 font-semibold py-6">
+                        Explore Admin View <ArrowRightIcon className="w-5 h-5 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-              </div>
-              <div className="p-6">
-                <h3 className="text-xl font-bold mb-3">
-                  Manage staff, monitor operations, and access comprehensive
-                  analytics
-                </h3>
-                <ul className="space-y-2 mb-6">
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-teal-500 mt-0.5 flex-shrink-0" />
-                    Staff Management
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-teal-500 mt-0.5 flex-shrink-0" />
-                    Revenue Analytics
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-teal-500 mt-0.5 flex-shrink-0" />
-                    Appointment Overview
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-teal-500 mt-0.5 flex-shrink-0" />
-                    Compliance Reports
-                  </li>
-                </ul>
-                <Link to="/admin-dashboard">
-                  <Button size="lg" className="w-full bg-teal-500 hover:bg-teal-600 text-white">
-                    Explore Admin View
-                  </Button>
-                </Link>
-              </div>
-            </Card>
+              </Card>
+            </TabsContent>
 
-            {/* Healthcare Provider */}
-            <Card className="overflow-hidden hover:shadow-xl transition-shadow">
-              <div className="relative h-48 overflow-hidden">
-                <img
-                  src="https://v3b.fal.media/files/b/tiger/uzg5SrOkJbhyda3pIX9-Y.jpg"
-                  alt="Healthcare Provider"
-                  className="w-full h-full object-cover"
-                />
-
-                <div className="absolute top-4 left-4 bg-emerald-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
-                  <ActivityIcon className="w-4 h-4" />
-                  Healthcare Provider
+            {/* Healthcare Provider Tab */}
+            <TabsContent value="doctor" className="mt-0">
+              <Card className="overflow-hidden border-2 border-emerald-200 dark:border-emerald-800 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300">
+                <div className="grid md:grid-cols-2 gap-0">
+                  <div className="relative h-64 md:h-auto overflow-hidden">
+                    <img
+                      src="https://v3b.fal.media/files/b/tiger/uzg5SrOkJbhyda3pIX9-Y.jpg"
+                      alt="Healthcare Provider"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="p-8 sm:p-10">
+                    <div className="flex items-center gap-3 mb-6">
+                      <ActivityIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Healthcare Provider</span>
+                    </div>
+                    <h3 className="text-2xl sm:text-3xl font-bold mb-6 text-foreground leading-tight">
+                      AI-assisted documentation and instant EHR access
+                    </h3>
+                    <ul className="space-y-3 mb-8">
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                        <span>Patient Dashboard</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                        <span>AI Transcription</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                        <span>Quick Notes</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                        <span>Treatment History</span>
+                      </li>
+                    </ul>
+                    <Link to="/doctor-dashboard">
+                      <Button size="lg" className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 font-semibold py-6">
+                        Explore Doctor View <ArrowRightIcon className="w-5 h-5 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-              </div>
-              <div className="p-6">
-                <h3 className="text-xl font-bold mb-3">
-                  Focus on patient care with AI-assisted documentation and
-                  instant EHR access
-                </h3>
-                <ul className="space-y-2 mb-6">
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                    Patient Dashboard
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                    AI Transcription
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                    Quick Notes
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-emerald-500 mt-0.5 flex-shrink-0" />
-                    Treatment History
-                  </li>
-                </ul>
-                <Link to="/doctor-dashboard">
-                  <Button size="lg" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white">
-                    Explore Doctor View
-                  </Button>
-                </Link>
-              </div>
-            </Card>
+              </Card>
+            </TabsContent>
 
-            {/* Front Desk */}
-            <Card className="overflow-hidden hover:shadow-xl transition-shadow">
-              <div className="relative h-48 overflow-hidden">
-                <img
-                  src="https://v3b.fal.media/files/b/zebra/pDgXJCg1NQ69RPS2MOg-P.jpg"
-                  alt="Front Desk Receptionist"
-                  className="w-full h-full object-cover"
-                />
-
-                <div className="absolute top-4 left-4 bg-cyan-500 text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
-                  <UserIcon className="w-4 h-4" />
-                  Front Desk
+            {/* Front Desk Tab */}
+            <TabsContent value="receptionist" className="mt-0">
+              <Card className="overflow-hidden border-2 border-cyan-200 dark:border-cyan-800 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300">
+                <div className="grid md:grid-cols-2 gap-0">
+                  <div className="relative h-64 md:h-auto overflow-hidden">
+                    <img
+                      src="https://v3b.fal.media/files/b/zebra/pDgXJCg1NQ69RPS2MOg-P.jpg"
+                      alt="Front Desk Receptionist"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <div className="p-8 sm:p-10">
+                    <div className="flex items-center gap-3 mb-6">
+                      <UserIcon className="w-6 h-6 text-cyan-600 dark:text-cyan-400" />
+                      <span className="text-sm font-bold text-cyan-600 dark:text-cyan-400 uppercase tracking-wide">Front Desk</span>
+                    </div>
+                    <h3 className="text-2xl sm:text-3xl font-bold mb-6 text-foreground leading-tight">
+                      Streamline intake, scheduling, and check-in
+                    </h3>
+                    <ul className="space-y-3 mb-8">
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-cyan-500 flex-shrink-0" />
+                        <span>Appointment Booking</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-cyan-500 flex-shrink-0" />
+                        <span>Patient Check-in</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-cyan-500 flex-shrink-0" />
+                        <span>Queue Management</span>
+                      </li>
+                      <li className="flex items-center gap-3 text-base text-muted-foreground">
+                        <CheckCircle2Icon className="w-5 h-5 text-cyan-500 flex-shrink-0" />
+                        <span>Insurance Verification</span>
+                      </li>
+                    </ul>
+                    <Link to="/receptionist-dashboard">
+                      <Button size="lg" className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:from-cyan-600 hover:to-teal-600 text-white shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 font-semibold py-6">
+                        Explore Receptionist View <ArrowRightIcon className="w-5 h-5 ml-2" />
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
-              </div>
-              <div className="p-6">
-                <h3 className="text-xl font-bold mb-3">
-                  Streamline patient intake, scheduling, and check-in processes
-                </h3>
-                <ul className="space-y-2 mb-6">
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-cyan-500 mt-0.5 flex-shrink-0" />
-                    Appointment Booking
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-cyan-500 mt-0.5 flex-shrink-0" />
-                    Patient Check-in
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-cyan-500 mt-0.5 flex-shrink-0" />
-                    Queue Management
-                  </li>
-                  <li className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <CheckCircle2Icon className="w-4 h-4 text-cyan-500 mt-0.5 flex-shrink-0" />
-                    Insurance Verification
-                  </li>
-                </ul>
-                <Link to="/receptionist-dashboard">
-                  <Button size="lg" className="w-full bg-cyan-500 hover:bg-cyan-600 text-white">
-                    Explore Receptionist View
-                  </Button>
-                </Link>
-              </div>
-            </Card>
-          </div>
-
-          <div className="mt-12 text-center bg-teal-50 rounded-2xl p-8">
-            <h3 className="text-xl font-bold mb-2">
-              Designed for Modern Healthcare
-            </h3>
-            <p className="text-muted-foreground">
-              Streamline your practice with role-based workflows
-            </p>
-          </div>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </section>
 
@@ -832,202 +877,7 @@ export function HealthcareLanding() {
         <RoadmapSection />
       </div>
 
-      {/* AI That Works For You - Keeping original for continuity */}
-      <section className="relative bg-gradient-to-b from-teal-50/30 via-white to-emerald-50/30 dark:from-teal-950/20 dark:via-slate-950 dark:to-emerald-950/20 py-8 sm:py-12 lg:py-16">
-        {/* Decorative elements */}
-        <div className="absolute top-20 right-20 w-48 sm:w-96 h-48 sm:h-96 bg-teal-500/5 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-20 w-48 sm:w-96 h-48 sm:h-96 bg-emerald-500/5 rounded-full blur-3xl"></div>
-        <div className="container mx-auto px-4 sm:px-6 relative">
-          <div className="text-center mb-8 sm:mb-12">
-            <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-teal-100 to-emerald-100 dark:from-teal-900/40 dark:to-emerald-900/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs sm:text-sm font-semibold mb-4 sm:mb-6 shadow-lg">
-              <SparklesIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-              Powered by Advanced AI
-            </div>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 px-4">
-              AI That Works{" "}
-              <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
-                For You
-              </span>
-            </h2>
-            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-12 px-4">
-              Transform your practice with intelligent automation that digitizes
-              patient records, increases efficiency, and helps grow your clinic
-            </p>
-          </div>
 
-          <div className="grid lg:grid-cols-2 gap-12 items-center mb-16">
-            {/* Image with overlay cards */}
-            <div className="relative">
-              {/* Decorative gradient orbs */}
-              <div className="absolute -top-8 -left-8 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl"></div>
-              <div className="absolute -bottom-8 -right-8 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl"></div>
-
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-teal-100 dark:ring-teal-900">
-                <img
-                  src="https://v3b.fal.media/files/b/kangaroo/Kp0H7oPaKGuf6Fx0Z0HC_.jpg"
-                  alt="Indian doctor and staff using healthcare application"
-                  className="w-full h-auto"
-                />
-
-                {/* Floating AI card */}
-                <div className="absolute bottom-6 left-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl p-5 border border-teal-100 dark:border-teal-900">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
-                      <MicIcon className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">
-                        AI Transcription Active
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Recording consultation...
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* Patient Insights card */}
-                <div className="absolute top-6 right-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl p-5 border border-emerald-100 dark:border-emerald-900">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
-                      <SparklesIcon className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">
-                        Patient Insights
-                      </div>
-                      <div className="text-xs text-teal-600">
-                        3 recommendations
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Features List */}
-            <div className="space-y-6">
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-teal-100 dark:border-teal-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-900/30 dark:to-emerald-900/30 flex items-center justify-center flex-shrink-0 border border-teal-100 dark:border-teal-800">
-                    <MicIcon className="w-6 h-6 text-teal-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      AI Medical Transcription
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Record consultations and automatically generate structured
-                      clinical notes with medical terminology accuracy
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-teal-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Save 30+ minutes per day on documentation
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-emerald-100 dark:border-emerald-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30 flex items-center justify-center flex-shrink-0 border border-emerald-100 dark:border-emerald-800">
-                    <ClipboardListIcon className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      Patient Overview Intelligence
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Get instant AI-generated summaries of patient history,
-                      medications, and risk factors
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-emerald-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Make informed decisions faster
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-cyan-100 dark:border-cyan-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-900/30 dark:to-teal-900/30 flex items-center justify-center flex-shrink-0 border border-cyan-100 dark:border-cyan-800">
-                    <BarChart3Icon className="w-6 h-6 text-cyan-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      Doctor Dashboard Analytics
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Real-time insights on patient load, appointment
-                      efficiency, and clinical outcomes
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-cyan-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Optimize clinic operations
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-purple-100 dark:border-purple-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-900/30 dark:to-teal-900/30 flex items-center justify-center flex-shrink-0 border border-purple-100 dark:border-purple-800">
-                    <TrendingUpIcon className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      Increased Footfall
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Digital records and faster service attract more patients
-                      and improve satisfaction scores
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-purple-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Grow your practice by 25%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-            <div className="bg-gradient-to-br from-white to-teal-50/50 dark:from-slate-900 dark:to-teal-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-teal-100 dark:border-teal-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                98%
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Transcription Accuracy
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-white to-emerald-50/50 dark:from-slate-900 dark:to-emerald-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-emerald-100 dark:border-emerald-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                30min
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Saved Per Day</div>
-            </div>
-            <div className="bg-gradient-to-br from-white to-cyan-50/50 dark:from-slate-900 dark:to-cyan-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-cyan-100 dark:border-cyan-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                25%
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Practice Growth
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-white to-purple-50/50 dark:from-slate-900 dark:to-purple-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-purple-100 dark:border-purple-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                100%
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Digital Records
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </section>
 
       {/* Security Section */}
       <div id="security">
@@ -1160,29 +1010,9 @@ export function HealthcareLanding() {
             </Card>
           </div>
 
-          {/* Certified & Compliant */}
-          <div className="bg-teal-50/50 rounded-3xl p-12 mb-12">
-            <h3 className="text-2xl font-bold text-center mb-4">
-              Certified & Compliant
-            </h3>
-            <p className="text-center text-muted-foreground mb-8 max-w-2xl mx-auto">
-              We keep patient data protected with HIPAA-grade security across the platform.
-            </p>
-            <div className="flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-white shadow-md flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheckIcon className="w-10 h-10 text-teal-600" />
-                </div>
-                <div className="font-bold text-lg mb-1">HIPAA</div>
-                <div className="text-xs text-muted-foreground">
-                  Health Insurance Portability and Accountability Act
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Security Features Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="bg-teal-50 rounded-xl p-6">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 rounded-lg bg-teal-500 flex items-center justify-center">
@@ -1193,18 +1023,6 @@ export function HealthcareLanding() {
               <p className="text-xs text-muted-foreground">
                 All data is encrypted in transit and at rest using industry
                 standard AES-256 encryption
-              </p>
-            </div>
-            <div className="bg-emerald-50 rounded-xl p-6">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center">
-                  <ActivityIcon className="w-5 h-5 text-white" />
-                </div>
-                <div className="font-bold">24/7 Security Monitoring</div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Continuous monitoring and threat detection to protect your
-                sensitive healthcare data
               </p>
             </div>
             <div className="bg-cyan-50 rounded-xl p-6">
@@ -1452,64 +1270,68 @@ export function HealthcareLanding() {
       </section>
 
       {/* CTA Section */}
-      <section className="bg-gradient-to-r from-teal-500 to-emerald-500 text-white py-12 sm:py-16">
-        <div className="container mx-auto px-4 sm:px-6 text-center">
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
-            Ready to Transform Your Healthcare Practice?
+      <section className="relative bg-gradient-to-r from-teal-500 via-teal-600 to-emerald-500 text-white py-16 sm:py-20 lg:py-24 overflow-hidden">
+        {/* Decorative elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-0 left-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl"></div>
+        </div>
+        <div className="container mx-auto px-4 sm:px-6 text-center relative z-10">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold mb-4 sm:mb-6 leading-tight">
+            Ready to Transform Your Practice?
           </h2>
-          <p className="text-base sm:text-lg lg:text-xl mb-6 sm:mb-8 text-white/90 max-w-2xl mx-auto">
-            Join thousands of healthcare providers using MediEase to deliver
-            better patient care with AI-powered solutions
+          <p className="text-xl sm:text-2xl mb-10 text-white/95 max-w-2xl mx-auto">
+            Join thousands using MediEase for better patient care
           </p>
           <div className="flex gap-4 justify-center">
             <Button
               size="lg"
               variant="secondary"
               onClick={() => setLeadModalOpen(true)}
-              className="bg-white text-teal-600 hover:bg-gray-100 px-6 sm:px-8 py-3 sm:py-4 text-base sm:text-lg font-semibold w-full sm:w-auto"
+              className="bg-white text-teal-600 hover:bg-gray-50 hover:scale-105 px-8 sm:px-10 py-6 sm:py-7 text-lg sm:text-xl font-bold shadow-2xl hover:shadow-3xl transition-all duration-300 w-full sm:w-auto"
             >
-              Book a Demo <ArrowRightIcon className="w-4 h-4 sm:w-5 sm:h-5 ml-2" />
+              Book a Demo <ArrowRightIcon className="w-5 h-5 sm:w-6 sm:h-6 ml-2" />
             </Button>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-900 text-white py-8 sm:py-12">
+      <footer className="bg-slate-900 dark:bg-black text-white py-12 sm:py-16 lg:py-20">
         <div className="container mx-auto px-4 sm:px-6">
-          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-6 sm:gap-8 mb-6 sm:mb-8">
+          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-8 sm:gap-10 lg:gap-12 mb-10 sm:mb-12">
             <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">M</span>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
+                  <span className="text-white font-bold text-base">M</span>
                 </div>
                 <div>
-                  <div className="font-bold text-lg">MediEase</div>
-                  <div className="text-xs text-teal-400">
+                  <div className="font-bold text-xl">MediEase</div>
+                  <div className="text-xs text-teal-400 font-medium">
                     Your Health, Our Mission
                   </div>
                 </div>
               </div>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm sm:text-base text-slate-400 leading-relaxed">
                 Transforming healthcare with AI and digital innovation for
                 Indian clinics and hospitals.
               </p>
             </div>
             <div>
-              <h4 className="font-bold mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
+              <h4 className="font-bold text-lg mb-5 text-white">Product</h4>
+              <ul className="space-y-3 text-sm sm:text-base text-slate-400">
                 <li>
-                  <a href="#features" className="hover:text-teal-400">
+                  <a href="#features" className="hover:text-teal-400 transition-colors duration-200">
                     Features
                   </a>
                 </li>
                 <li>
-                  <a href="#pricing" className="hover:text-teal-400">
+                  <a href="#pricing" className="hover:text-teal-400 transition-colors duration-200">
                     Pricing
                   </a>
                 </li>
                 <li>
-                  <a href="#roadmap" className="hover:text-teal-400">
+                  <a href="#roadmap" className="hover:text-teal-400 transition-colors duration-200">
                     Roadmap
                   </a>
                 </li>
@@ -1517,7 +1339,7 @@ export function HealthcareLanding() {
                   <button
                     type="button"
                     onClick={() => setLeadModalOpen(true)}
-                    className="hover:text-teal-400 text-left w-full"
+                    className="hover:text-teal-400 text-left w-full transition-colors duration-200"
                   >
                     Book a Demo
                   </button>
@@ -1525,46 +1347,46 @@ export function HealthcareLanding() {
               </ul>
             </div>
             <div>
-              <h4 className="font-bold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
+              <h4 className="font-bold text-lg mb-5 text-white">Company</h4>
+              <ul className="space-y-3 text-sm sm:text-base text-slate-400">
                 <li>
-                  <Link to="/about-us#founders" className="hover:text-teal-400">
+                  <Link to="/about-us#founders" className="hover:text-teal-400 transition-colors duration-200">
                     About Us
                   </Link>
                 </li>
                 <li>
-                  <Link to="/contact" className="hover:text-teal-400">
+                  <Link to="/contact" className="hover:text-teal-400 transition-colors duration-200">
                     Contact
                   </Link>
                 </li>
               </ul>
             </div>
             <div>
-              <h4 className="font-bold mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-slate-400">
+              <h4 className="font-bold text-lg mb-5 text-white">Legal</h4>
+              <ul className="space-y-3 text-sm sm:text-base text-slate-400">
                 <li>
-                  <Link to="/terms-of-service" className="hover:text-teal-400">
+                  <Link to="/terms-of-service" className="hover:text-teal-400 transition-colors duration-200">
                     Terms of Service
                   </Link>
                 </li>
                 <li>
-                  <Link to="/privacy-policy" className="hover:text-teal-400">
+                  <Link to="/privacy-policy" className="hover:text-teal-400 transition-colors duration-200">
                     Privacy Policy
                   </Link>
                 </li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-            <p className="text-sm text-slate-400">
+          <div className="border-t border-slate-800 pt-8 sm:pt-10 flex flex-col md:flex-row justify-between items-center gap-4">
+            <p className="text-sm sm:text-base text-slate-400">
               © 2025 MediEase. All rights reserved.
             </p>
-            <div className="flex gap-6 text-sm text-slate-400">
+            <div className="flex gap-6 text-sm sm:text-base text-slate-400">
               <a
                 href="https://www.linkedin.com/company/medieaseclinic/?lipi=urn%3Ali%3Apage%3Ad_flagship3_company%3Bm0xjg1BkQ9K62D64DBOqfQ%3D%3D"
                 target="_blank"
                 rel="noreferrer"
-                className="hover:text-teal-400"
+                className="hover:text-teal-400 transition-colors duration-200"
               >
                 LinkedIn
               </a>
@@ -1574,27 +1396,28 @@ export function HealthcareLanding() {
       </footer>
 
       <Dialog open={leadModalOpen} onOpenChange={setLeadModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Tell us about your clinic</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader className="space-y-3">
+            <DialogTitle className="text-2xl sm:text-3xl font-bold">Tell us about your clinic</DialogTitle>
+            <DialogDescription className="text-base leading-relaxed">
               Share your details and our team will reach out to schedule a personalized walkthrough.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleLeadSubmit} className="space-y-4">
+          <form onSubmit={handleLeadSubmit} className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="lead-name">Full Name</Label>
+              <div className="space-y-2">
+                <Label htmlFor="lead-name" className="text-sm font-semibold">Full Name</Label>
                 <Input
                   id="lead-name"
                   value={leadForm.name}
                   onChange={(event) => handleLeadFieldChange("name", event.target.value)}
                   placeholder="Dr. Aditi Sharma"
                   required
+                  className="h-11"
                 />
               </div>
-              <div>
-                <Label htmlFor="lead-email">Email</Label>
+              <div className="space-y-2">
+                <Label htmlFor="lead-email" className="text-sm font-semibold">Email</Label>
                 <Input
                   id="lead-email"
                   type="email"
@@ -1602,51 +1425,60 @@ export function HealthcareLanding() {
                   onChange={(event) => handleLeadFieldChange("email", event.target.value)}
                   placeholder="you@clinic.com"
                   required
+                  className="h-11"
                 />
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Label htmlFor="lead-provider">Clinic/Hospital Name</Label>
+              <div className="space-y-2">
+                <Label htmlFor="lead-provider" className="text-sm font-semibold">Clinic/Hospital Name</Label>
                 <Input
                   id="lead-provider"
                   value={leadForm.providerName}
                   onChange={(event) => handleLeadFieldChange("providerName", event.target.value)}
                   placeholder="MediCare Hospital"
                   required
+                  className="h-11"
                 />
               </div>
-              <div>
-                <Label htmlFor="lead-phone">Phone Number</Label>
+              <div className="space-y-2">
+                <Label htmlFor="lead-phone" className="text-sm font-semibold">Phone Number</Label>
                 <Input
                   id="lead-phone"
                   value={leadForm.phone}
                   onChange={(event) => handleLeadFieldChange("phone", event.target.value)}
                   placeholder="+91 98765 43210"
                   required
+                  className="h-11"
                 />
               </div>
             </div>
-            <div>
-              <Label htmlFor="lead-query">Tell us more</Label>
+            <div className="space-y-2">
+              <Label htmlFor="lead-query" className="text-sm font-semibold">Tell us more</Label>
               <Textarea
                 id="lead-query"
-                rows={4}
+                rows={5}
                 value={leadForm.query}
                 onChange={(event) => handleLeadFieldChange("query", event.target.value)}
                 placeholder="Number of providers, current systems, key pain points..."
+                className="resize-none"
               />
             </div>
-            <div className="flex items-center justify-end gap-3">
+            <div className="flex items-center justify-end gap-4 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setLeadModalOpen(false)}
                 disabled={isSubmittingLead}
+                className="px-6"
               >
                 Cancel
               </Button>
-              <Button type="submit" className="bg-teal-500 text-white" disabled={isSubmittingLead}>
+              <Button 
+                type="submit" 
+                className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white shadow-lg hover:shadow-xl px-8 font-semibold" 
+                disabled={isSubmittingLead}
+              >
                 {isSubmittingLead ? (
                   <>
                     <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
