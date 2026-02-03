@@ -93,9 +93,20 @@ class AppointmentNotificationService:
         
 
     async def _get_provider(self, clinic_id: Optional[str]) -> Optional[dict]:
+        """Get healthcare provider/clinic information by clinicId."""
         if not clinic_id:
+            logger.debug("_get_provider called with None/empty clinic_id")
             return None
-        return await self.providers.find_one({"clinicId": clinic_id})
+        
+        logger.debug(f"Fetching provider for clinicId: {clinic_id}")
+        provider = await self.providers.find_one({"clinicId": clinic_id})
+        
+        if provider:
+            logger.debug(f"✅ Provider found: {provider.get('name', 'N/A')} (phone: {provider.get('phone', 'N/A')})")
+        else:
+            logger.warning(f"⚠️  No provider found for clinicId: {clinic_id}")
+        
+        return provider
 
     async def _log_whatsapp_attempt(
         self,
@@ -299,13 +310,23 @@ class AppointmentNotificationService:
             # Get appointment MongoDB _id to include in button payload
             appointment_mongo_id = str(appointment.get("_id"))
             
+            # Get clinic phone number for call button ({{5}})
+            clinic_phone = provider.get("phone") if provider else ""
+            
+            # Map variables to match Twilio template structure:
+            # {{1}} = Clinic name (header)
+            # {{2}} = Patient name
+            # {{3}} = Doctor name
+            # {{4}} = Appointment datetime
+            # {{5}} = Clinic phone (for CALL button)
+            # {{6}} = Appointment ID (button payload)
             variables = {
-                "patient_name": appointment.get("patientName", ""),
-                "clinic_name": provider.get("name") if provider else "MediEase Clinic",
-                "doctor_name": appointment.get("doctorName", ""),
-                "appointment_datetime": f"{appointment.get('date')} {appointment.get('time')}",
-                "phone": patient_phone or "",  # Position 5 - Phone
-                "appointment_id": appointment_mongo_id,  # Position 6 - Appointment ID (MongoDB _id)
+                "clinic_name": provider.get("name") if provider else "MediEase Clinic",  # {{1}} - Header
+                "patient_name": appointment.get("patientName", ""),  # {{2}} - Body
+                "doctor_name": appointment.get("doctorName", ""),  # {{3}} - Body
+                "appointment_datetime": f"{appointment.get('date')} {appointment.get('time')}",  # {{4}} - Body
+                "clinic_phone": clinic_phone,  # {{5}} - Body (for CALL button)
+                "appointment_id": appointment_mongo_id,  # {{6}} - Button payload
             }
             await self._send_template(
                 appointment=appointment,
