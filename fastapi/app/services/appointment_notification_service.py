@@ -128,7 +128,7 @@ class AppointmentNotificationService:
             
             # Get message body based on scenario
             message_body = ""
-            if scenario == "appointment_reminder":
+            if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
                 message_body = f"Appointment reminder for {appointment.get('date')} {appointment.get('time')}"
             elif scenario == "post_visit_lab_request":
                 message_body = "Lab result reminder"
@@ -290,22 +290,26 @@ class AppointmentNotificationService:
                 logger.warning(f"  ✗ No valid phone number for {appointment_id}")
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "appointment_reminder",
+                    "appointment_reminder_payloads",
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
                 continue
 
+            # Get appointment MongoDB _id to include in button payload
+            appointment_mongo_id = str(appointment.get("_id"))
+            
             variables = {
                 "patient_name": appointment.get("patientName", ""),
                 "clinic_name": provider.get("name") if provider else "MediEase Clinic",
                 "doctor_name": appointment.get("doctorName", ""),
                 "appointment_datetime": f"{appointment.get('date')} {appointment.get('time')}",
-                "header_clinic_name": provider.get("name") if provider else "MediEase Clinic",  # Position 5 - Header
+                "phone": patient_phone or "",  # Position 5 - Phone
+                "appointment_id": appointment_mongo_id,  # Position 6 - Appointment ID (MongoDB _id)
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="appointment_reminder",
+                scenario="appointment_reminder_payloads",  # Use new template with appointment ID
                 to=recipient,
                 content_values=variables,
                 flag_field="appointmentReminderSent",

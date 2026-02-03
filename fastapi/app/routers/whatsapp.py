@@ -4,8 +4,15 @@ WhatsApp messaging API endpoints.
 
 from fastapi import APIRouter, Depends, status, HTTPException, Request, Form, Response
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
+try:
+    from twilio.twiml.messaging_response import MessagingResponse
+except ImportError:
+    # Fallback if TwiML is not available
+    MessagingResponse = None
+    import logging
+    logging.warning("twilio.twiml.messaging_response not available - TwiML responses will use fallback")
 
 from app.schemas.whatsapp import (
     WhatsAppMessageRequest,
@@ -14,6 +21,7 @@ from app.schemas.whatsapp import (
     WhatsAppMessageStatusResponse,
 )
 from app.services.whatsapp_service import WhatsAppService
+from app.services.appointment_service import AppointmentService
 from app.middleware.auth import get_current_user, require_roles
 from app.utils.response import success_response, error_response
 from app.database import get_db
@@ -427,7 +435,7 @@ async def get_patient_whatsapp_messages(
                     if message_sid:
                         # Determine message content based on scenario
                         message_body = ""
-                        if scenario == "appointment_reminder":
+                        if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
                             message_body = f"Appointment reminder for {apt.get('date')} {apt.get('time')}"
                         elif scenario == "post_visit_lab_request":
                             message_body = "Lab result reminder"
@@ -605,102 +613,348 @@ async def twilio_status_webhook(
         return Response(content="error", media_type="text/plain")
 
 
+@router.get("/webhooks/test", tags=["WhatsApp Webhooks"])
+async def test_webhook_endpoint():
+    """Simple test endpoint to verify webhook route is accessible"""
+    return {"status": "ok", "message": "Webhook endpoint is accessible"}
+
 @router.post("/webhooks/incoming", tags=["WhatsApp Webhooks"])
 async def twilio_incoming_webhook(
     request: Request,
     MessageSid: str = Form(...),
     From: str = Form(...),
     To: str = Form(...),
-    Body: str = Form(...),
+    Body: str = Form(None),  # May be empty if button was clicked
     AccountSid: str = Form(...),
+    ButtonPayload: Optional[str] = Form(None),  # Payload from interactive button click
+    ButtonText: Optional[str] = Form(None),  # Text of clicked button
+    ReferredMessageSid: Optional[str] = Form(None),  # Original message SID when button is clicked
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
     """
     Twilio webhook endpoint for incoming WhatsApp messages from patients.
     Receives messages sent by patients to your WhatsApp number.
     """
+    # Initialize reply_text early to ensure it's always defined
+    reply_text = None
+    
     try:
+        logger.info("=" * 60)
+        logger.info(f"📥 Twilio incoming message webhook received")
+        logger.info(f"   From={From}, To={To}, Body={Body[:100] if Body else '(empty)'}")
+        logger.info(f"   ButtonPayload={ButtonPayload}, ButtonText={ButtonText}, ReferredMessageSid={ReferredMessageSid}")
+        logger.info("=" * 60)
+        
+        # Extract appointment ID directly from ButtonPayload ({{6}} is the button payload itself)
+        logger.info(f"🔍 Step 1: Extracting appointment ID from ButtonPayload: '{ButtonPayload}'")
+        appointment_id = None
+        intent = None
+        
+        if ButtonPayload:
+            # ButtonPayload is directly the appointment ID ({{6}}) from template
+            # Format: "697b31d062e74816ac9e3882" (just the MongoDB _id, no prefix)
+            appointment_id = ButtonPayload.strip()
+            logger.info(f"   ✅ Extracted appointment ID from ButtonPayload: {appointment_id}")
+        else:
+            logger.warning(f"   ⚠️  No ButtonPayload provided")
+        
+        # Extract intent from Body (WhatsApp automatically copies ButtonText to Body)
+        logger.info(f"🔍 Step 2: Extracting intent from Body: '{Body}'")
+        if Body:
+            normalized_text = Body.strip().lower()
+            if normalized_text.startswith("confirm") or normalized_text == "confirm" or "confirm" in normalized_text:
+                intent = "confirm"
+                logger.info(f"   ✅ Intent detected from Body: CONFIRM")
+            elif normalized_text.startswith("cancel") or normalized_text == "cancel" or "cancel" in normalized_text:
+                intent = "cancel"
+                logger.info(f"   ✅ Intent detected from Body: CANCEL")
+            else:
+                logger.info(f"   ℹ️  Body '{Body}' does not match confirm/cancel")
+        
+        # Fallback: If no intent from Body, check ButtonText (for edge cases)
+        if not intent and ButtonText:
+            logger.info(f"🔍 Step 2b: Checking ButtonText for intent (fallback): '{ButtonText}'")
+            normalized_text = ButtonText.strip().lower()
+            if normalized_text.startswith("confirm") or normalized_text == "confirm" or "confirm" in normalized_text:
+                intent = "confirm"
+                logger.info(f"   ✅ Intent detected from ButtonText: CONFIRM")
+            elif normalized_text.startswith("cancel") or normalized_text == "cancel" or "cancel" in normalized_text:
+                intent = "cancel"
+                logger.info(f"   ✅ Intent detected from ButtonText: CANCEL")
+        
+        if not intent:
+            logger.info(f"   ℹ️  No intent detected from Body or ButtonText (generic message)")
+        
+        if appointment_id:
+            logger.info(f"   🎯 Appointment ID determined: {appointment_id}")
+        else:
+            logger.warning(f"   ⚠️  No appointment ID found in ButtonPayload: '{ButtonPayload}'")
+
         logger.info(
-            f"Twilio incoming message webhook: From={From}, To={To}, Body={Body[:100]}"
+            f"📊 Summary: From={From}, Body='{Body}', Intent={intent}, AppointmentID={appointment_id}"
+        )
+        logger.info(
+            f"📊 ButtonPayload='{ButtonPayload}', ButtonText='{ButtonText}'"
         )
         
-        # Extract phone number from From (format: whatsapp:+1234567890)
-        phone_number = From.replace("whatsapp:", "").strip()
+        # Initialize reply text - will be set based on intent and appointment processing
+        reply_text = None
+        logger.info(f"🔍 Step 2: Processing appointment based on ButtonPayload...")
+        logger.info(f"   Checking conditions: appointment_id={appointment_id is not None}, intent={intent is not None}")
         
-        # Find patient by phone number
-        patient = await db.patients.find_one({"phone": phone_number})
+        # Process appointment directly using appointment_id from ButtonPayload
+        # If we have appointment_id but no intent, try to detect intent from Body again (WhatsApp copies ButtonText to Body)
+        if appointment_id and not intent:
+            logger.warning(f"   ⚠️  Appointment ID found but no intent detected. Re-checking Body...")
+            normalized_text = (Body or ButtonText or "").strip().lower()
+            if normalized_text.startswith("confirm") or normalized_text == "confirm" or "confirm" in normalized_text:
+                intent = "confirm"
+                logger.info(f"   ✅ Intent detected from Body: CONFIRM")
+            elif normalized_text.startswith("cancel") or normalized_text == "cancel" or "cancel" in normalized_text:
+                intent = "cancel"
+                logger.info(f"   ✅ Intent detected from Body: CANCEL")
         
-        if not patient:
-            # Try without country code variations
-            patient = await db.patients.find_one({
-                "$or": [
-                    {"phone": {"$regex": phone_number[-10:]}},  # Last 10 digits
-                    {"phone": phone_number},
-                ]
-            })
-        
-        # Store incoming message robustly in MongoDB
+        if appointment_id and intent:
+            if intent == "confirm":
+                logger.info(f"   🔍 Processing CONFIRM intent for appointment: {appointment_id}")
+                try:
+                    if appointment_id:
+                        logger.info(f"      Using appointment ID from ButtonPayload: {appointment_id}")
+                        
+                        # Find appointment by MongoDB _id (appointment_id from payload is the _id)
+                        try:
+                            appointment_oid = ObjectId(appointment_id)
+                            appointment = await db.appointments.find_one(
+                                {
+                                    "_id": appointment_oid,
+                                    "status": {"$nin": ["cancelled", "no-show", "completed"]},
+                                }
+                            )
+                        except Exception as oid_error:
+                            logger.warning(f"      ⚠️  Invalid ObjectId format: {appointment_id} - {oid_error}")
+                            appointment = None
+
+                        if appointment:
+                            logger.info(
+                                f"WhatsApp confirm intent detected for appointment {appointment_id} (phone: {From})."
+                            )
+                            # Appointment is already confirmed (status is "scheduled" or similar)
+                            # Just log the confirmation acknowledgment
+                            reply_text = "Thank you, your appointment is confirmed."
+                        else:
+                            logger.warning(f"      ⚠️  Appointment {appointment_id} not found or already completed/cancelled")
+                            reply_text = "Thank you for confirming. We have received your message."
+                    else:
+                        logger.warning(f"      ⚠️  No appointment ID available in ButtonPayload for confirm intent")
+                        reply_text = "Thank you for confirming. We have received your message."
+                except Exception as confirm_error:
+                    logger.error(
+                        f"Failed to process WhatsApp confirm intent for appointment {appointment_id} (phone: {From}): {confirm_error}",
+                        exc_info=True,
+                    )
+                    reply_text = "Thank you for confirming. We have received your message."
+            
+            elif intent == "cancel":
+                logger.info(f"   🔍 Processing CANCEL intent...")
+                try:
+                    if appointment_id:
+                        logger.info(f"      Using appointment ID from ButtonPayload: {appointment_id}")
+                        
+                        # Find appointment by MongoDB _id (appointment_id from payload is the _id)
+                        try:
+                            appointment_oid = ObjectId(appointment_id)
+                            appointment = await db.appointments.find_one(
+                                {
+                                    "_id": appointment_oid,
+                                    "status": {"$nin": ["cancelled", "no-show", "completed"]},
+                                }
+                            )
+                        except Exception as oid_error:
+                            logger.warning(f"      ⚠️  Invalid ObjectId format: {appointment_id} - {oid_error}")
+                            appointment = None
+
+                        if appointment:
+                            appointment_db_id = str(appointment.get("_id"))
+
+                            logger.info(
+                                f"      ✅ Found appointment: {appointment_id} ({appointment_db_id})"
+                            )
+                            logger.info(
+                                f"WhatsApp cancel intent detected. "
+                                f"Cancelling appointment {appointment_id} ({appointment_db_id}) (phone: {From})."
+                            )
+
+                            try:
+                                appointment_service = AppointmentService(db)
+                                logger.info(f"      Calling AppointmentService.update_status...")
+                                await appointment_service.update_status(
+                                    appointment_db_id,
+                                    "cancelled",
+                                    cancellation_reason="Cancelled via WhatsApp by patient",
+                                )
+                                logger.info(f"      ✅ Successfully cancelled appointment")
+                                reply_text = "Thank you, your appointment has been cancelled."
+                            except Exception as update_error:
+                                logger.error(
+                                    f"      ❌ Failed to update appointment status: {update_error}",
+                                    exc_info=True
+                                )
+                                reply_text = "Thank you for your message. We have received your cancellation request."
+                        else:
+                            logger.warning(f"      ⚠️  Appointment {appointment_id} not found or already completed/cancelled")
+                            reply_text = "Thank you for your message. We have received your cancellation request."
+                    else:
+                        logger.warning(f"      ⚠️  No appointment ID available in ButtonPayload for cancel intent")
+                        reply_text = "Thank you for your message. We have received your cancellation request."
+                except Exception as cancel_error:
+                    logger.error(
+                        f"Failed to auto-cancel appointment from WhatsApp cancel intent "
+                        f"for appointment {appointment_id} (phone: {From}): {cancel_error}",
+                        exc_info=True,
+                    )
+                    reply_text = "Thank you for your message. We have received your cancellation request."
+            
+            else:
+                reply_text = "Message received, thank you."
+                logger.info(f"   ℹ️  Unknown intent: {intent}, using generic reply")
+        elif appointment_id and not intent:
+            # Appointment ID found but no intent detected
+            logger.warning(f"   ⚠️  Appointment ID found ({appointment_id}) but no intent detected")
+            logger.warning(f"   ⚠️  ButtonText='{ButtonText}', Body='{Body}'")
+            reply_text = "Thank you for your message. We have received it."
+        elif intent and not appointment_id:
+            # Intent detected but no appointment ID
+            logger.warning(f"   ⚠️  Intent detected ({intent}) but no appointment ID in ButtonPayload")
+            reply_text = "Thank you for your message. We have received it."
+        else:
+            # No appointment ID and no intent
+            logger.info(f"   ⚠️  No appointment ID or intent found, using generic acknowledgment")
+            reply_text = "Message received, thank you."
+
+        # Ensure reply_text is always set
+        if not reply_text:
+            reply_text = "Message received, thank you."
+            logger.warning(f"No reply text generated for message from {From}, using default")
+
+        logger.info(f"📤 Step 3: Prepared reply text: '{reply_text}'")
+
+        # Store incoming message in MongoDB (without patient lookup)
+        logger.info(f"🔍 Step 4: Storing incoming message in MongoDB...")
         message_doc = {
             "message_sid": MessageSid,
             "direction": "inbound",
             "from": From,
             "to": To,
             "body": Body,
-            "patient_id": str(patient["_id"]) if patient else None,
-            "appointment_id": None,  # Incoming messages don't have appointment context
+            "patient_id": None,  # No patient lookup
+            "appointment_id": appointment_id,  # Appointment ID from ButtonPayload
             "sent_by": None,
             "sent_by_role": None,
             "sent_by_name": None,
             "status": "received",
             "message_type": "inbound",
             "scenario": None,
+            "intent": intent,
+            "button_payload": ButtonPayload,
+            "button_text": ButtonText,
+            "referred_message_sid": ReferredMessageSid,
             "created_at": datetime.utcnow(),
             "received_at": datetime.now(timezone.utc).isoformat(),
-            "processed": False,
+            "processed": True,
         }
         
-        await db.whatsapp_messages.insert_one(message_doc)
-        logger.info(f"Stored incoming WhatsApp message in MongoDB: {MessageSid} (from: {From})")
-        
-        # Broadcast WebSocket update for real-time UI refresh
-        patient_id_str = str(patient["_id"]) if patient else None
         try:
-            from app.services.websocket_service import WebSocketService
-            websocket_service = WebSocketService()
-            await websocket_service.broadcast_whatsapp_message_update(
-                message_doc,
-                patient_id_str
-            )
-            logger.info(f"Broadcasted incoming WhatsApp message update via WebSocket")
-        except Exception as ws_error:
-            logger.warning(f"Failed to broadcast incoming WhatsApp message update: {ws_error}")
-        
-        # If patient found, you can process the message (e.g., auto-reply, store in messages collection)
-        if patient:
-            logger.info(f"Incoming message from patient {patient.get('patientId')}: {Body[:50]}")
-            
-            # Store in messages collection for clinic staff to see
-            await db.messages.insert_one({
-                "patientId": str(patient["_id"]),
-                "sender": "patient",
-                "message": Body,
-                "type": "whatsapp",
-                "whatsapp_message_sid": MessageSid,
-                "createdAt": datetime.utcnow(),
-                "read": False,
+            await db.whatsapp_messages.insert_one(message_doc)
+            logger.info(f"   ✅ Stored incoming WhatsApp message in MongoDB: {MessageSid}")
+        except Exception as insert_error:
+            if "duplicate key" in str(insert_error).lower() or "E11000" in str(insert_error):
+                logger.info(f"   ℹ️  Message {MessageSid} already exists (webhook retry), skipping insert")
+            else:
+                logger.warning(f"   ⚠️  Failed to store message in MongoDB: {insert_error}")
+
+        # Log the reply message in MongoDB
+        logger.info(f"🔍 Step 5: Logging reply message to MongoDB...")
+        try:
+            reply_message_sid = f"webhook_reply_{MessageSid}"
+            await db.whatsapp_messages.insert_one({
+                "message_sid": reply_message_sid,
+                "direction": "outbound",
+                "from": To,  # Our WhatsApp number
+                "to": From,  # Patient's number
+                "body": reply_text,
+                "patient_id": None,  # No patient lookup
+                "appointment_id": appointment_id,  # Link to appointment
+                "sent_by": "system",
+                "sent_by_role": "system",
+                "sent_by_name": "WhatsApp Webhook Auto-Reply",
+                "status": "sent",
+                "message_type": "auto_reply",
+                "scenario": f"reply_to_{intent}" if intent else "generic_reply",
+                "created_at": datetime.utcnow(),
+                "received_at": datetime.utcnow().isoformat(),
+                "processed": True,
             })
-            
-            # Note: Auto-reply disabled - staff will respond manually via dashboard
-            # If you want to enable auto-reply, uncomment below:
-            # await whatsapp_service.send_message(
-            #     to=From,
-            #     message="Thank you for your message. We will get back to you soon."
-            # )
-        
-        # Return 200 OK to Twilio (required) with plain text to avoid 12300
-        return Response(content="ok", media_type="text/plain")
+            logger.info(f"   ✅ Logged auto-reply message in MongoDB: {reply_message_sid}")
+        except Exception as log_error:
+            if "duplicate key" in str(log_error).lower() or "E11000" in str(log_error):
+                logger.info(f"   ℹ️  Reply message {reply_message_sid} already exists (webhook retry), skipping")
+            else:
+                logger.warning(f"   ⚠️  Failed to log auto-reply message: {log_error}")
+
+        # Create TwiML response
+        logger.info(f"🔍 Step 8: Creating TwiML response...")
+        if MessagingResponse is not None:
+            try:
+                twiml_response = MessagingResponse()
+                twiml_response.message(reply_text)
+                logger.info(f"✅ Successfully created TwiML response for {From}: '{reply_text}'")
+                logger.info("=" * 60)
+                # Return TwiML response - this will send the message to the patient
+                return Response(content=str(twiml_response), media_type="text/xml")
+            except Exception as twiml_error:
+                logger.error(f"❌ Error creating TwiML response: {twiml_error}", exc_info=True)
+                # Fallback to XML format manually
+                twiml_xml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_text}</Message></Response>'
+                logger.info("   Using manual TwiML XML fallback")
+                return Response(content=twiml_xml, media_type="text/xml")
+        else:
+            # Fallback: create TwiML XML manually if MessagingResponse is not available
+            logger.warning("MessagingResponse not available, using manual TwiML XML")
+            twiml_xml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{reply_text}</Message></Response>'
+            logger.info(f"✅ Created manual TwiML XML response")
+            logger.info("=" * 60)
+            return Response(content=twiml_xml, media_type="text/xml")
         
     except Exception as e:
-        logger.error(f"Error processing Twilio incoming webhook: {e}", exc_info=True)
-        # Still return 200 to prevent Twilio from retrying
-        return Response(content="error", media_type="text/plain")
+        import traceback
+        error_msg = str(e)
+        error_type = type(e).__name__
+        error_traceback = traceback.format_exc()
+        
+        logger.error(
+            f"❌ Error processing Twilio incoming webhook: {error_type}: {error_msg}",
+            exc_info=True
+        )
+        logger.error(f"Full traceback:\n{error_traceback}")
+        
+        # Try to return a proper TwiML error response instead of plain "error"
+        try:
+            error_reply = "We're sorry, there was an error processing your message. Please try again later."
+            if MessagingResponse is not None:
+                error_twiml = MessagingResponse()
+                error_twiml.message(error_reply)
+                return Response(content=str(error_twiml), media_type="text/xml")
+            else:
+                # Manual TwiML XML
+                error_xml = f'<?xml version="1.0" encoding="UTF-8"?><Response><Message>{error_reply}</Message></Response>'
+                return Response(content=error_xml, media_type="text/xml")
+        except Exception as fallback_error:
+            logger.error(f"Failed to create error TwiML response: {fallback_error}", exc_info=True)
+            # Last resort: return plain text with error details for debugging
+            # Include error details in response so we can see what's wrong
+            debug_response = f"Error: {error_type}: {error_msg}"
+            logger.error(f"Returning debug response: {debug_response}")
+            return Response(
+                content=debug_response,
+                media_type="text/plain"
+            )
