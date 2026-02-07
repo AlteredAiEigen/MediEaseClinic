@@ -72,6 +72,33 @@ class AppointmentNotificationService:
             logger.warning("Unable to parse appointment datetime for %s %s", date_str, time_str)
             return None
 
+    def _build_message_body(self, scenario: str, content_values: Dict[str, Any], appointment: dict) -> str:
+        """Build the full message body from template variables for logging purposes."""
+        if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
+            # Build full appointment reminder message matching the template structure
+            clinic_name = content_values.get("clinic_name", "MediEase Clinic")
+            patient_name = content_values.get("patient_name", appointment.get("patientName", "Patient"))
+            doctor_name = content_values.get("doctor_name", appointment.get("doctorName", "Doctor"))
+            appointment_datetime = content_values.get("appointment_datetime", f"{appointment.get('date')} {appointment.get('time')}")
+            clinic_phone = content_values.get("clinic_phone", "")
+            
+            # Build message matching the template structure
+            message = f"Dear {patient_name},\n\n"
+            message += f"Your appointment with {doctor_name} on {appointment_datetime}.\n"
+            message += f"Please reply to confirm/cancel"
+            if clinic_phone:
+                message += f" or CALL {clinic_phone}."
+            else:
+                message += "."
+            message += f"\n\nThank you, {clinic_name} Team"
+            return message
+        elif scenario == "post_visit_lab_request":
+            return "Lab result reminder"
+        elif scenario == "followup_appointment_reminder":
+            return "Follow-up appointment reminder"
+        else:
+            return f"Message for {scenario}"
+
     @staticmethod
     def _format_whatsapp_number(raw_phone: str) -> Optional[str]:
         if not raw_phone:
@@ -137,14 +164,31 @@ class AppointmentNotificationService:
             patient_id = str(appointment.get("patientId", ""))
             appointment_id = appointment.get("appointmentId", "")
             
-            # Get message body based on scenario
-            message_body = ""
-            if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
-                message_body = f"Appointment reminder for {appointment.get('date')} {appointment.get('time')}"
-            elif scenario == "post_visit_lab_request":
-                message_body = "Lab result reminder"
-            elif scenario == "followup_appointment_reminder":
-                message_body = "Follow-up appointment reminder"
+            # Check if message already exists (prevent duplicates from status webhook)
+            existing = await self.db.whatsapp_messages.find_one({"message_sid": message_sid})
+            if existing:
+                logger.info(f"Message {message_sid} already exists in whatsapp_messages, skipping duplicate insert")
+                # Update existing message with body from Twilio if available and current body is empty/incomplete
+                if details.get("body") and (not existing.get("body") or len(existing.get("body", "")) < 50):
+                    await self.db.whatsapp_messages.update_one(
+                        {"message_sid": message_sid},
+                        {"$set": {"body": details.get("body", existing.get("body", ""))}}
+                    )
+                    logger.info(f"Updated message {message_sid} with message body from Twilio")
+                return
+            
+            # Get message body from Twilio API response (already fetched in send method)
+            message_body = details.get("body", "")
+            if not message_body:
+                # Fallback: use scenario name if body not available
+                if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
+                    message_body = f"Appointment reminder for {appointment.get('date')} {appointment.get('time')}"
+                elif scenario == "post_visit_lab_request":
+                    message_body = "Lab result reminder"
+                elif scenario == "followup_appointment_reminder":
+                    message_body = "Follow-up appointment reminder"
+                else:
+                    message_body = f"Message for {scenario}"
             
             # Get patient phone
             patient_phone = None
@@ -209,6 +253,7 @@ class AppointmentNotificationService:
             patient_id=str(appointment.get("patientId")),
             appointment_id=appointment.get("appointmentId"),
         )
+        
         await self._log_whatsapp_attempt(
             appointment=appointment,
             scenario=scenario,

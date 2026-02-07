@@ -175,12 +175,25 @@ class WhatsAppTemplateService:
                 content_variables=json.dumps(content_vars),
                 status_callback=f"{settings.frontend_base_url}/api/whatsapp/webhooks/status",
             )
+            
+            # Fetch the actual message body from Twilio API
+            message_body = ""
+            try:
+                # Fetch the message to get the rendered body
+                fetched_msg = self.client.messages(msg.sid).fetch()
+                message_body = fetched_msg.body if hasattr(fetched_msg, 'body') and fetched_msg.body else ""
+                logger.info(f"Fetched message body from Twilio: {message_body[:100]}..." if len(message_body) > 100 else f"Fetched message body from Twilio: {message_body}")
+            except Exception as fetch_error:
+                logger.warning(f"Could not fetch message body from Twilio: {fetch_error}")
+                # Message body will be empty, but we'll still have message_sid
+            
             return {
                 "success": True,
                 "message_sid": msg.sid,
                 "status": msg.status,
                 "to": msg.to,
                 "from_number": msg.from_,
+                "body": message_body,  # Actual message body from Twilio
                 "timestamp": datetime.utcnow(),
                 "content_vars": content_vars,
             }

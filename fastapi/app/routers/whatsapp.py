@@ -433,14 +433,25 @@ async def get_patient_whatsapp_messages(
                     attempted_at = log_data.get("attemptedAt")
                     
                     if message_sid:
-                        # Determine message content based on scenario
-                        message_body = ""
-                        if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
-                            message_body = f"Appointment reminder for {apt.get('date')} {apt.get('time')}"
-                        elif scenario == "post_visit_lab_request":
-                            message_body = "Lab result reminder"
-                        elif scenario == "followup_appointment_reminder":
-                            message_body = "Follow-up appointment reminder"
+                        # Get message body from whatsapp_messages collection (stored from Twilio API)
+                        whatsapp_msg = await db.whatsapp_messages.find_one({"message_sid": message_sid})
+                        if whatsapp_msg and whatsapp_msg.get("body"):
+                            message_body = whatsapp_msg.get("body")
+                        else:
+                            # Fallback: try to get from log details (from Twilio API response)
+                            log_details = log_data.get("details", {})
+                            if log_details.get("body"):
+                                message_body = log_details.get("body")
+                            else:
+                                # Last fallback: build basic message
+                                if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
+                                    message_body = f"Appointment reminder for {apt.get('date')} {apt.get('time')}"
+                                elif scenario == "post_visit_lab_request":
+                                    message_body = "Lab result reminder"
+                                elif scenario == "followup_appointment_reminder":
+                                    message_body = "Follow-up appointment reminder"
+                                else:
+                                    message_body = f"Message for {scenario}"
                         
                         scheduler_messages.append({
                             "message_sid": message_sid,
@@ -568,21 +579,42 @@ async def twilio_status_webhook(
                 )
                 logger.info(f"Updated status for appointment {appointment.get('appointmentId')}: {MessageStatus}")
         
+        # Check if message exists and if body is missing
+        existing_msg = await db.whatsapp_messages.find_one({"message_sid": MessageSid})
+        message_body_update = {}
+        
+        # Fetch message body from Twilio if not already stored
+        if not existing_msg or not existing_msg.get("body") or len(existing_msg.get("body", "")) < 50:
+            try:
+                from app.services.whatsapp_service import WhatsAppService
+                whatsapp_service = WhatsAppService()
+                msg_status = await whatsapp_service.get_message_status(MessageSid)
+                if msg_status.get("success") and msg_status.get("body"):
+                    message_body_update["body"] = msg_status.get("body")
+                    logger.info(f"Fetched message body from Twilio for {MessageSid}: {msg_status.get('body')[:100]}...")
+            except Exception as fetch_error:
+                logger.warning(f"Could not fetch message body from Twilio in status webhook: {fetch_error}")
+        
         # Also store in a messages collection for tracking
+        update_fields = {
+            "status": MessageStatus,
+            "status_updated_at": datetime.utcnow(),
+            "error_code": ErrorCode,
+            "error_message": ErrorMessage,
+            "to": To,
+            "from": From,
+        }
+        update_fields.update(message_body_update)
+        
         update_result = await db.whatsapp_messages.update_one(
             {"message_sid": MessageSid},
             {
-                "$set": {
-                    "status": MessageStatus,
-                    "status_updated_at": datetime.utcnow(),
-                    "error_code": ErrorCode,
-                    "error_message": ErrorMessage,
-                    "to": To,
-                    "from": From,
-                },
+                "$set": update_fields,
                 "$setOnInsert": {
                     "message_sid": MessageSid,
                     "created_at": datetime.utcnow(),
+                    "direction": "outbound",
+                    "message_type": "scheduler",
                 }
             },
             upsert=True
