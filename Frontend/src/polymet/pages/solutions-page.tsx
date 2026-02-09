@@ -5,8 +5,6 @@ import {
   StethoscopeIcon,
   VideoIcon,
   LanguagesIcon,
-  TrendingUpIcon,
-  BellRingIcon,
   ClipboardCheckIcon,
   ScanIcon,
   MicIcon,
@@ -14,8 +12,6 @@ import {
   ArrowRightIcon,
   CheckCircle2Icon,
   UsersIcon,
-  CalendarIcon,
-  ActivityIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MediEaseLogo } from "@/polymet/components/mediease-logo";
@@ -177,48 +173,6 @@ export function SolutionsPage() {
         { label: "Languages", value: "2+ Active" },
         { label: "Coming Soon", value: "10+ Regional" },
         { label: "Accuracy", value: "98%" },
-      ],
-    },
-  ];
-
-  const clinicalAnalysis = [
-    {
-      icon: TrendingUpIcon,
-      title: "Decision Support System",
-      description:
-        "AI-powered clinical decision support with evidence-based recommendations",
-      capabilities: [
-        "Drug interaction warnings",
-        "Dosage calculation assistance",
-        "Differential diagnosis suggestions",
-        "Treatment protocol recommendations",
-        "Lab test interpretation guidance",
-      ],
-    },
-    {
-      icon: ActivityIcon,
-      title: "Trend Analysis",
-      description:
-        "Comprehensive health trend tracking and predictive analytics",
-      capabilities: [
-        "Patient vitals trending over time",
-        "Chronic disease progression monitoring",
-        "Treatment effectiveness analysis",
-        "Population health insights",
-        "Seasonal disease pattern recognition",
-      ],
-    },
-    {
-      icon: BellRingIcon,
-      title: "Actionable Alerts",
-      description:
-        "Smart notifications for critical patient events and follow-ups",
-      capabilities: [
-        "Critical lab result alerts",
-        "Medication refill reminders",
-        "Overdue follow-up notifications",
-        "Preventive care reminders",
-        "Emergency patient flagging",
       ],
     },
   ];
@@ -425,53 +379,6 @@ export function SolutionsPage() {
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Clinical Analysis Section */}
-      <section className="py-20 px-6 bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 px-4 py-2 rounded-full text-sm font-medium mb-4">
-              <ActivityIcon className="w-4 h-4" />
-              Integrated Clinical Intelligence
-            </div>
-            <h2 className="text-4xl font-bold mb-4">
-              Advanced Clinical Analysis Features
-            </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Built-in decision support, trend analysis, and actionable alerts
-              available across all solutions
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {clinicalAnalysis.map((feature, index) => (
-              <div
-                key={index}
-                className="bg-white rounded-2xl border border-border p-8 hover:shadow-xl transition-shadow"
-              >
-                <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 text-white mb-6">
-                  <feature.icon className="w-7 h-7" />
-                </div>
-                <h3 className="text-2xl font-bold mb-3">{feature.title}</h3>
-                <p className="text-muted-foreground mb-6">
-                  {feature.description}
-                </p>
-                <ul className="space-y-3">
-                  {feature.capabilities.map((capability, idx) => (
-                    <li key={idx} className="flex items-start gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
-
-                      <span className="text-sm text-muted-foreground">
-                        {capability}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
               </div>
             ))}
           </div>

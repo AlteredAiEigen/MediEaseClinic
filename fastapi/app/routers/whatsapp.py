@@ -468,32 +468,104 @@ async def get_patient_whatsapp_messages(
         
         # Combine and sort all messages
         all_messages = []
+        seen_message_sids = set()  # Track message_sids to prevent duplicates
         
-        # Add WhatsApp messages
+        # Add WhatsApp messages from whatsapp_messages collection
         for msg in whatsapp_messages:
+            message_sid = msg.get("message_sid")
+            if not message_sid:
+                # Skip messages without message_sid to avoid duplicates
+                continue
+            
+            if message_sid in seen_message_sids:
+                # Skip duplicate message_sid
+                continue
+            
+            seen_message_sids.add(message_sid)
             direction = msg.get("direction", "unknown")
             message_type = msg.get("message_type") or ("manual" if direction == "outbound" else "inbound")
-            received_at = msg.get("received_at") or msg.get("created_at")
-            if isinstance(received_at, datetime):
-                received_at = received_at.isoformat()
+            
+            # Use created_at as primary timestamp, fallback to received_at
+            timestamp = msg.get("created_at") or msg.get("received_at")
+            if isinstance(timestamp, datetime):
+                timestamp_iso = timestamp.isoformat()
+                timestamp_dt = timestamp
+            elif isinstance(timestamp, str):
+                timestamp_iso = timestamp
+                try:
+                    # Parse ISO string to datetime for proper sorting
+                    timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                except:
+                    timestamp_dt = datetime.utcnow()
+            else:
+                timestamp_iso = datetime.utcnow().isoformat()
+                timestamp_dt = datetime.utcnow()
 
             all_messages.append({
-                "message_sid": msg.get("message_sid"),
+                "message_sid": message_sid,
                 "direction": direction,
                 "body": msg.get("body", ""),
                 "status": msg.get("status", "unknown"),
-                "received_at": received_at,
+                "received_at": timestamp_iso,
+                "created_at": timestamp_iso,
+                "timestamp": timestamp_dt,  # For sorting
                 "from": msg.get("from"),
                 "to": msg.get("to"),
                 "type": message_type,
                 "scenario": msg.get("scenario"),
             })
         
-        # Add scheduler messages
-        all_messages.extend(scheduler_messages)
+        # Add scheduler messages only if they're not already in whatsapp_messages collection
+        for scheduler_msg in scheduler_messages:
+            message_sid = scheduler_msg.get("message_sid")
+            if not message_sid:
+                continue
+            
+            if message_sid in seen_message_sids:
+                # Already added from whatsapp_messages collection, skip
+                continue
+            
+            # Double-check: verify message doesn't exist in whatsapp_messages
+            existing = await db.whatsapp_messages.find_one({"message_sid": message_sid})
+            if existing:
+                # Message exists in whatsapp_messages, skip scheduler version
+                continue
+            
+            seen_message_sids.add(message_sid)
+            
+            # Parse timestamp for sorting
+            received_at_str = scheduler_msg.get("received_at", "")
+            try:
+                if isinstance(received_at_str, datetime):
+                    timestamp_dt = received_at_str
+                    received_at_str = received_at_str.isoformat()
+                elif isinstance(received_at_str, str):
+                    timestamp_dt = datetime.fromisoformat(received_at_str.replace('Z', '+00:00'))
+                else:
+                    timestamp_dt = datetime.utcnow()
+                    received_at_str = timestamp_dt.isoformat()
+            except:
+                timestamp_dt = datetime.utcnow()
+                received_at_str = timestamp_dt.isoformat()
+            
+            scheduler_msg["timestamp"] = timestamp_dt
+            scheduler_msg["created_at"] = received_at_str
+            scheduler_msg["received_at"] = received_at_str
+            all_messages.append(scheduler_msg)
         
-        # Sort by date (most recent first)
-        all_messages.sort(key=lambda x: x.get("received_at", ""), reverse=True)
+        # Sort by timestamp (datetime object) for accurate ordering, most recent first
+        all_messages.sort(key=lambda x: x.get("timestamp") or datetime.min, reverse=True)
+        
+        # Convert timestamps to ISO strings for frontend (keep datetime for sorting)
+        for msg in all_messages:
+            if "timestamp" in msg:
+                # Ensure received_at and created_at are ISO strings for frontend
+                if isinstance(msg.get("received_at"), datetime):
+                    msg["received_at"] = msg["received_at"].isoformat()
+                if isinstance(msg.get("created_at"), datetime):
+                    msg["created_at"] = msg["created_at"].isoformat()
+                # Remove timestamp field before sending to frontend
+                del msg["timestamp"]
         
         return success_response(
             data={
@@ -890,8 +962,8 @@ async def twilio_incoming_webhook(
             "button_payload": ButtonPayload,
             "button_text": ButtonText,
             "referred_message_sid": ReferredMessageSid,
-            "created_at": datetime.utcnow(),
-            "received_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(timezone.utc),
+            "received_at": datetime.now(timezone.utc),
             "processed": True,
         }
         
@@ -922,8 +994,8 @@ async def twilio_incoming_webhook(
                 "status": "sent",
                 "message_type": "auto_reply",
                 "scenario": f"reply_to_{intent}" if intent else "generic_reply",
-                "created_at": datetime.utcnow(),
-                "received_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc),
+                "received_at": datetime.now(timezone.utc),
                 "processed": True,
             })
             logger.info(f"   ✅ Logged auto-reply message in MongoDB: {reply_message_sid}")

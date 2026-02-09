@@ -90,6 +90,10 @@ interface Patient {
     relationship?: string;
   };
   emergencyContactPhone?: string;
+  consent_whatsapp?: boolean;
+  consent_email?: boolean;
+  consent_sms?: boolean;
+  consent_phone_call?: boolean;
   vitals?: {
     bloodPressure?: string;
     heartRate?: string;
@@ -1775,6 +1779,127 @@ Thank you!`;
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* Communication Consent Section */}
+                <div className="pt-3 border-t border-border/60">
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      Communication Consent
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      These preferences can only be updated through profile update request
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    {/* WhatsApp Consent */}
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 rounded-lg bg-green-100 dark:bg-green-900/20 flex-shrink-0">
+                            <MessageSquareIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground mb-0.5">WhatsApp</p>
+                            <p className="text-sm font-medium text-foreground">
+                              {displayPatient.consent_whatsapp ? "Consented" : "Not consented"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            displayPatient.consent_whatsapp
+                              ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400"
+                              : "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400"
+                          }
+                        >
+                          {displayPatient.consent_whatsapp ? "Yes" : "No"}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* SMS Consent */}
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/20 flex-shrink-0">
+                            <MessageSquareIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground mb-0.5">SMS</p>
+                            <p className="text-sm font-medium text-foreground">
+                              {displayPatient.consent_sms ? "Consented" : "Not consented"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            displayPatient.consent_sms
+                              ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400"
+                              : "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400"
+                          }
+                        >
+                          {displayPatient.consent_sms ? "Yes" : "No"}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Email Consent */}
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex-shrink-0">
+                            <MailIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground mb-0.5">Email</p>
+                            <p className="text-sm font-medium text-foreground">
+                              {displayPatient.consent_email ? "Consented" : "Not consented"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            displayPatient.consent_email
+                              ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400"
+                              : "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400"
+                          }
+                        >
+                          {displayPatient.consent_email ? "Yes" : "No"}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {/* Phone Call Consent */}
+                    <div className="p-3 rounded-lg border border-border bg-card">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 rounded-lg bg-orange-100 dark:bg-orange-900/20 flex-shrink-0">
+                            <PhoneIcon className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground mb-0.5">Phone Call</p>
+                            <p className="text-sm font-medium text-foreground">
+                              {displayPatient.consent_phone_call ? "Consented" : "Not consented"}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            displayPatient.consent_phone_call
+                              ? "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400"
+                              : "bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400"
+                          }
+                        >
+                          {displayPatient.consent_phone_call ? "Yes" : "No"}
+                        </Badge>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </CardContent>

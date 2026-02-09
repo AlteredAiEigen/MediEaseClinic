@@ -49,22 +49,6 @@ export function FeaturesSection() {
       iconColor: "text-emerald-600",
     },
     {
-      icon: BotIcon,
-      title: "AI-Powered Check-ins",
-      description:
-        "Automated patient check-in with intelligent queue control and real-time status updates for seamless patient flow",
-      highlights: [
-        "Self-service kiosks",
-        "Digital queue management",
-        "Real-time wait time updates",
-        "Priority-based routing",
-      ],
-
-      color: "from-cyan-500 to-teal-500",
-      bgColor: "bg-cyan-50 dark:bg-cyan-950/30",
-      iconColor: "text-cyan-600",
-    },
-    {
       icon: MicIcon,
       title: "Automatic Communication Recording",
       description:
@@ -80,38 +64,38 @@ export function FeaturesSection() {
       bgColor: "bg-purple-50 dark:bg-purple-950/30",
       iconColor: "text-purple-600",
     },
-    {
-      icon: FileTextIcon,
-      title: "Digital Prescription Workflow",
-      description:
-        "Streamlined e-prescription system with medication tracking, drug interaction alerts, and instant pharmacy integration",
-      highlights: [
-        "Digital prescription generation",
-        "Drug interaction warnings",
-        "Medication history tracking",
-        "Direct pharmacy sharing",
-      ],
+    // {
+    //   icon: FileTextIcon,
+    //   title: "Digital Prescription Workflow",
+    //   description:
+    //     "Streamlined e-prescription system with medication tracking, drug interaction alerts, and instant pharmacy integration",
+    //   highlights: [
+    //     "Digital prescription generation",
+    //     "Drug interaction warnings",
+    //     "Medication history tracking",
+    //     "Direct pharmacy sharing",
+    //   ],
 
-      color: "from-indigo-500 to-teal-500",
-      bgColor: "bg-indigo-50 dark:bg-indigo-950/30",
-      iconColor: "text-indigo-600",
-    },
-    {
-      icon: SparklesIcon,
-      title: "AI Clinical Analysis & Guidance",
-      description:
-        "Leverage stored history, communication, and lab results for AI-powered analysis, personalized recommendations, and clinical tips",
-      highlights: [
-        "Predictive health insights",
-        "Treatment recommendations",
-        "Risk factor identification",
-        "Clinical decision support",
-      ],
+    //   color: "from-indigo-500 to-teal-500",
+    //   bgColor: "bg-indigo-50 dark:bg-indigo-950/30",
+    //   iconColor: "text-indigo-600",
+    // },
+    // {
+    //   icon: SparklesIcon,
+    //   title: "AI Clinical Analysis & Guidance",
+    //   description:
+    //     "Leverage stored history, communication, and lab results for AI-powered analysis, personalized recommendations, and clinical tips",
+    //   highlights: [
+    //     "Predictive health insights",
+    //     "Treatment recommendations",
+    //     "Risk factor identification",
+    //     "Clinical decision support",
+    //   ],
 
-      color: "from-pink-500 to-teal-500",
-      bgColor: "bg-pink-50 dark:bg-pink-950/30",
-      iconColor: "text-pink-600",
-    },
+    //   color: "from-pink-500 to-teal-500",
+    //   bgColor: "bg-pink-50 dark:bg-pink-950/30",
+    //   iconColor: "text-pink-600",
+    // },
   ];
 
   return (
@@ -180,69 +164,6 @@ export function FeaturesSection() {
               </ul>
             </Card>
           ))}
-        </div>
-
-        {/* Key Benefits Banner */}
-        <div className="bg-gradient-to-r from-teal-500 to-emerald-500 rounded-3xl p-12 text-white">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
-            <div>
-              <h3 className="text-3xl font-bold mb-4">
-                Transform Your Practice with AI
-              </h3>
-              <p className="text-white/90 mb-6 leading-relaxed">
-                Our AI-powered platform automatically records every
-                patient-doctor communication, accurately fills patient details,
-                and maintains complete longitudinal history—all while minimizing
-                manual data entry for your staff.
-              </p>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                    <CheckCircle2Icon className="w-5 h-5" />
-                  </div>
-                  <span className="font-semibold">
-                    98% reduction in manual data entry
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                    <CheckCircle2Icon className="w-5 h-5" />
-                  </div>
-                  <span className="font-semibold">
-                    Complete patient history at your fingertips
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                    <CheckCircle2Icon className="w-5 h-5" />
-                  </div>
-                  <span className="font-semibold">
-                    AI-powered clinical insights and recommendations
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
-                <div className="text-4xl font-bold mb-2">40%</div>
-                <div className="text-sm text-white/80">
-                  Faster Consultations
-                </div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
-                <div className="text-4xl font-bold mb-2">30min</div>
-                <div className="text-sm text-white/80">Saved Daily</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
-                <div className="text-4xl font-bold mb-2">100%</div>
-                <div className="text-sm text-white/80">Digital Records</div>
-              </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center">
-                <div className="text-4xl font-bold mb-2">25%</div>
-                <div className="text-sm text-white/80">Practice Growth</div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>

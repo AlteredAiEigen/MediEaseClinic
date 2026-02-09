@@ -67,26 +67,7 @@ export function SolutionsMegaMenu() {
     },
   ];
 
-  const clinicalFeatures = [
-    {
-      icon: BrainCircuitIcon,
-      title: "Clinical Decision Support",
-      description:
-        "AI-powered recommendations based on patient history, symptoms, and latest medical guidelines.",
-    },
-    {
-      icon: TrendingUpIcon,
-      title: "Trend Analysis",
-      description:
-        "Track patient health trends over time with visual charts and predictive analytics.",
-    },
-    {
-      icon: BellIcon,
-      title: "Actionable Alerts",
-      description:
-        "Real-time notifications for critical lab results, medication interactions, and follow-up reminders.",
-    },
-  ];
+
 
   const demoFeatures = [
     {
@@ -191,14 +172,6 @@ export function SolutionsMegaMenu() {
             <div className="flex items-center gap-2 mb-6">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
                 <BrainCircuitIcon className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg">
-                  Integrated Clinical Analysis
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Available in current system
-                </p>
               </div>
             </div>
 

@@ -18,15 +18,9 @@ import {
   BuildingIcon,
   HospitalIcon,
   UserIcon,
-  VideoIcon,
   LanguagesIcon,
-  BrainIcon,
-  TrendingUpIcon,
-  BellIcon,
-  ScanIcon,
   CheckCircle2Icon,
   ArrowRightIcon,
-  SparklesIcon,
 } from "lucide-react";
 
 export function SolutionsSection() {
@@ -45,6 +39,7 @@ export function SolutionsSection() {
         "Digital prescriptions",
         "Billing & invoicing",
         "Queue management",
+        "WhatsApp integration",
       ],
       color: "from-teal-500 to-emerald-500",
       popular: false,
@@ -60,6 +55,7 @@ export function SolutionsSection() {
         "Advanced analytics dashboard",
         "Staff & role management",
         "Integrated lab & pharmacy",
+        "WhatsApp integration",
       ],
       color: "from-emerald-500 to-cyan-500",
       popular: true,
@@ -74,24 +70,9 @@ export function SolutionsSection() {
         "Appointment booking",
         "E-prescriptions",
         "Patient communication",
-        "Mobile app access",
+        "WhatsApp integration",
       ],
       color: "from-cyan-500 to-teal-500",
-      popular: false,
-    },
-    {
-      icon: VideoIcon,
-      title: "Telemedicine Ready",
-      description:
-        "Built-in telemedicine capabilities for remote consultations and follow-ups.",
-      features: [
-        "WhatsApp integration",
-        "Video consultations",
-        "Remote prescriptions",
-        "Digital report sharing",
-        "Follow-up management",
-      ],
-      color: "from-purple-500 to-teal-500",
       popular: false,
     },
   ];
@@ -171,33 +152,6 @@ export function SolutionsSection() {
       setIsSubmitting(false);
     }
   };
-
-  const clinicalFeatures = [
-    {
-      icon: BrainIcon,
-      title: "Clinical Decision Support",
-      description:
-        "AI-powered recommendations based on patient history, symptoms, and latest medical guidelines",
-    },
-    {
-      icon: TrendingUpIcon,
-      title: "Health Trend Analysis",
-      description:
-        "Track patient health trends over time with visual charts and predictive insights",
-    },
-    {
-      icon: BellIcon,
-      title: "Actionable Alerts",
-      description:
-        "Real-time alerts for critical values, drug interactions, and follow-up reminders",
-    },
-    {
-      icon: ScanIcon,
-      title: "Auto Data Extraction",
-      description:
-        "Extract data from scanned prescriptions, lab reports, and spoken consultations automatically",
-    },
-  ];
 
   const languages = [
     "English",
@@ -338,40 +292,6 @@ export function SolutionsSection() {
             </div>
           </div>
         </div>
-
-        {/* Clinical Analysis Features */}
-        <div>
-          <div className="text-center mb-12">
-            <h3 className="text-3xl font-bold mb-4">
-              Integrated{" "}
-              <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
-                Clinical Analysis
-              </span>
-            </h3>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              Advanced AI-powered clinical features available across all plans
-              to enhance decision-making and patient outcomes
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {clinicalFeatures.map((feature, index) => (
-              <Card
-                key={index}
-                className="p-6 hover:shadow-lg transition-shadow"
-              >
-                <div className="w-12 h-12 rounded-xl bg-teal-50 dark:bg-teal-950/30 flex items-center justify-center mb-4">
-                  <feature.icon className="w-6 h-6 text-teal-600" />
-                </div>
-                <h4 className="font-bold mb-2">{feature.title}</h4>
-                <p className="text-sm text-muted-foreground">
-                  {feature.description}
-                </p>
-              </Card>
-            ))}
-          </div>
-        </div>
-
 
         {/* Success Acknowledgment Dialog */}
         <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>

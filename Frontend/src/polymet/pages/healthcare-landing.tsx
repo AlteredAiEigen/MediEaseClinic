@@ -335,22 +335,13 @@ export function HealthcareLanding() {
       <section className="container mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           <div className="space-y-6 sm:space-y-8">
-            <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-600 text-xs sm:text-sm">
-              <RocketIcon className="w-3 h-3 sm:w-4 sm:h-4" />✨ Live Now - Transform
-              Your Healthcare Practice
-            </div>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-bold leading-tight">
+            <h3 className="text-2xl sm:text-4xl md:text-5xl lg:text-7xl font-bold leading-tight">
               <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
-                Connecting Clinics
+                All-in-One Platform, from Check-in to Care
               </span>
-              <br />
-
-              <span className="text-foreground">& Hospitals Digitally</span>
-            </h1>
+            </h3>
             <p className="text-base sm:text-lg lg:text-xl text-muted-foreground leading-relaxed">
-              Empowering Indian healthcare providers with seamless digital
-              solutions for appointments, EHR, e-prescriptions, and AI-powered
-              consultations
+            Powering India's clinics—real-time patient flow, AI transcription, multilingual efficiency for high-volume practices.
             </p>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <div className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs sm:text-sm font-semibold">
@@ -361,18 +352,6 @@ export function HealthcareLanding() {
                 <FileTextIcon className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
                 <span className="whitespace-nowrap">Structured clinical notes</span>
               </div>
-            </div>
-            <div className="bg-gradient-to-r from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 border border-teal-100 dark:border-teal-900">
-              <p className="text-sm sm:text-base text-foreground">
-                Streamline your clinic operations with{" "}
-                <span className="text-teal-600 dark:text-teal-400 font-bold">
-                  faster consults, fewer clicks,
-                </span>{" "}
-                and{" "}
-                <span className="text-teal-600 dark:text-teal-400 font-bold">
-                  structured data from day one.
-                </span>
-              </p>
             </div>
             <div className="flex gap-3 sm:gap-4">
               <Button
@@ -386,22 +365,6 @@ export function HealthcareLanding() {
 
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 pt-6 sm:pt-8">
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">40%</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Faster Consultations
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">30min</div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Saved Daily
-                </div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold text-teal-600">99.9%</div>
-                <div className="text-xs text-muted-foreground mt-1">Uptime</div>
-              </div>
               <div className="text-center">
                 <div className="text-2xl sm:text-3xl font-bold text-teal-600">HIPAA</div>
                 <div className="text-xs text-muted-foreground mt-1">
@@ -816,218 +779,15 @@ export function HealthcareLanding() {
             </Card>
           </div>
 
-          <div className="mt-12 text-center bg-teal-50 rounded-2xl p-8">
-            <h3 className="text-xl font-bold mb-2">
-              Designed for Modern Healthcare
-            </h3>
-            <p className="text-muted-foreground">
-              Streamline your practice with role-based workflows
-            </p>
-          </div>
         </div>
       </section>
 
       {/* Roadmap Section */}
-      <div id="roadmap">
+      {/* <div id="roadmap">
         <RoadmapSection />
-      </div>
+      </div> */}
 
       {/* AI That Works For You - Keeping original for continuity */}
-      <section className="relative bg-gradient-to-b from-teal-50/30 via-white to-emerald-50/30 dark:from-teal-950/20 dark:via-slate-950 dark:to-emerald-950/20 py-8 sm:py-12 lg:py-16">
-        {/* Decorative elements */}
-        <div className="absolute top-20 right-20 w-48 sm:w-96 h-48 sm:h-96 bg-teal-500/5 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-20 left-20 w-48 sm:w-96 h-48 sm:h-96 bg-emerald-500/5 rounded-full blur-3xl"></div>
-        <div className="container mx-auto px-4 sm:px-6 relative">
-          <div className="text-center mb-8 sm:mb-12">
-            <div className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-teal-100 to-emerald-100 dark:from-teal-900/40 dark:to-emerald-900/40 border border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-300 text-xs sm:text-sm font-semibold mb-4 sm:mb-6 shadow-lg">
-              <SparklesIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-              Powered by Advanced AI
-            </div>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 sm:mb-6 px-4">
-              AI That Works{" "}
-              <span className="bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent">
-                For You
-              </span>
-            </h2>
-            <p className="text-sm sm:text-base text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-12 px-4">
-              Transform your practice with intelligent automation that digitizes
-              patient records, increases efficiency, and helps grow your clinic
-            </p>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-12 items-center mb-16">
-            {/* Image with overlay cards */}
-            <div className="relative">
-              {/* Decorative gradient orbs */}
-              <div className="absolute -top-8 -left-8 w-64 h-64 bg-teal-500/20 rounded-full blur-3xl"></div>
-              <div className="absolute -bottom-8 -right-8 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl"></div>
-
-              <div className="relative rounded-3xl overflow-hidden shadow-2xl ring-1 ring-teal-100 dark:ring-teal-900">
-                <img
-                  src="https://v3b.fal.media/files/b/kangaroo/Kp0H7oPaKGuf6Fx0Z0HC_.jpg"
-                  alt="Indian doctor and staff using healthcare application"
-                  className="w-full h-auto"
-                />
-
-                {/* Floating AI card */}
-                <div className="absolute bottom-6 left-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl p-5 border border-teal-100 dark:border-teal-900">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center shadow-lg">
-                      <MicIcon className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">
-                        AI Transcription Active
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Recording consultation...
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                {/* Patient Insights card */}
-                <div className="absolute top-6 right-6 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl shadow-2xl p-5 border border-emerald-100 dark:border-emerald-900">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-lg">
-                      <SparklesIcon className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold">
-                        Patient Insights
-                      </div>
-                      <div className="text-xs text-teal-600">
-                        3 recommendations
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Features List */}
-            <div className="space-y-6">
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-teal-100 dark:border-teal-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-900/30 dark:to-emerald-900/30 flex items-center justify-center flex-shrink-0 border border-teal-100 dark:border-teal-800">
-                    <MicIcon className="w-6 h-6 text-teal-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      AI Medical Transcription
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Record consultations and automatically generate structured
-                      clinical notes with medical terminology accuracy
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-teal-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Save 30+ minutes per day on documentation
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-emerald-100 dark:border-emerald-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30 flex items-center justify-center flex-shrink-0 border border-emerald-100 dark:border-emerald-800">
-                    <ClipboardListIcon className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      Patient Overview Intelligence
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Get instant AI-generated summaries of patient history,
-                      medications, and risk factors
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-emerald-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Make informed decisions faster
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-cyan-100 dark:border-cyan-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-50 to-teal-50 dark:from-cyan-900/30 dark:to-teal-900/30 flex items-center justify-center flex-shrink-0 border border-cyan-100 dark:border-cyan-800">
-                    <BarChart3Icon className="w-6 h-6 text-cyan-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      Doctor Dashboard Analytics
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Real-time insights on patient load, appointment
-                      efficiency, and clinical outcomes
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-cyan-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Optimize clinic operations
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-2xl p-8 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-purple-100 dark:border-purple-900">
-                <div className="flex items-start gap-5">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-50 to-teal-50 dark:from-purple-900/30 dark:to-teal-900/30 flex items-center justify-center flex-shrink-0 border border-purple-100 dark:border-purple-800">
-                    <TrendingUpIcon className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-xl mb-3">
-                      Increased Footfall
-                    </h3>
-                    <p className="text-base text-muted-foreground mb-4">
-                      Digital records and faster service attract more patients
-                      and improve satisfaction scores
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-purple-600">
-                      <SparklesIcon className="w-3 h-3" />
-                      Grow your practice by 25%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-            <div className="bg-gradient-to-br from-white to-teal-50/50 dark:from-slate-900 dark:to-teal-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-teal-100 dark:border-teal-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-teal-600 to-emerald-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                98%
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Transcription Accuracy
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-white to-emerald-50/50 dark:from-slate-900 dark:to-emerald-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-emerald-100 dark:border-emerald-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                30min
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">Saved Per Day</div>
-            </div>
-            <div className="bg-gradient-to-br from-white to-cyan-50/50 dark:from-slate-900 dark:to-cyan-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-cyan-100 dark:border-cyan-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                25%
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Practice Growth
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-white to-purple-50/50 dark:from-slate-900 dark:to-purple-950/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 text-center shadow-lg border border-purple-100 dark:border-purple-900 hover:shadow-xl hover:-translate-y-1 transition-all">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-purple-600 to-teal-600 bg-clip-text text-transparent mb-2 sm:mb-3">
-                100%
-              </div>
-              <div className="text-xs sm:text-sm text-muted-foreground">
-                Digital Records
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </section>
 
       {/* Security Section */}
       <div id="security">
@@ -1200,7 +960,6 @@ export function HealthcareLanding() {
                 <div className="w-10 h-10 rounded-lg bg-emerald-500 flex items-center justify-center">
                   <ActivityIcon className="w-5 h-5 text-white" />
                 </div>
-                <div className="font-bold">24/7 Security Monitoring</div>
               </div>
               <p className="text-xs text-muted-foreground">
                 Continuous monitoring and threat detection to protect your
