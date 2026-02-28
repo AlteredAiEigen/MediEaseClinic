@@ -129,18 +129,18 @@ export function AuthPage() {
       id: "doctor",
       title: "Doctor",
       icon: StethoscopeIcon,
-      color: "from-[#00C4B3] to-[#10b981]",
-      bgColor: "bg-[#00C4B3]/10",
-      textColor: "text-[#00C4B3]",
+      color: "from-cyan-500 to-teal-500",
+      bgColor: "bg-cyan-500/10",
+      textColor: "text-cyan-400",
       path: "/doctor-dashboard",
     },
     {
       id: "receptionist",
       title: "Receptionist",
       icon: ClipboardListIcon,
-      color: "from-[#22d3ee] to-[#33A8FF]",
-      bgColor: "bg-[#22d3ee]/10",
-      textColor: "text-[#22d3ee]",
+      color: "from-blue-500 to-cyan-500",
+      bgColor: "bg-blue-500/10",
+      textColor: "text-blue-400",
       path: "/receptionist-dashboard",
     },
   ];
@@ -278,7 +278,7 @@ export function AuthPage() {
           <header className="border-b border-white/10 bg-black/40 backdrop-blur-sm">
             <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
               <Link to="/admin-dashboard" className="flex items-center gap-3">
-                <MediEaseLogo size="md" />
+                <MediEaseLogo size="md" variant="dark" />
                 <span className="text-sm text-white/60 hidden sm:inline">
                   Admin Workspace
                 </span>
@@ -357,18 +357,18 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5FAFF] via-white to-[#A7F5EB]/10 dark:from-background dark:via-background dark:to-[#00C4B3]/5">
+    <div className="min-h-screen" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0f2847 25%, #1e3a5f 50%, #2563eb 100%)" }}>
       {/* Header */}
-      <header className="border-b border-border bg-white/80 dark:bg-card/80 backdrop-blur-sm">
+      <header className="border-b border-white/20 bg-gradient-to-r from-purple-400/30 via-blue-400/30 to-cyan-400/30 backdrop-blur-md">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link to={getLogoLink()}>
-            <MediEaseLogo size="md" />
+            <MediEaseLogo size="md" variant="dark" />
           </Link>
 
           <Link to="/role-selection">
             <Button
               variant="ghost"
-              className="text-muted-foreground hover:text-foreground"
+              className="text-blue-50/90 hover:text-white hover:bg-blue-900/50"
             >
               <ArrowLeftIcon className="w-4 h-4 mr-2" />
               Back to Role Selection
@@ -384,28 +384,28 @@ export function AuthPage() {
             {/* Left Side - Role Selection */}
             <div className="space-y-6">
               <div className="space-y-2">
-                <h1 className="text-3xl lg:text-4xl font-bold text-foreground">
+                <h1 className="text-3xl lg:text-4xl font-bold text-white">
                   Welcome to{" "}
-                  <span className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] bg-clip-text text-transparent">
+                  <span className="bg-gradient-to-r from-cyan-300 to-blue-300 bg-clip-text text-transparent">
                     MediEase
                   </span>
                 </h1>
-                <p className="text-muted-foreground">
+                <p className="text-white/90">
                   Sign in to access your healthcare management dashboard
                 </p>
               </div>
 
               {/* Current Role Display */}
-              <Card className="border-2">
+              <Card className="border-2 border-white/20 bg-white/10 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Selected Role</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-lg text-white">Selected Role</CardTitle>
+                  <CardDescription className="text-white/90">
                     You're signing in as a {currentRole.title}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div
-                    className={`p-4 rounded-lg ${currentRole.bgColor} flex items-center gap-4`}
+                    className={`p-4 rounded-lg ${currentRole.bgColor} flex items-center gap-4 border border-white/10`}
                   >
                     <div
                       className={`w-12 h-12 rounded-lg bg-gradient-to-br ${currentRole.color} flex items-center justify-center shadow-lg`}
@@ -413,10 +413,10 @@ export function AuthPage() {
                       <CurrentRoleIcon className="w-6 h-6 text-white" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-foreground">
+                      <h3 className="font-semibold text-white">
                         {currentRole.title}
                       </h3>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-white/90">
                         Account Type
                       </p>
                     </div>
@@ -425,10 +425,10 @@ export function AuthPage() {
               </Card>
 
               {/* Role Switcher */}
-              <Card>
+              <Card className="border-2 border-white/20 bg-white/10 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="text-lg">Switch Role</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-lg text-white">Switch Role</CardTitle>
+                  <CardDescription className="text-white/90">
                     Select a different account type
                   </CardDescription>
                 </CardHeader>
@@ -443,8 +443,8 @@ export function AuthPage() {
                           onClick={() => handleRoleChange(role.id)}
                           className={`p-4 rounded-lg border-2 transition-all duration-200 ${
                             isSelected
-                              ? `${role.bgColor} border-transparent shadow-md`
-                              : "border-border hover:border-border/60 hover:bg-muted/50"
+                              ? `${role.bgColor} border-cyan-400/50 shadow-md`
+                              : "border-white/20 hover:border-white/40 hover:bg-white/5"
                           }`}
                         >
                           <div
@@ -458,7 +458,7 @@ export function AuthPage() {
                             className={`text-xs font-medium text-center ${
                               isSelected
                                 ? role.textColor
-                                : "text-muted-foreground"
+                                : "text-white/90"
                             }`}
                           >
                             {role.title}
@@ -474,28 +474,28 @@ export function AuthPage() {
 
             {/* Right Side - Auth Forms */}
             <div>
-              <Card className="border-2 shadow-xl">
+              <Card className="border-2 border-white/20 bg-white/10 backdrop-blur-sm shadow-xl">
                 <CardHeader>
-                  <CardTitle className="text-2xl">Authentication</CardTitle>
-                  <CardDescription>
+                  <CardTitle className="text-2xl text-white">Authentication</CardTitle>
+                  <CardDescription className="text-white/90">
                     Sign in to your account or create a new one
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Tabs defaultValue="login" className="w-full">
                     {selectedRole === "admin" && (
-                      <TabsList className="grid w-full grid-cols-2 mb-6">
-                        <TabsTrigger value="login">Login</TabsTrigger>
-                        <TabsTrigger value="signup">Sign Up</TabsTrigger>
+                      <TabsList className="grid w-full grid-cols-2 mb-6 bg-white/10 border border-white/20">
+                        <TabsTrigger value="login" className="text-white data-[state=active]:bg-cyan-500 data-[state=active]:text-white">Login</TabsTrigger>
+                        <TabsTrigger value="signup" className="text-white data-[state=active]:bg-cyan-500 data-[state=active]:text-white">Sign Up</TabsTrigger>
                       </TabsList>
                     )}
                     {(selectedRole === "doctor" ||
                       selectedRole === "receptionist") && (
                       <div className="mb-6 text-center">
-                        <h3 className="text-lg font-semibold text-foreground">
+                        <h3 className="text-lg font-semibold text-white">
                           Login to Your Account
                         </h3>
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-sm text-white/90 mt-1">
                           {currentRole.title} Login
                         </p>
                       </div>
@@ -505,14 +505,14 @@ export function AuthPage() {
                     <TabsContent value="login">
                       <form onSubmit={handleLogin} className="space-y-4">
                         {error && (
-                          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                          <div className="rounded-lg border border-red-400/50 bg-red-500/20 px-3 py-2 text-sm text-red-200">
                             {error}
                           </div>
                         )}
                         <div className="space-y-2">
-                          <Label htmlFor="login-email">Email</Label>
+                          <Label htmlFor="login-email" className="text-white">Email</Label>
                           <div className="relative">
-                            <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/70" />
 
                             <Input
                               id="login-email"
@@ -520,16 +520,16 @@ export function AuthPage() {
                               placeholder="doctor@mediease.com"
                               value={loginEmail}
                               onChange={(e) => setLoginEmail(e.target.value)}
-                              className="pl-10"
+                              className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                               required
                             />
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          <Label htmlFor="login-password">Password</Label>
+                          <Label htmlFor="login-password" className="text-white">Password</Label>
                           <div className="relative">
-                            <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/70" />
 
                             <Input
                               id="login-password"
@@ -537,14 +537,14 @@ export function AuthPage() {
                               placeholder="Enter your password"
                               value={loginPassword}
                               onChange={(e) => setLoginPassword(e.target.value)}
-                              className="pl-10 pr-10"
+                              className="pl-10 pr-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                               required
                             />
 
                             <button
                               type="button"
                               onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-200/70 hover:text-white"
                             >
                               {showPassword ? (
                                 <EyeOffIcon className="w-4 h-4" />
@@ -559,8 +559,8 @@ export function AuthPage() {
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input type="checkbox" className="rounded" />
 
-                            <span className="text-muted-foreground">
-                              Remember me
+<span className="text-white/90">
+                                Remember me
                             </span>
                           </label>
                           <button
@@ -568,7 +568,7 @@ export function AuthPage() {
                             onClick={() => {
                               alert("Please contact your administrator to reset your password.");
                             }}
-                            className="text-[#00C4B3] hover:underline"
+                            className="text-cyan-400 hover:underline"
                           >
                             Forgot password?
                           </button>
@@ -576,7 +576,7 @@ export function AuthPage() {
 
                         <Button
                           type="submit"
-                          className={`w-full bg-gradient-to-r ${currentRole.color} hover:opacity-90 text-white shadow-lg`}
+                          className="w-full bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg"
                           disabled={isLoading}
                         >
                           {isLoading ? "Signing in..." : "Sign In"}
@@ -589,10 +589,10 @@ export function AuthPage() {
                       <TabsContent value="signup">
                         {signupSuccessEmail ? (
                           <div className="space-y-4 text-center">
-                            <h3 className="text-xl font-semibold">
+                            <h3 className="text-xl font-semibold text-white">
                               Check your Gmail to activate your account
                             </h3>
-                            <p className="text-sm text-muted-foreground">
+                            <p className="text-sm text-white/90">
                               We&apos;ve sent an activation link to{" "}
                               <span className="font-medium">
                                 {signupSuccessEmail}
@@ -601,7 +601,7 @@ export function AuthPage() {
                               account. Once verified, you can sign in here as an
                               admin.
                             </p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-cyan-200">
                               Didn&apos;t get the email? Please check your spam
                               folder or try signing up again with the same
                               Gmail address.
@@ -610,14 +610,14 @@ export function AuthPage() {
                         ) : (
                           <form onSubmit={handleSignup} className="space-y-4 max-h-[600px] overflow-y-auto pr-2">
                             {error && (
-                              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                              <div className="rounded-lg border border-red-400/50 bg-red-500/20 px-3 py-2 text-sm text-red-200">
                                 {error}
                               </div>
                             )}
                             <div className="space-y-2">
-                              <Label htmlFor="signup-name">Full Name</Label>
+                              <Label htmlFor="signup-name" className="text-white">Full Name</Label>
                               <div className="relative">
-                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
 
                                 <Input
                                   id="signup-name"
@@ -625,18 +625,18 @@ export function AuthPage() {
                                   placeholder="Dr. John Smith"
                                   value={signupName}
                                   onChange={(e) => setSignupName(e.target.value)}
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-email">
+                              <Label htmlFor="signup-email" className="text-white">
                                 Gmail address <span className="text-red-500">*</span>
                               </Label>
                               <div className="relative">
-                                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/70" />
 
                                 <Input
                                   id="signup-email"
@@ -644,22 +644,22 @@ export function AuthPage() {
                                   placeholder="yourname@gmail.com"
                                   value={signupEmail}
                                   onChange={(e) => setSignupEmail(e.target.value)}
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
                               </div>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-cyan-200">
                                 Admin sign up currently supports only Gmail
                                 accounts (addresses ending in @gmail.com).
                               </p>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-clinic">
+                              <Label htmlFor="signup-clinic" className="text-white">
                                 Clinic/Hospital Name <span className="text-red-500">*</span>
                               </Label>
                               <div className="relative">
-                                <BuildingIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <BuildingIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
                                 <Input
                                   id="signup-clinic"
                                   type="text"
@@ -668,18 +668,18 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupClinicName(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-clinic-phone">
+                              <Label htmlFor="signup-clinic-phone" className="text-white">
                                 Clinic Phone Number <span className="text-red-500">*</span>
                               </Label>
                               <div className="relative">
-                                <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <PhoneIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
                                 <Input
                                   id="signup-clinic-phone"
                                   type="tel"
@@ -688,18 +688,18 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupClinicPhone(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-clinic-email">
+                              <Label htmlFor="signup-clinic-email" className="text-white">
                                 Clinic Email (optional)
                               </Label>
                               <div className="relative">
-                                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <MailIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
                                 <Input
                                   id="signup-clinic-email"
                                   type="email"
@@ -708,17 +708,17 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupClinicEmail(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                 />
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-clinic-address">
+                              <Label htmlFor="signup-clinic-address" className="text-white">
                                 Street Address <span className="text-red-500">*</span>
                               </Label>
                               <div className="relative">
-                                <MapPinIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <MapPinIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
                                 <Input
                                   id="signup-clinic-address"
                                   type="text"
@@ -727,7 +727,7 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupClinicAddress(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
                               </div>
@@ -735,7 +735,7 @@ export function AuthPage() {
 
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <Label htmlFor="signup-clinic-city">
+                                <Label htmlFor="signup-clinic-city" className="text-white">
                                   City <span className="text-red-500">*</span>
                                 </Label>
                                 <Input
@@ -750,14 +750,14 @@ export function AuthPage() {
                                 />
                               </div>
                               <div className="space-y-2">
-                                <Label htmlFor="signup-clinic-state">
+                                <Label htmlFor="signup-clinic-state" className="text-white">
                                   State <span className="text-red-500">*</span>
                                 </Label>
                                 <select
                                   id="signup-clinic-state"
                                   value={signupClinicState}
                                   onChange={(e) => setSignupClinicState(e.target.value)}
-                                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                  className="w-full rounded-md border border-white/20 bg-white/10 px-3 py-2 text-sm text-white"
                                   required
                                 >
                                   <option value="">Select State</option>
@@ -772,7 +772,7 @@ export function AuthPage() {
 
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-2">
-                                <Label htmlFor="signup-clinic-pincode">
+                                <Label htmlFor="signup-clinic-pincode" className="text-white">
                                   Pincode <span className="text-red-500">*</span>
                                 </Label>
                                 <Input
@@ -787,7 +787,7 @@ export function AuthPage() {
                                 />
                               </div>
                               <div className="space-y-2">
-                                <Label htmlFor="signup-clinic-country">
+                                <Label htmlFor="signup-clinic-country" className="text-white">
                                   Country <span className="text-red-500">*</span>
                                 </Label>
                                 <Input
@@ -804,9 +804,9 @@ export function AuthPage() {
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-clinic-website">Website</Label>
+                              <Label htmlFor="signup-clinic-website" className="text-white">Website</Label>
                               <div className="relative">
-                                <GlobeIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <GlobeIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
                                 <Input
                                   id="signup-clinic-website"
                                   type="url"
@@ -815,17 +815,17 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupClinicWebsite(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                 />
                               </div>
                             </div>
 
                             <div className="space-y-2">
-                                <Label htmlFor="signup-clinic-registration">
-                                  Registration/License Number (optional)
+<Label htmlFor="signup-clinic-registration" className="text-white">
+                                Registration/License Number (optional)
                                 </Label>
                               <div className="relative">
-                                <FileTextIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <FileTextIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
                                 <Input
                                   id="signup-clinic-registration"
                                   type="text"
@@ -834,18 +834,18 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupClinicRegistrationNumber(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                 />
                               </div>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-cyan-200">
                                 Medical registration or license number (if applicable)
                               </p>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-password">Password</Label>
+                              <Label htmlFor="signup-password" className="text-white">Password</Label>
                               <div className="relative">
-                                <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
 
                                 <Input
                                   id="signup-password"
@@ -855,14 +855,14 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupPassword(e.target.value)
                                   }
-                                  className="pl-10 pr-10"
+                                  className="pl-10 pr-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
 
                                 <button
                                   type="button"
                                   onClick={() => setShowPassword(!showPassword)}
-                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                  className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-200/80 hover:text-white"
                                 >
                                   {showPassword ? (
                                     <EyeOffIcon className="w-4 h-4" />
@@ -874,11 +874,11 @@ export function AuthPage() {
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="signup-confirm-password">
+                              <Label htmlFor="signup-confirm-password" className="text-white">
                                 Confirm Password
                               </Label>
                               <div className="relative">
-                                <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                <LockIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-200/80" />
 
                                 <Input
                                   id="signup-confirm-password"
@@ -888,7 +888,7 @@ export function AuthPage() {
                                   onChange={(e) =>
                                     setSignupConfirmPassword(e.target.value)
                                   }
-                                  className="pl-10"
+                                  className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-cyan-200/90"
                                   required
                                 />
                               </div>
@@ -901,13 +901,13 @@ export function AuthPage() {
                                 required
                               />
 
-                              <span className="text-muted-foreground">
+                              <span className="text-white/90">
                                 I agree to the{" "}
                                 <Link
                                   to="/terms-of-service"
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[#00C4B3] hover:underline"
+                                  className="text-cyan-400 hover:underline"
                                 >
                                   Terms of Service
                                 </Link>{" "}
@@ -916,7 +916,7 @@ export function AuthPage() {
                                   to="/privacy-policy"
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-[#00C4B3] hover:underline"
+                                  className="text-cyan-400 hover:underline"
                                 >
                                   Privacy Policy
                                 </Link>
@@ -925,7 +925,7 @@ export function AuthPage() {
 
                             <Button
                               type="submit"
-                              className={`w-full bg-gradient-to-r ${currentRole.color} hover:opacity-90 text-white shadow-lg`}
+                              className="w-full bg-cyan-500 hover:bg-cyan-600 text-white shadow-lg"
                               disabled={isLoading}
                             >
                               {isLoading

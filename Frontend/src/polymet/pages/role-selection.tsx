@@ -57,10 +57,10 @@ export function RoleSelection() {
       title: "Doctor",
       description: "Patient management and medical records access",
       icon: StethoscopeIcon,
-      color: "from-[#00C4B3] to-[#10b981]",
-      bgColor: "bg-[#00C4B3]/10",
-      borderColor: "border-[#00C4B3]/20",
-      textColor: "text-[#00C4B3]",
+      color: "from-cyan-500 to-teal-500",
+      bgColor: "bg-cyan-500/10",
+      borderColor: "border-cyan-500/20",
+      textColor: "text-cyan-400",
       path: "/doctor-dashboard",
       features: [
         "View patient records",
@@ -74,10 +74,10 @@ export function RoleSelection() {
       title: "Receptionist",
       description: "Patient check-in and appointment scheduling",
       icon: ClipboardListIcon,
-      color: "from-[#22d3ee] to-[#33A8FF]",
-      bgColor: "bg-[#22d3ee]/10",
-      borderColor: "border-[#22d3ee]/20",
-      textColor: "text-[#22d3ee]",
+      color: "from-blue-500 to-cyan-500",
+      bgColor: "bg-blue-500/10",
+      borderColor: "border-blue-500/20",
+      textColor: "text-blue-400",
       path: "/receptionist-dashboard",
       features: [
         "Patient check-in/out",
@@ -89,21 +89,21 @@ export function RoleSelection() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F5FAFF] via-white to-[#A7F5EB]/10 dark:from-background dark:via-background dark:to-[#00C4B3]/5">
+    <div className="min-h-screen" style={{ background: "linear-gradient(135deg, #0a1628 0%, #0f2847 25%, #1e3a5f 50%, #2563eb 100%)" }}>
       {/* Header */}
-      <header className="border-b border-border bg-white/80 dark:bg-card/80 backdrop-blur-sm">
+      <header className="border-b border-white/20 bg-gradient-to-r from-purple-400/30 via-blue-400/30 to-cyan-400/30 backdrop-blur-md">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link to={getLogoLink()}>
-            <MediEaseLogo size="md" />
+            <MediEaseLogo size="md" variant="dark" />
           </Link>
 
           <Link to="/">
             <Button
               variant="ghost"
-              className="text-muted-foreground hover:text-foreground"
+              className="text-blue-50/90 hover:text-white hover:bg-blue-900/50"
             >
               <ArrowLeftIcon className="w-4 h-4 mr-2" />
-              Back to Login
+              Back to Home
             </Button>
           </Link>
         </div>
@@ -114,13 +114,13 @@ export function RoleSelection() {
         <div className="max-w-6xl mx-auto space-y-8">
           {/* Title */}
           <div className="text-center space-y-4">
-            <h1 className="text-4xl lg:text-5xl font-bold text-foreground">
+            <h1 className="text-4xl lg:text-5xl font-bold text-white">
               Choose Your{" "}
-              <span className="bg-gradient-to-r from-[#00C4B3] to-[#10b981] bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-cyan-300 to-blue-300 bg-clip-text text-transparent">
                 Account Type
               </span>
             </h1>
-            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            <p className="text-lg text-white/90 max-w-2xl mx-auto">
               Select your role to access the MediEase Clinic management system
             </p>
           </div>
@@ -131,17 +131,17 @@ export function RoleSelection() {
               const Icon = role.icon;
               return (
                 <Link to={`/auth?role=${role.id}`} key={role.id}>
-                  <Card className="group relative overflow-hidden border-2 hover:border-transparent hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] cursor-pointer h-full bg-gradient-to-br from-white to-gray-50/50 dark:from-card dark:to-card/50 flex flex-col">
+                  <Card className="group relative overflow-hidden border-2 border-white/20 hover:border-cyan-400/50 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02] cursor-pointer h-full bg-white/10 backdrop-blur-sm flex flex-col">
                     {/* Subtle Logo-based Hover Effect */}
                     <div
-                      className="absolute inset-0 bg-gradient-to-br from-[#00C4B3]/10 via-[#10b981]/5 to-[#00C4B3]/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-lg"
+                      className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-lg"
                       style={{ padding: "2px" }}
                     />
 
                     {/* Subtle Decorative Elements */}
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-[#00C4B3]/5 to-[#10b981]/3 opacity-[0.02] group-hover:opacity-[0.05] rounded-bl-full transition-opacity duration-500" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-cyan-500/10 to-blue-500/5 opacity-30 group-hover:opacity-50 rounded-bl-full transition-opacity duration-500" />
 
-                    <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-gradient-to-tr from-[#10b981]/3 to-[#00C4B3]/5 opacity-[0.02] group-hover:opacity-[0.05] rounded-full transition-opacity duration-500" />
+                    <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-gradient-to-tr from-blue-500/5 to-cyan-500/10 opacity-30 group-hover:opacity-50 rounded-full transition-opacity duration-500" />
 
                     <CardHeader className="space-y-4 pb-4 flex-shrink-0">
                       <div className="flex items-center">
@@ -152,10 +152,10 @@ export function RoleSelection() {
                         </div>
                       </div>
                       <div>
-                        <CardTitle className="text-2xl font-bold mb-2 transition-all duration-300">
+                        <CardTitle className="text-2xl font-bold mb-2 transition-all duration-300 text-white">
                           {role.title}
                         </CardTitle>
-                        <CardDescription className="text-sm leading-relaxed">
+                        <CardDescription className="text-sm leading-relaxed text-white/90">
                           {role.description}
                         </CardDescription>
                       </div>
@@ -165,7 +165,7 @@ export function RoleSelection() {
                         {role.features.map((feature, index) => (
                           <div
                             key={index}
-                            className="flex items-center gap-3 text-sm text-foreground/80 group-hover:text-foreground transition-colors"
+                            className="flex items-center gap-3 text-sm text-white/90 group-hover:text-white transition-colors"
                           >
                             <div
                               className={`w-5 h-5 rounded-md bg-gradient-to-br ${role.color} flex items-center justify-center flex-shrink-0 shadow-sm`}
@@ -184,7 +184,7 @@ export function RoleSelection() {
                                 />
                               </svg>
                             </div>
-                            <span className="font-medium">{feature}</span>
+                            <span className="font-medium text-white">{feature}</span>
                           </div>
                         ))}
                       </div>

@@ -2,12 +2,15 @@ interface MediEaseLogoProps {
   size?: "sm" | "md" | "lg";
   showText?: boolean;
   className?: string;
+  /** Use "dark" for dark backgrounds (header, footer) - makes text white/cyan */
+  variant?: "default" | "dark";
 }
 
 export function MediEaseLogo({
   size = "md",
   showText = true,
   className = "",
+  variant = "default",
 }: MediEaseLogoProps) {
   const sizeClasses = {
     sm: "w-8 h-8",
@@ -21,6 +24,8 @@ export function MediEaseLogo({
     lg: "text-3xl",
   };
 
+  const isDark = variant === "dark";
+
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       <img
@@ -32,11 +37,17 @@ export function MediEaseLogo({
       {showText && (
         <div className="flex flex-col">
           <span
-            className={`${textSizeClasses[size]} font-bold bg-gradient-to-r from-[#00C4B3] to-[#10b981] bg-clip-text text-transparent`}
+            className={`${textSizeClasses[size]} font-bold ${
+              isDark
+                ? "text-white"
+                : "bg-gradient-to-r from-[#00C4B3] to-[#10b981] bg-clip-text text-transparent"
+            }`}
           >
             MediEase
           </span>
-          <span className="text-xs text-muted-foreground -mt-1">Clinic</span>
+          <span className={`text-xs -mt-1 ${isDark ? "text-cyan-400" : "text-muted-foreground"}`}>
+            Clinic
+          </span>
         </div>
       )}
     </div>

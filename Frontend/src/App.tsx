@@ -4,6 +4,11 @@ import { RequireAuth } from "@/components/require-auth";
 
 // Lazy load all page components for better performance
 const HealthcareLanding = lazy(() => import("@/polymet/pages/healthcare-landing").then(module => ({ default: module.HealthcareLanding })));
+const MedieaseLayout = lazy(() => import("@/polymet/layouts/mediease-layout").then(module => ({ default: module.MedieaseLayout })));
+const MedieaseHowItWorks = lazy(() => import("@/polymet/pages/mediease-how-it-works").then(module => ({ default: module.MedieaseHowItWorks })));
+const MedieasePricing = lazy(() => import("@/polymet/pages/mediease-pricing").then(module => ({ default: module.MedieasePricing })));
+const MedieaseAbout = lazy(() => import("@/polymet/pages/mediease-about").then(module => ({ default: module.MedieaseAbout })));
+const MedieaseContact = lazy(() => import("@/polymet/pages/mediease-contact").then(module => ({ default: module.MedieaseContact })));
 const FeaturesPage = lazy(() => import("@/polymet/pages/features-page").then(module => ({ default: module.FeaturesPage })));
 const SolutionsPage = lazy(() => import("@/polymet/pages/solutions-page").then(module => ({ default: module.SolutionsPage })));
 const SecurityPage = lazy(() => import("@/polymet/pages/security-page").then(module => ({ default: module.SecurityPage })));
@@ -96,20 +101,22 @@ export default function MediEaseClinicPrototype() {
     <Router>
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
-          {/* Public Routes */}
+          {/* Public Routes - New Mediease design */}
           <Route path="/" element={<HealthcareLanding />} />
 
-          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/how-it-works" element={<MedieaseLayout><MedieaseHowItWorks /></MedieaseLayout>} />
 
-          <Route path="/pricing" element={<SolutionsPage />} />
+          <Route path="/pricing" element={<MedieaseLayout><MedieasePricing /></MedieaseLayout>} />
+
+          <Route path="/about-us" element={<MedieaseLayout><MedieaseAbout /></MedieaseLayout>} />
+
+          <Route path="/contact" element={<MedieaseLayout><MedieaseContact /></MedieaseLayout>} />
+
+          <Route path="/features" element={<FeaturesPage />} />
 
           <Route path="/security" element={<SecurityPage />} />
 
           <Route path="/roadmap" element={<RoadmapPage />} />
-
-          <Route path="/contact" element={<ContactPage />} />
-
-          <Route path="/about-us" element={<AboutUsPage />} />
 
           <Route path="/role-selection" element={<RoleSelection />} />
 
