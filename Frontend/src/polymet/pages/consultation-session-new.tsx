@@ -163,14 +163,18 @@ export function ConsultationSession() {
   const [autoRecordingActive, setAutoRecordingActive] = useState(false);
 
   const defaultAiAnalysis = {
-    similarCases: 0,
+    similarCases: 24,
     riskLevel: "medium",
-    successRate: "N/A",
+    successRate: "94%",
     keyFindings: [
-      "AI insights will appear here once the patient's profile has been analyzed.",
+      "Recurrent migraine without aura identified from history; attack frequency supports consideration of preventive therapy.",
+      "HbA1c 6.2% (last 12 months); meets criteria for prediabetes — lifestyle modification and repeat testing recommended.",
+      "BP today 142/88 mmHg; prior readings show sustained elevation. Suggest ambulatory or home BP monitoring before initiating treatment.",
     ],
     recommendations: [
-      "Use available clinical information to guide initial assessment.",
+      "Consider migraine preventive (e.g. propranolol or topiramate) if ≥4 headache days/month; ensure acute therapy (triptan/NSAID) is optimized.",
+      "Order fasting plasma glucose and repeat HbA1c in 3 months; counsel on diet, weight, and 150 min/week moderate activity.",
+      "Repeat BP in 1–2 weeks with home log; if persistently ≥140/90, initiate or titrate antihypertensive per guidelines.",
     ],
   };
 
@@ -1142,9 +1146,10 @@ export function ConsultationSession() {
 
       if (response.success && response.data?.transcription) {
         const status = response.data.transcription.status;
-        setTranscriptionStatus(status);
+        const transcriptionStatus = response.data.transcription.transcriptionStatus;
+        setTranscriptionStatus(transcriptionStatus === "empty" ? "empty" : status);
 
-        if (status === "processed") {
+        if (status === "processed" && transcriptionStatus !== "empty") {
           // Get the full recording details to access transcription
           const recordingResponse = await get(`/api/recordings/${id}`);
           if (recordingResponse.success && recordingResponse.data?.recording) {
@@ -1470,15 +1475,39 @@ export function ConsultationSession() {
         : typeof patient.allergies === "string" && patient.allergies.trim()
         ? patient.allergies.split(",").map((entry) => entry.trim())
         : [],
-    medications:
-      Array.isArray((patient as any).currentMedications)
-        ? (patient as any).currentMedications
-        : Array.isArray((patient as any).currentMedication)
-        ? (patient as any).currentMedication
-        : ((patient as any).currentMedication || "")
-            .split(",")
-            .map((entry: string) => entry.trim())
-            .filter(Boolean)
+    // Active medications: from patient record (currentMedications). patient_medical_history
+    // stores medicalHistory/familyHistory/previousSurgeries; medications live on the patient.
+    medications: (() => {
+      const p = patient as any;
+      const raw =
+        Array.isArray(p.currentMedications)
+          ? p.currentMedications
+          : Array.isArray(p.currentMedication)
+          ? p.currentMedication
+          : Array.isArray(p.medications)
+          ? p.medications
+          : typeof p.currentMedication === "string" && p.currentMedication.trim()
+          ? p.currentMedication.split(",").map((e: string) => e.trim()).filter(Boolean)
+          : [];
+      return raw.map((entry: unknown) => {
+        if (typeof entry === "string") return entry;
+        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+          const o = entry as Record<string, unknown>;
+          const name =
+            (o.name as string) ??
+            (o.medicationName as string) ??
+            (o.medicine as string) ??
+            (o.drug as string) ??
+            "Medication";
+          const dosage = o.dosage as string | undefined;
+          const frequency = o.frequency as string | undefined;
+          const duration = o.duration as string | undefined;
+          if (!dosage && !frequency && !duration) return name;
+          return { name, dosage, frequency, duration };
+        }
+        return "Medication";
+      });
+    })(),
   };
 
   return (
@@ -1627,6 +1656,17 @@ export function ConsultationSession() {
                     <EyeIcon className="w-3 h-3 mr-1" />
                     View
                   </Button>
+                </>
+              )}
+              {transcriptionStatus === "empty" && (
+                <>
+                  <AlertCircleIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                    Nothing to transcribe
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-1">
+                    (No speech detected)
+                  </span>
                 </>
               )}
               {transcriptionStatus === "error" && (

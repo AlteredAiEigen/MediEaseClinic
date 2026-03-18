@@ -278,7 +278,7 @@ export function AuthPage() {
           <header className="border-b border-white/10 bg-black/40 backdrop-blur-sm">
             <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
               <Link to="/admin-dashboard" className="flex items-center gap-3">
-                <MediEaseLogo size="md" variant="dark" />
+                <MediEaseLogo size="lg" variant="dark" />
                 <span className="text-sm text-white/60 hidden sm:inline">
                   Admin Workspace
                 </span>
@@ -362,7 +362,7 @@ export function AuthPage() {
       <header className="border-b border-white/20 bg-gradient-to-r from-purple-400/30 via-blue-400/30 to-cyan-400/30 backdrop-blur-md">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link to={getLogoLink()}>
-            <MediEaseLogo size="md" variant="dark" />
+            <MediEaseLogo size="lg" variant="dark" />
           </Link>
 
           <Link to="/role-selection">

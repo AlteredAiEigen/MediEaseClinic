@@ -19,7 +19,7 @@ export function NewLandingPage() {
       {/* Header */}
       <header className="border-b border-border bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <MediEaseLogo size="md" />
+          <MediEaseLogo size="lg" />
 
           <nav className="hidden md:flex items-center gap-6">
             <a href="#features" className="text-sm hover:text-[#00C4B3]">

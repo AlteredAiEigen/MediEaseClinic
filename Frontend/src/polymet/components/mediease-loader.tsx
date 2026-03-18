@@ -10,7 +10,7 @@ export function MediEaseLoader({ children }: MediEaseLoaderProps) {
       {/* Translucent overlay with blurred background - only covers main content area */}
       <div className="fixed inset-0 lg:left-72 bg-background/60 backdrop-blur-[2px] z-40 flex items-center justify-center">
         <div className="relative animate-pulse">
-          <MediEaseLogo size="lg" showText={false} />
+          <MediEaseLogo size="xl" showText={false} />
         </div>
       </div>
 

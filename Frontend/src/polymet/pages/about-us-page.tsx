@@ -34,7 +34,7 @@ export function AboutUsPage() {
       <header className="border-b border-border sticky top-0 z-50 bg-white/80 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <MediEaseLogo size="md" />
+            <MediEaseLogo size="lg" />
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">

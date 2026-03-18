@@ -23,7 +23,7 @@ export function LandingPage() {
       {/* Header */}
       <header className="border-b border-border bg-white/80 dark:bg-card/80 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <MediEaseLogo size="md" />
+          <MediEaseLogo size="lg" />
 
           <div className="flex items-center gap-4">
             <Link to="/role-selection">

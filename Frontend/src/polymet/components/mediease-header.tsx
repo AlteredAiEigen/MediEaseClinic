@@ -27,10 +27,10 @@ export function MedieaseHeader({ onBookDemo }: MedieaseHeaderProps = {}) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-r from-purple-400/30 via-blue-400/30 to-cyan-400/30 backdrop-blur-md border-b border-white/20">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between py-4 min-h-[4rem]">
           {/* Logo */}
-          <Link to={getLogoLink()} className="flex items-center gap-2">
-            <MediEaseLogo size="sm" variant="dark" />
+          <Link to={getLogoLink()} className="flex items-center gap-2 py-1">
+            <MediEaseLogo size="md" variant="dark" />
           </Link>
 
           {/* Navigation */}

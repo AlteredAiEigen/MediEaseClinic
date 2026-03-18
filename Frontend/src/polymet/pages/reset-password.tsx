@@ -68,7 +68,7 @@ export function ResetPasswordPage() {
       <div className="max-w-md mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <Link to="/">
-            <MediEaseLogo size="md" />
+            <MediEaseLogo size="lg" />
           </Link>
           <Link to="/auth" className="text-muted-foreground hover:text-foreground text-sm flex items-center gap-1">
             <ArrowLeftIcon className="w-4 h-4" />

@@ -37,9 +37,9 @@ export function MediEaseLoader({
   }, [growing]);
 
   const sizeClasses = {
-    sm: "w-12 h-12",
-    md: "w-20 h-20",
-    lg: "w-32 h-32",
+    sm: "w-16 h-16",
+    md: "w-24 h-24",
+    lg: "w-36 h-36",
   };
 
   const textSizeClasses = {
@@ -59,9 +59,9 @@ export function MediEaseLoader({
           {/* Outer ring animation */}
           <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#00C4B3] to-[#10b981] opacity-20 animate-pulse" />
           
-          {/* Logo with breathing effect */}
+          {/* Logo with breathing effect – new MediEase logo */}
           <img
-            src="https://assets.polymet.ai/lucky-lavender-883645"
+            src="/mediease-logo.svg"
             alt="MediEase"
             className={`${sizeClasses[size]} rounded-2xl relative z-10 transition-opacity duration-100`}
             style={{ opacity }}

@@ -51,7 +51,7 @@ def _get_verification_form_html(patient_name: str, patient_id: str, base_url: st
             margin-bottom: 30px;
         }}
         .logo img {{
-            max-width: 200px;
+            max-width: 260px;
             height: auto;
         }}
         h1 {{
@@ -194,7 +194,7 @@ def _get_consent_form_html(patient_name: str, doctor_name: str, clinic_name: str
             margin-bottom: 30px;
         }}
         .logo img {{
-            max-width: 200px;
+            max-width: 260px;
             height: auto;
         }}
         h1 {{
@@ -354,7 +354,7 @@ def _get_success_page_html(title: str, message: str, is_success: bool = True, ac
             margin-bottom: 30px;
         }}
         .logo img {{
-            max-width: 200px;
+            max-width: 260px;
             height: auto;
         }}
         h1 {{
@@ -892,7 +892,7 @@ async def verify_pre_registration_email(
             margin-bottom: 30px;
         }}
         .logo img {{
-            max-width: 200px;
+            max-width: 260px;
             height: auto;
         }}
         h1 {{

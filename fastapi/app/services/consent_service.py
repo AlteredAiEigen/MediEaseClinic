@@ -62,7 +62,7 @@ class ConsentService:
             margin-bottom: 30px;
         }}
         .logo img {{
-            max-width: 200px;
+            max-width: 260px;
             height: auto;
         }}
         h1 {{
@@ -197,7 +197,7 @@ class ConsentService:
             margin-bottom: 30px;
         }}
         .logo img {{
-            max-width: 200px;
+            max-width: 260px;
             height: auto;
         }}
         h1 {{

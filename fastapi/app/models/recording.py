@@ -76,7 +76,7 @@ class RecordingBase(BaseModel):
     mimeType: str = "audio/mpeg"
     status: str = Field("recording", pattern="^(recording|processing|completed|failed|archived|error|processed|pending)$")
     transcription: Optional[str] = ""
-    transcriptionStatus: Optional[str] = Field(None, pattern="^(pending|completed|failed)$")
+    transcriptionStatus: Optional[str] = Field(None, pattern="^(pending|completed|failed|empty)$")
     transcriptionLanguage: Optional[str] = Field("hi", pattern="^(hi|en|hi-en|en-hi|auto)$")  # Language for transcription (default: Hindi)
     transcriptionConfidence: Optional[float] = Field(None, ge=0, le=1)
     audioQuality: Optional[AudioQuality] = None

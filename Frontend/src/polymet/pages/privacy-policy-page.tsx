@@ -15,7 +15,7 @@ export function PrivacyPolicyPage() {
       <header className="border-b border-border sticky top-0 z-50 bg-white/80 backdrop-blur-sm">
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3">
-            <MediEaseLogo size="md" />
+            <MediEaseLogo size="lg" />
           </Link>
           <Link to="/role-selection">
             <Button
@@ -160,7 +160,7 @@ export function PrivacyPolicyPage() {
         <div className="container mx-auto px-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             <div>
-              <MediEaseLogo size="md" />
+              <MediEaseLogo size="lg" />
               <p className="text-gray-400 mt-4 text-sm">
                 Modern healthcare management platform for clinics and healthcare providers.
               </p>

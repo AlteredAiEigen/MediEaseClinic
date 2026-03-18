@@ -15,7 +15,7 @@ export function MedieaseFooter({ onBookDemo }: MedieaseFooterProps = {}) {
           {/* Logo and Description */}
           <div>
             <div className="flex items-center gap-3 mb-4">
-              <MediEaseLogo size="sm" variant="dark" />
+              <MediEaseLogo size="md" variant="dark" />
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
               Transforming healthcare with AI and digital innovation for Indian clinics and hospitals.

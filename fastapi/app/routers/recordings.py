@@ -274,11 +274,12 @@ async def get_transcription_status(
         transcription_status = {
             "recordingId": recording["recordingId"],
             "status": recording["status"],
+            "transcriptionStatus": recording.get("transcriptionStatus"),
             "transcriptionAvailable": bool(recording.get("transcription")),
             "structuredNotesAvailable": bool(recording.get("aiProcessing", {}).get("structuredNotes")),
             "processingStartedAt": recording.get("processingStartedAt"),
             "processingCompletedAt": recording.get("processingCompletedAt"),
-            "errorMessage": recording.get("errorMessage")
+            "errorMessage": recording.get("errorMessage"),
         }
 
         return success_response(

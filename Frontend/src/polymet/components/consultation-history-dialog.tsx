@@ -55,6 +55,8 @@ interface Recording {
   doctorId: string;
   appointmentId?: string;
   status: string;
+  transcriptionStatus?: string;
+  errorMessage?: string | null;
   fileUrl?: string;
   duration?: number;
   transcription?: string;
@@ -348,12 +350,15 @@ export function ConsultationHistoryDialog({
                     const extractionStatus =
                       recording.aiProcessing?.notesExtractionStatus ||
                       (recording.aiProcessing?.structuredNotes ? "success" : undefined);
+                    const isTerminalNoContent =
+                      recording.transcriptionStatus === "empty" || recording.status === "error";
                     const extractionLabel =
                       extractionStatus === "success"
                         ? "AI Extraction Success"
                         : extractionStatus === "failed"
                         ? "AI Extraction Failed"
-                        : hasTranscription || recording.status === "processed"
+                        : !isTerminalNoContent &&
+                          (hasTranscription || recording.status === "processed")
                         ? "AI Extraction Pending"
                         : null;
                     const extractionBadgeClass =
@@ -426,14 +431,21 @@ export function ConsultationHistoryDialog({
                                   <Badge
                                     variant={recording.status === "processed" ? "default" : "secondary"}
                                     className={
-                                      recording.status === "processed"
+                                      recording.transcriptionStatus === "empty"
+                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                                        : recording.status === "processed"
                                         ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
                                         : recording.status === "error"
                                         ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
                                         : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                                     }
                                   >
-                                    {recording.status === "processed" ? (
+                                    {recording.transcriptionStatus === "empty" ? (
+                                      <>
+                                        <ClockIcon className="w-3 h-3 mr-1" />
+                                        Nothing to transcribe
+                                      </>
+                                    ) : recording.status === "processed" ? (
                                       <>
                                         <CheckCircleIcon className="w-3 h-3 mr-1" />
                                         Completed
@@ -514,7 +526,19 @@ export function ConsultationHistoryDialog({
                                     <span>{extractionLabel}</span>
                                   </div>
                                 ) : null}
+                                {isTerminalNoContent && !summaryNotes && !extractionLabel && (
+                                  <p className="mt-3 text-sm text-muted-foreground">
+                                    {recording.transcriptionStatus === "empty"
+                                      ? "No speech detected — nothing to transcribe."
+                                      : "Transcription or extraction failed."}
+                                  </p>
+                                )}
 
+                                {recording.transcriptionStatus === "empty" && (recording.errorMessage || recording.appointment?.followUpNotes) && (
+                                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                                    {recording.errorMessage || recording.appointment?.followUpNotes}
+                                  </p>
+                                )}
                                 {recording.status === "error" && recording.appointment?.followUpNotes && (
                                   <p className="text-xs text-red-600">
                                     {recording.appointment.followUpNotes}
@@ -668,14 +692,21 @@ export function ConsultationHistoryDialog({
                         <Badge
                           variant={selectedRecording.status === "processed" ? "default" : "secondary"}
                           className={
-                            selectedRecording.status === "processed"
+                            selectedRecording.transcriptionStatus === "empty"
+                              ? "bg-amber-100 text-amber-800"
+                              : selectedRecording.status === "processed"
                               ? "bg-green-100 text-green-800"
                               : selectedRecording.status === "error"
                               ? "bg-red-100 text-red-800"
                               : "bg-blue-100 text-blue-800"
                           }
                         >
-                          {selectedRecording.status === "processed" ? (
+                          {selectedRecording.transcriptionStatus === "empty" ? (
+                            <>
+                              <ClockIcon className="w-3 h-3 mr-1" />
+                              Nothing to transcribe
+                            </>
+                          ) : selectedRecording.status === "processed" ? (
                             <>
                               <CheckCircleIcon className="w-3 h-3 mr-1" />
                               Completed
@@ -707,11 +738,16 @@ export function ConsultationHistoryDialog({
                           const extractionStatus =
                             selectedRecording.aiProcessing?.notesExtractionStatus ||
                             (selectedRecording.aiProcessing?.structuredNotes ? "success" : undefined);
+                          const isTerminalNoContent =
+                            selectedRecording.transcriptionStatus === "empty" ||
+                            selectedRecording.status === "error";
                           const extractionLabel =
                             extractionStatus === "success"
                               ? "AI Extraction Success"
                               : extractionStatus === "failed"
                               ? "AI Extraction Failed"
+                              : isTerminalNoContent
+                              ? null
                               : selectedRecording.transcription || selectedRecording.appointment?.transcription
                               ? "AI Extraction Pending"
                               : null;
@@ -723,7 +759,15 @@ export function ConsultationHistoryDialog({
                               : "text-xs bg-amber-50 text-amber-700";
 
                           if (!extractionLabel) {
-                            return <span className="text-sm text-muted-foreground">Not started</span>;
+                            return (
+                              <span className="text-sm text-muted-foreground">
+                                {isTerminalNoContent
+                                  ? selectedRecording.transcriptionStatus === "empty"
+                                    ? "Nothing to transcribe"
+                                    : "Failed"
+                                  : "Not started"}
+                              </span>
+                            );
                           }
 
                           return (
@@ -753,11 +797,18 @@ export function ConsultationHistoryDialog({
                     selectedRecording.aiProcessing?.notesExtractionStatus ||
                     (selectedRecording.aiProcessing?.structuredNotes ? "success" : undefined);
                   const extractionError = selectedRecording.aiProcessing?.notesExtractionError;
+                  const isTerminalNoContent =
+                    selectedRecording.transcriptionStatus === "empty" ||
+                    selectedRecording.status === "error";
                   const extractionLabel =
                     extractionStatus === "success"
                       ? "AI extraction complete"
                       : extractionStatus === "failed"
                       ? "AI extraction failed"
+                      : isTerminalNoContent
+                      ? selectedRecording.transcriptionStatus === "empty"
+                        ? "No speech detected — nothing to transcribe."
+                        : "Transcription or extraction failed."
                       : "AI extraction pending";
 
                   return (
@@ -807,10 +858,10 @@ export function ConsultationHistoryDialog({
                           </>
                         ) : (
                           <div className="flex items-center gap-2 text-muted-foreground">
-                            {extractionStatus === "failed" ? (
-                              <XIcon className="w-4 h-4 text-red-500" />
+                            {extractionStatus === "failed" || isTerminalNoContent ? (
+                              <XIcon className="w-4 h-4 text-red-500 shrink-0" />
                             ) : (
-                              <Loader2Icon className="w-4 h-4 animate-spin" />
+                              <Loader2Icon className="w-4 h-4 animate-spin shrink-0" />
                             )}
                             <span>{extractionLabel}</span>
                           </div>
@@ -858,11 +909,15 @@ export function ConsultationHistoryDialog({
                 {(() => {
                   const transcription =
                     selectedRecording.transcription || selectedRecording.appointment?.transcription;
+                  const isEmpty = selectedRecording.transcriptionStatus === "empty";
+                  const isFailed = selectedRecording.status === "error";
                   const statusLabel =
-                    selectedRecording.status === "processed"
-                      ? "Transcription pending"
-                      : selectedRecording.status === "error"
+                    isEmpty
+                      ? "Nothing to transcribe"
+                      : isFailed
                       ? "Transcription failed"
+                      : selectedRecording.status === "processed"
+                      ? "Transcription pending"
                       : "Recording is still being processed...";
 
                   return (
@@ -877,21 +932,25 @@ export function ConsultationHistoryDialog({
                           </ScrollArea>
                         ) : (
                           <div className="p-6 text-center text-muted-foreground space-y-2">
-                            {selectedRecording.status === "error" ? (
+                            {isFailed ? (
                               <XIcon className="w-10 h-10 mx-auto text-red-500" />
+                            ) : isEmpty ? (
+                              <FileTextIcon className="w-10 h-10 mx-auto opacity-50" />
                             ) : (
                               <Loader2Icon className="w-12 h-12 mx-auto opacity-50 animate-spin" />
                             )}
                             <p>{statusLabel}</p>
-                            {selectedRecording.status && (
+                            {isEmpty && selectedRecording.errorMessage && (
+                              <p className="text-sm">{selectedRecording.errorMessage}</p>
+                            )}
+                            {selectedRecording.status && !isEmpty && (
                               <p className="text-sm">Status: {selectedRecording.status}</p>
                             )}
-                            {selectedRecording.aiProcessing?.notesExtractionError &&
-                              selectedRecording.status === "error" && (
-                                <p className="text-xs text-red-600">
-                                  {selectedRecording.aiProcessing.notesExtractionError}
-                                </p>
-                              )}
+                            {selectedRecording.aiProcessing?.notesExtractionError && isFailed && (
+                              <p className="text-xs text-red-600">
+                                {selectedRecording.aiProcessing.notesExtractionError}
+                              </p>
+                            )}
                           </div>
                         )}
                       </CardContent>

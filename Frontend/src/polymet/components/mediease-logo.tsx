@@ -1,5 +1,5 @@
 interface MediEaseLogoProps {
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   showText?: boolean;
   className?: string;
   /** Use "dark" for dark backgrounds (header, footer) - makes text white/cyan */
@@ -13,15 +13,17 @@ export function MediEaseLogo({
   variant = "default",
 }: MediEaseLogoProps) {
   const sizeClasses = {
-    sm: "w-8 h-8",
-    md: "w-12 h-12",
-    lg: "w-16 h-16",
+    sm: "w-12 h-12",
+    md: "w-20 h-20",
+    lg: "w-28 h-28",
+    xl: "w-36 h-36",
   };
 
   const textSizeClasses = {
-    sm: "text-lg",
-    md: "text-2xl",
-    lg: "text-3xl",
+    sm: "text-2xl",
+    md: "text-3xl",
+    lg: "text-4xl",
+    xl: "text-5xl",
   };
 
   const isDark = variant === "dark";
@@ -29,7 +31,7 @@ export function MediEaseLogo({
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       <img
-        src="https://assets.polymet.ai/lucky-lavender-883645"
+        src="/mediease-logo.svg"
         alt="MediEase Logo"
         className={`${sizeClasses[size]} rounded-xl`}
       />
@@ -45,7 +47,7 @@ export function MediEaseLogo({
           >
             MediEase
           </span>
-          <span className={`text-xs -mt-1 ${isDark ? "text-cyan-400" : "text-muted-foreground"}`}>
+          <span className={`text-sm -mt-1 ${isDark ? "text-cyan-400" : "text-muted-foreground"}`}>
             Clinic
           </span>
         </div>
