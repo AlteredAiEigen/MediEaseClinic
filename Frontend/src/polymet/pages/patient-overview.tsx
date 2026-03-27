@@ -459,7 +459,6 @@ export function PatientOverview() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasAnyData, setHasAnyData] = useState(false);
-  const [pastAppointmentsPage, setPastAppointmentsPage] = useState(1);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
   const [activeEditSection, setActiveEditSection] = useState<EditableSection | null>(null);
@@ -540,6 +539,7 @@ export function PatientOverview() {
   const [isGlobalEditMode, setIsGlobalEditMode] = useState(false);
   const [isSavingAll, setIsSavingAll] = useState(false);
   const [lastVisitDisplay, setLastVisitDisplay] = useState<string | null>(null);
+  const [lastVisitCondition, setLastVisitCondition] = useState<string | null>(null);
   const markSectionDirty = (section: EditableSection) => {
     setDirtySections((prev) =>
       prev[section] ? prev : { ...prev, [section]: true }
@@ -597,6 +597,7 @@ export function PatientOverview() {
       const targetPatientId = patient?._id || patientId;
       if (!targetPatientId) {
         setLastVisitDisplay(null);
+        setLastVisitCondition(null);
         return;
       }
 
@@ -606,12 +607,14 @@ export function PatientOverview() {
         );
         if (!response.success) {
           setLastVisitDisplay(null);
+          setLastVisitCondition(null);
           return;
         }
 
         const rawAppointments = extractList<any>(response.data);
         if (!rawAppointments.length) {
           setLastVisitDisplay(null);
+          setLastVisitCondition(null);
           return;
         }
 
@@ -629,6 +632,7 @@ export function PatientOverview() {
 
         if (!pastAppointments.length) {
           setLastVisitDisplay(null);
+          setLastVisitCondition(null);
           return;
         }
 
@@ -644,6 +648,21 @@ export function PatientOverview() {
         }, null);
 
         if (latest && latest.apt) {
+          const consultationSummary =
+            (latest.apt.consultationSummary as Record<string, unknown>) || {};
+          const structuredNotes =
+            (latest.apt.structuredNotes as Record<string, unknown>) || {};
+          const conditionText = [
+            consultationSummary.assessment,
+            structuredNotes.assessment,
+            structuredNotes.clinicalImpression,
+            consultationSummary.clinicalImpression,
+            latest.apt.diagnosis,
+          ]
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .find(Boolean);
+          setLastVisitCondition(conditionText || null);
+
           const latestDateString =
             latest.apt.date ||
             latest.apt.createdAt ||
@@ -665,9 +684,11 @@ export function PatientOverview() {
         }
 
         setLastVisitDisplay(null);
+        setLastVisitCondition(null);
       } catch (err) {
         console.warn("Failed to fetch last visit for patient", targetPatientId, err);
         setLastVisitDisplay(null);
+        setLastVisitCondition(null);
       }
     };
 
@@ -1238,13 +1259,24 @@ export function PatientOverview() {
           })()
         );
 
-        // Appointment history (reduced initial limit for faster loading, pagination added)
+        // Appointment history
         tasks.push(
           (async () => {
             try {
-              const appointmentsResponse = await get<any>(
-                `/api/appointments?patient_id=${patientId}&limit=10`
-              );
+              const fetchAppointments = async (id: string) =>
+                get<any>(`/api/appointments?patient_id=${id}&limit=100`);
+
+              let appointmentsResponse = await fetchAppointments(targetPatientId);
+
+              // Fallback for environments where route id works differently than Mongo _id.
+              if (
+                (!appointmentsResponse.success ||
+                  extractList<any>(appointmentsResponse.data).length === 0) &&
+                patientId &&
+                patientId !== targetPatientId
+              ) {
+                appointmentsResponse = await fetchAppointments(patientId);
+              }
               console.log("🔍 Appointments API Response:", {
                 success: appointmentsResponse.success,
                 data: appointmentsResponse.data,
@@ -1427,14 +1459,26 @@ export function PatientOverview() {
                          (status !== "scheduled" && status !== "checked-in" && status !== "in-progress");
       
       if (!isCompleted) return;
-      if (!appointment.prescription || !appointment.prescription.trim()) return;
+      const prescriptionStr =
+        typeof appointment.prescription === "string"
+          ? appointment.prescription
+          : "";
+      if (!prescriptionStr.trim()) return;
 
-      const appointmentDate = appointment.createdAt || appointment.created_at || appointment.date;
-      if (!appointmentDate) return;
+      const appointmentDateRaw =
+        appointment.createdAt || appointment.created_at || appointment.date;
+      if (!appointmentDateRaw) return;
+      const appointmentDate =
+        typeof appointmentDateRaw === "string"
+          ? appointmentDateRaw
+          : new Date(appointmentDateRaw).toISOString();
+      const startDateStr = appointmentDate.includes("T")
+        ? appointmentDate.split("T")[0]
+        : appointmentDate;
 
       // Parse prescription text - try to extract medication name, dosage, frequency
       // This is a simple parser - you may want to enhance it based on your prescription format
-      const prescriptionText = appointment.prescription.trim();
+      const prescriptionText = prescriptionStr.trim();
       
       // Split by lines or common separators
       const prescriptionLines = prescriptionText
@@ -1457,8 +1501,8 @@ export function PatientOverview() {
             name: medicationMatch[1].trim(),
             dosage: medicationMatch[2]?.trim() || "",
             frequency: medicationMatch[3]?.trim() || medicationMatch[2]?.trim() || "",
-            instructions: appointment.prescription,
-            startDate: appointmentDate.split('T')[0], // Extract date part only
+            instructions: prescriptionStr,
+            startDate: startDateStr,
             duration: "",
             endDate: "",
             isNew: false, // Mark as existing (from consultation)
@@ -1470,8 +1514,8 @@ export function PatientOverview() {
             name: line,
             dosage: "",
             frequency: "",
-            instructions: appointment.prescription,
-            startDate: appointmentDate.split('T')[0],
+            instructions: prescriptionStr,
+            startDate: startDateStr,
             duration: "",
             endDate: "",
             isNew: false, // Mark as existing (from consultation)
@@ -1618,21 +1662,69 @@ export function PatientOverview() {
     const rawFamilyHistory = (patientData as any).familyHistory;
     const rawPreviousSurgeries = (patientData as any).previousSurgeries;
 
-    const parseLines = (value: string | undefined | null): string[] =>
-      (value || "")
-        .split(/\r?\n|,/)
-        .map((segment) => segment.trim())
-        .filter((segment) => segment.length > 0);
+    const parseLines = (value: unknown): string[] => {
+      if (typeof value === "string") {
+        return value
+          .split(/\r?\n|,/)
+          .map((segment) => segment.trim())
+          .filter((segment) => segment.length > 0);
+      }
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => {
+            if (typeof item === "string") return item.trim();
+            if (item && typeof item === "object") {
+              const rec = item as Record<string, unknown>;
+              return String(
+                rec.title ?? rec.condition ?? rec.surgery ?? rec.notes ?? ""
+              ).trim();
+            }
+            return String(item ?? "").trim();
+          })
+          .filter((segment) => segment.length > 0);
+      }
+      if (value && typeof value === "object") {
+        const rec = value as Record<string, unknown>;
+        return [
+          String(
+            rec.title ?? rec.condition ?? rec.surgery ?? rec.notes ?? ""
+          ).trim(),
+        ].filter(Boolean);
+      }
+      return [];
+    };
+
+    const mapFamilyHistoryItem = (item: any) => {
+      const relation =
+        (item?.relation ?? item?.relationship ?? "").trim() ||
+        (() => {
+          const t = (item?.title ?? "").trim();
+          if (!t) return "";
+          const dash = t.indexOf(" - ");
+          return dash >= 0 ? t.slice(0, dash).trim() : "";
+        })();
+      const condition =
+        (item?.condition ?? item?.disease ?? item?.diagnosis ?? "").trim() ||
+        (() => {
+          const t = (item?.title ?? "").trim();
+          if (!t) return "";
+          const dash = t.indexOf(" - ");
+          return dash >= 0 ? t.slice(dash + 3).trim() : t;
+        })();
+      return {
+        _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        relation,
+        condition,
+        notes: (item?.notes ?? "").trim(),
+      };
+    };
 
     const familyHistoryEntries =
       Array.isArray(rawFamilyHistory) && rawFamilyHistory.length
-        ? rawFamilyHistory.map((item: any) => ({
-            _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            relation: item?.relation ?? "",
-            condition: item?.condition ?? "",
-            notes: item?.notes ?? "",
-          }))
-        : parseLines(rawFamilyHistory).map((line) => ({
+        ? rawFamilyHistory.map(mapFamilyHistoryItem)
+        : rawFamilyHistory && typeof rawFamilyHistory === "object" && !Array.isArray(rawFamilyHistory)
+          ? [mapFamilyHistoryItem(rawFamilyHistory)]
+          : parseLines(rawFamilyHistory).map((line) => ({
             _localId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
             relation: "",
             condition: line,
@@ -2516,6 +2608,13 @@ export function PatientOverview() {
     };
 
     appointments.forEach((appointment) => {
+      const status = (appointment?.status || "").toLowerCase();
+
+      // Hide cancelled appointments from the profile tab lists.
+      if (status.includes("cancel")) {
+        return;
+      }
+
       if (!appointment || !appointment.date) {
         // If no date, consider it past
         past.push(appointment);
@@ -2538,7 +2637,6 @@ export function PatientOverview() {
         // Determine if appointment is upcoming or past
         const dateInFuture = appointmentDate.getTime() > today.getTime();
         const dateIsToday = appointmentDate.getTime() === today.getTime();
-        const status = (appointment.status || "").toLowerCase();
         const activeStatuses = ["scheduled", "checked-in", "in-progress"];
         const isActiveStatus = activeStatuses.includes(status);
         
@@ -2567,11 +2665,6 @@ export function PatientOverview() {
 
   const upcomingAppointments = appointmentBuckets.upcoming;
   const pastAppointments = appointmentBuckets.past;
-  const PAST_APPOINTMENTS_PAGE_SIZE = 5;
-  const visiblePastAppointments = pastAppointments.slice(
-    0,
-    pastAppointmentsPage * PAST_APPOINTMENTS_PAGE_SIZE
-  );
 
   // Group clinical notes by appointment for quick lookup in the UI
   const clinicalNotesByAppointment = useMemo(() => {
@@ -3124,7 +3217,10 @@ export function PatientOverview() {
               />
 
               <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white text-2xl">
-                {displayPatient.fullName
+                {(typeof displayPatient.fullName === "string"
+                  ? displayPatient.fullName
+                  : ""
+                )
                   .split(" ")
                   .map((n) => n[0])
                   .join("")
@@ -4003,7 +4099,9 @@ export function PatientOverview() {
                             {queueId || appointmentId ? "Last Visit Condition" : "Condition"}
                           </p>
                           <p className="text-base text-foreground">
-                            {displayPatient.condition || "Not recorded"}
+                            {(queueId || appointmentId)
+                              ? (lastVisitCondition || "No Diagnosis")
+                              : (displayPatient.condition || "Not recorded")}
                           </p>
                         </div>
                         <div>
@@ -5321,17 +5419,12 @@ export function PatientOverview() {
                 <Badge variant="outline" className="text-xs">
                   {pastAppointments.length} recorded
                 </Badge>
-                {pastAppointments.length > visiblePastAppointments.length && (
-                  <span className="text-[11px] text-muted-foreground">
-                    Showing {visiblePastAppointments.length} of {pastAppointments.length}
-                  </span>
-                )}
               </div>
             </CardHeader>
             <CardContent>
               {pastAppointments.length > 0 ? (
-                <div className="space-y-3">
-                  {visiblePastAppointments.map((appointment) => {
+                <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-3">
+                  {pastAppointments.map((appointment) => {
                     const appointmentKey = appointment._id || appointment.appointmentId;
                     const mergedClinicalNotes =
                       appointment.clinicalNotes && appointment.clinicalNotes.length > 0
@@ -5365,9 +5458,9 @@ export function PatientOverview() {
                       type="single" 
                       collapsible 
                       className="w-full"
-                      defaultValue={hasDetails ? appointmentValue : undefined}
+                      defaultValue={undefined}
                     >
-                      <AccordionItem value={appointmentValue} className="border rounded-xl">
+                      <AccordionItem value={appointmentValue} className="border border-purple-200 dark:border-purple-800 rounded-xl bg-purple-50/20 dark:bg-purple-950/10">
                         <div className="px-4 py-3">
                           <AccordionTrigger className="hover:no-underline [&>svg]:hidden">
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full mr-4">

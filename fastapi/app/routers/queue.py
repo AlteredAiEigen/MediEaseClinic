@@ -266,24 +266,19 @@ async def check_out_patient(
             # Create a background task function
             async def upload_and_analyze_prescription():
                 try:
-                    from app.services.appointment_service import AppointmentService
                     from app.services.s3_service import s3_service
                     from datetime import datetime
-                    import uuid
-                    import mimetypes
                     
                     logger.info(f"Uploading prescription file for appointment {appointment_id} (background)")
                     
-                    # Generate S3 key
-                    file_extension = mimetypes.guess_extension(content_type) or ".jpg"
-                    s3_key = f"prescriptions/{appointment_id}/{uuid.uuid4()}{file_extension}"
-                    
-                    # Upload to S3
-                    await s3_service.upload_file(
+                    # Upload to S3 using correct API (file_name, folder; s3_key is returned)
+                    upload_result = await s3_service.upload_file(
                         file_content=file_content,
-                        s3_key=s3_key,
-                        content_type=content_type
+                        file_name=file_name or "prescription",
+                        content_type=content_type or "image/jpeg",
+                        folder=f"prescriptions/{appointment_id}"
                     )
+                    s3_key = upload_result["s3_key"]
                     
                     # Create s3_prescription document
                     s3_prescription_doc = {

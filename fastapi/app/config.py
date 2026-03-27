@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     # Vision model (OpenAI) for image analysis (e.g., prescriptions)
     openai_vision_model: str = "gpt-4o-mini"
+    openai_embedding_model: str = "text-embedding-3-small"
     
     # Google Gemini Configuration
     gemini_api_key: str = ""

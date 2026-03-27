@@ -213,14 +213,14 @@ async def appointment_helper(appointment: dict, db=None) -> dict:
     if not appointment:
         return None
     
-    # Fetch medications from s3_prescriptions if available
-    prescription_medications = []
-    if db is not None:
+    # Fetch medications: prefer prescribedMedications on appointment (set by prescription analysis),
+    # else fall back to s3_prescriptions structuredDetails
+    prescription_medications = appointment.get("prescribedMedications") or []
+    if not prescription_medications and db is not None:
         try:
             from bson import ObjectId
             appointment_id = str(appointment.get("_id") or appointment.get("appointmentId", ""))
             if appointment_id and ObjectId.is_valid(appointment_id):
-                # Get the most recent prescription for this appointment
                 s3_prescription = await db.s3_prescriptions.find_one(
                     {"appointmentId": appointment_id},
                     sort=[("createdAt", -1)]
@@ -229,7 +229,6 @@ async def appointment_helper(appointment: dict, db=None) -> dict:
                     structured_details = s3_prescription.get("structuredDetails", {})
                     prescription_medications = structured_details.get("medicines", [])
         except Exception as e:
-            # Log but don't fail if prescription fetch fails
             import logging
             logging.warning(f"Failed to fetch prescription medications for appointment: {e}")
     

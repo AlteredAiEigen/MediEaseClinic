@@ -28,6 +28,7 @@ class AuditLogMiddleware(BaseHTTPMiddleware):
         "/api/prescriptions",
         "/api/recordings",
         "/api/clinical-notes",
+        "/api/ai",
     ]
     
     # Methods that modify data (require extra logging)

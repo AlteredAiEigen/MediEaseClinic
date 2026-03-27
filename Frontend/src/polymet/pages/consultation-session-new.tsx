@@ -18,6 +18,8 @@ import {
   BotIcon,
   XIcon,
   Loader2Icon,
+  UserRound,
+  SendHorizontal,
   FileAudioIcon,
   EyeIcon,
   UploadIcon,
@@ -139,11 +141,14 @@ export function ConsultationSession() {
   const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
   const [isDeletingPrescription, setIsDeletingPrescription] = useState(false);
 
-  // AI Chat
+  // AI Chat (patient-grounded RAG + conversation persistence)
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [aiQuery, setAiQuery] = useState("");
-  const [aiResponse, setAiResponse] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiConversationId, setAiConversationId] = useState<string | null>(null);
+  const [aiChatMessages, setAiChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const aiChatEndRef = useRef<HTMLDivElement | null>(null);
+  const [insightsRefreshing, setInsightsRefreshing] = useState(false);
 
   // Session state
   const [sessionCompleted, setSessionCompleted] = useState(false);
@@ -162,46 +167,86 @@ export function ConsultationSession() {
   } | null>(null);
   const [autoRecordingActive, setAutoRecordingActive] = useState(false);
 
-  const defaultAiAnalysis = {
-    similarCases: 24,
-    riskLevel: "medium",
-    successRate: "94%",
-    keyFindings: [
-      "Recurrent migraine without aura identified from history; attack frequency supports consideration of preventive therapy.",
-      "HbA1c 6.2% (last 12 months); meets criteria for prediabetes — lifestyle modification and repeat testing recommended.",
-      "BP today 142/88 mmHg; prior readings show sustained elevation. Suggest ambulatory or home BP monitoring before initiating treatment.",
-    ],
-    recommendations: [
-      "Consider migraine preventive (e.g. propranolol or topiramate) if ≥4 headache days/month; ensure acute therapy (triptan/NSAID) is optimized.",
-      "Order fasting plasma glucose and repeat HbA1c in 3 months; counsel on diet, weight, and 150 min/week moderate activity.",
-      "Repeat BP in 1–2 weeks with home log; if persistently ≥140/90, initiate or titrate antihypertensive per guidelines.",
-    ],
-  };
-
   const aiAnalysis = useMemo(() => {
-    const insights = (patient as any)?.insights;
-    if (insights) {
-      const keyFindings =
-        Array.isArray(insights.keyFindings) && insights.keyFindings.length > 0
-          ? insights.keyFindings
-          : defaultAiAnalysis.keyFindings;
+    const insights = (patient as any)?.insights as Record<string, unknown> | undefined;
+    const disclaimer =
+      (insights?.disclaimer as string) ||
+      "This is AI-assisted decision support, not a diagnosis.";
 
-      const recommendations =
-        Array.isArray(insights.recommendations) && insights.recommendations.length > 0
-          ? insights.recommendations
-          : defaultAiAnalysis.recommendations;
-
+    if (!insights) {
       return {
-        similarCases: defaultAiAnalysis.similarCases,
-        riskLevel: insights.riskLevel || defaultAiAnalysis.riskLevel,
-        successRate: insights.successRate || defaultAiAnalysis.successRate,
-        keyFindings,
-        recommendations,
+        insightsSource: "none" as const,
+        riskLevel: "—",
+        successRate: "—",
+        riskAssessment: "",
+        keyFindings: [] as string[],
+        recommendations: [] as string[],
+        clinicalPearls: [] as string[],
+        suggestedQuestions: [] as string[],
+        redFlags: [] as string[],
+        disclaimer,
       };
     }
 
-    return defaultAiAnalysis;
+    const keyFindings = Array.isArray(insights.keyFindings)
+      ? (insights.keyFindings as string[]).filter(Boolean)
+      : [];
+    const recommendations = Array.isArray(insights.recommendations)
+      ? (insights.recommendations as string[]).filter(Boolean)
+      : [];
+    const clinicalPearls = Array.isArray(insights.clinicalPearls)
+      ? (insights.clinicalPearls as string[]).filter(Boolean)
+      : [];
+    const suggestedQuestions = Array.isArray(insights.suggestedQuestionsForClinician)
+      ? (insights.suggestedQuestionsForClinician as string[]).filter(Boolean)
+      : [];
+    const redFlags = Array.isArray(insights.redFlagsToConsider)
+      ? (insights.redFlagsToConsider as string[]).filter(Boolean)
+      : [];
+
+    const riskAssessment =
+      typeof insights.riskAssessment === "string" ? insights.riskAssessment.trim() : "";
+
+    const hasLists = keyFindings.length > 0 || recommendations.length > 0;
+    const hasAnyBody =
+      hasLists ||
+      !!riskAssessment ||
+      clinicalPearls.length > 0 ||
+      suggestedQuestions.length > 0 ||
+      redFlags.length > 0;
+
+    if (!hasAnyBody) {
+      return {
+        insightsSource: "empty" as const,
+        riskLevel: (insights.riskLevel as string) || "—",
+        successRate: (insights.successRate as string) || "—",
+        riskAssessment: "",
+        keyFindings,
+        recommendations,
+        clinicalPearls,
+        suggestedQuestions,
+        redFlags,
+        disclaimer,
+      };
+    }
+
+    return {
+      insightsSource: "backend" as const,
+      riskLevel: (insights.riskLevel as string) || "medium",
+      successRate: (insights.successRate as string) || "N/A",
+      riskAssessment,
+      keyFindings,
+      recommendations,
+      clinicalPearls,
+      suggestedQuestions,
+      redFlags,
+      disclaimer,
+    };
   }, [patient]);
+
+  const insightsMeta = (patient as any)?.insightsMeta as
+    | { status?: string; lastGeneratedAt?: string; error?: string }
+    | undefined;
 
   const consultationIdentifiers = useMemo(
     () => ({
@@ -211,6 +256,17 @@ export function ConsultationSession() {
     }),
     [resolvedPatientObjectId, patient?._id, patient?.patientId, queueEntryId]
   );
+
+  useEffect(() => {
+    setAiConversationId(null);
+    setAiChatMessages([]);
+    setAiQuery("");
+  }, [resolvedPatientObjectId]);
+
+  useEffect(() => {
+    if (!aiChatOpen) return;
+    aiChatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [aiChatMessages, isAiLoading, aiChatOpen]);
 
   // Fetch patient data and queue entry on component mount
   useEffect(() => {
@@ -1165,27 +1221,95 @@ export function ConsultationSession() {
   };
 
   const askAI = async () => {
-    if (!aiQuery.trim()) return;
+    if (!aiQuery.trim() || isAiLoading) return;
+
+    const mongoPatientId = resolvedPatientObjectId || (patient as any)?._id;
+    if (!mongoPatientId) {
+      toast({
+        title: "Patient not loaded",
+        description: "Cannot run AI chat without a patient context.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const userMsg = aiQuery.trim();
+    setAiQuery("");
+    setAiChatMessages((prev) => [...prev, { role: "user", content: userMsg }]);
+    setIsAiLoading(true);
 
     try {
-      setIsAiLoading(true);
-      const response = await post("/api/ai/chat", {
-        query: aiQuery,
-        patientId,
-        context: {
-          notes,
-          diagnosis,
-          treatment,
-        },
+      const response = await post<{
+        response: string;
+        conversationId?: string;
+      }>("/api/ai/chat", {
+        query: userMsg,
+        patientId: mongoPatientId,
+        appointmentId: appointmentId || undefined,
+        conversationId: aiConversationId || undefined,
+        context: JSON.stringify({
+          sessionNotes: notes,
+          workingDiagnosis: diagnosis,
+          treatmentPlanDraft: treatment,
+        }),
       });
 
       if (response.success && response.data) {
-        setAiResponse(response.data.response);
+        const answer = response.data.response || "";
+        if (response.data.conversationId) {
+          setAiConversationId(response.data.conversationId);
+        }
+        setAiChatMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+      } else {
+        setAiChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Sorry — no response from the assistant. Please try again.",
+          },
+        ]);
       }
     } catch (err) {
       console.error("Error getting AI response:", err);
+      setAiChatMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Request failed. Check your connection and try again, or open the browser console for details.",
+        },
+      ]);
+      toast({
+        title: "AI chat failed",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsAiLoading(false);
+    }
+  };
+
+  const refreshAiInsights = async () => {
+    const mongoPatientId = resolvedPatientObjectId || (patient as any)?._id;
+    if (!mongoPatientId) return;
+    try {
+      setInsightsRefreshing(true);
+      const res = await post<{ insights: Record<string, unknown> }>("/api/ai/insights/refresh", {
+        patientId: mongoPatientId,
+      });
+      if (res.success && res.data?.insights && patient) {
+        setPatient({ ...patient, insights: res.data.insights as any });
+        toast({ title: "Insights updated", description: "Latest cumulative analysis is ready." });
+      }
+    } catch (e) {
+      console.error(e);
+      toast({
+        title: "Could not refresh insights",
+        description: e instanceof Error ? e.message : "Try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setInsightsRefreshing(false);
     }
   };
 
@@ -1777,18 +1901,56 @@ export function ConsultationSession() {
           {/* AI Analysis Section - Main Focus */}
           <Card className="border-border shadow-md bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20">
             <CardHeader className="pb-4">
-              <CardTitle className="text-xl flex items-center gap-2">
-                <SparklesIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                AI Health Analysis
-                <Badge
+              <CardTitle className="text-xl flex flex-wrap items-center gap-2 justify-between">
+                <span className="flex items-center gap-2">
+                  <SparklesIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  AI Health Analysis
+                  <Badge
+                    variant="outline"
+                    className="text-xs bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700"
+                  >
+                    Cumulative history
+                  </Badge>
+                  {insightsMeta?.status === "pending" && (
+                    <Badge variant="secondary" className="text-xs">
+                      Updating…
+                    </Badge>
+                  )}
+                  {insightsMeta?.status === "failed" && (
+                    <Badge variant="destructive" className="text-xs">
+                      Last refresh failed
+                    </Badge>
+                  )}
+                </span>
+                <Button
+                  type="button"
                   variant="outline"
-                  className="ml-2 text-xs bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={insightsRefreshing || !resolvedPatientObjectId}
+                  onClick={() => void refreshAiInsights()}
                 >
-                  Based on {aiAnalysis.similarCases} similar cases
-                </Badge>
+                  {insightsRefreshing ? (
+                    <>
+                      <Loader2Icon className="w-4 h-4 mr-1 animate-spin" />
+                      Refreshing
+                    </>
+                  ) : (
+                    "Refresh insights"
+                  )}
+                </Button>
               </CardTitle>
+              <p className="text-xs text-muted-foreground mt-2">{aiAnalysis.disclaimer}</p>
             </CardHeader>
             <CardContent className="space-y-4">
+              {(aiAnalysis.insightsSource === "none" || aiAnalysis.insightsSource === "empty") && (
+                <div className="rounded-lg border border-dashed border-purple-300/80 bg-purple-50/40 dark:bg-purple-950/20 p-4 text-sm text-muted-foreground">
+                  {aiAnalysis.insightsSource === "none"
+                    ? "No AI insights yet for this patient. They are generated when an appointment is booked or after check-in. Use Refresh insights to run them now."
+                    : "Insights are still empty or pending. Try Refresh insights, or wait for the background job to finish after booking/check-in."}
+                </div>
+              )}
+
               {/* Risk Level */}
               <div className="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200 dark:border-amber-800">
                 <div className="flex items-center justify-between mb-2">
@@ -1799,11 +1961,18 @@ export function ConsultationSession() {
                     variant="outline"
                     className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700"
                   >
-                    {aiAnalysis.riskLevel.toUpperCase()}
+                    {typeof aiAnalysis.riskLevel === "string"
+                      ? aiAnalysis.riskLevel.toUpperCase()
+                      : "—"}
                   </Badge>
                 </div>
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Success rate in similar cases: {aiAnalysis.successRate}
+                {aiAnalysis.riskAssessment ? (
+                  <p className="text-sm text-amber-900 dark:text-amber-100/90">{aiAnalysis.riskAssessment}</p>
+                ) : null}
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  {aiAnalysis.insightsSource === "backend"
+                    ? `Model-estimated success outlook: ${aiAnalysis.successRate}`
+                    : "Run insights to see risk summary from cumulative records."}
                 </p>
               </div>
 
@@ -1813,18 +1982,26 @@ export function ConsultationSession() {
                   <AlertCircleIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   Key Findings
                 </h4>
-                <ul className="space-y-2">
-                  {aiAnalysis.keyFindings.map((finding, index) => (
-                    <li
-                      key={index}
-                      className="flex items-start gap-2 p-3 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800"
-                    >
-                      <ActivityIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                {aiAnalysis.keyFindings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground pl-1">
+                    {aiAnalysis.insightsSource === "backend"
+                      ? "No key findings returned."
+                      : "—"}
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {aiAnalysis.keyFindings.map((finding, index) => (
+                      <li
+                        key={index}
+                        className="flex items-start gap-2 p-3 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800"
+                      >
+                        <ActivityIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
 
-                      <span className="text-sm text-foreground">{finding}</span>
-                    </li>
-                  ))}
-                </ul>
+                        <span className="text-sm text-foreground">{finding}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <Separator />
@@ -1835,19 +2012,83 @@ export function ConsultationSession() {
                   <SparklesIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   AI Recommendations
                 </h4>
-                <ul className="space-y-2">
-                  {aiAnalysis.recommendations.map((rec, index) => (
-                    <li
-                      key={index}
-                      className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
-                    >
-                      <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                {aiAnalysis.recommendations.length === 0 ? (
+                  <p className="text-sm text-muted-foreground pl-1">
+                    {aiAnalysis.insightsSource === "backend"
+                      ? "No recommendations returned."
+                      : "—"}
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {aiAnalysis.recommendations.map((rec, index) => (
+                      <li
+                        key={index}
+                        className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
+                      >
+                        <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
 
-                      <span className="text-sm text-foreground">{rec}</span>
-                    </li>
-                  ))}
-                </ul>
+                        <span className="text-sm text-foreground">{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
+
+              {aiAnalysis.redFlags.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                      <AlertCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
+                      Red flags to consider
+                    </h4>
+                    <ul className="space-y-2">
+                      {aiAnalysis.redFlags.map((f, i) => (
+                        <li
+                          key={i}
+                          className="text-sm p-3 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
+                        >
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+
+              {aiAnalysis.clinicalPearls.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground mb-3">Clinical pearls</h4>
+                    <ul className="space-y-2">
+                      {aiAnalysis.clinicalPearls.map((p, i) => (
+                        <li key={i} className="text-sm text-muted-foreground">
+                          {p}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+
+              {aiAnalysis.suggestedQuestions.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-semibold text-foreground mb-3">
+                      Suggested questions for the patient
+                    </h4>
+                    <ul className="space-y-2">
+                      {aiAnalysis.suggestedQuestions.map((q, i) => (
+                        <li key={i} className="text-sm text-muted-foreground list-disc list-inside">
+                          {q}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -1908,57 +2149,125 @@ export function ConsultationSession() {
 
       {/* AI Assistant Chat Panel */}
       {aiChatOpen && (
-        <div className="fixed bottom-6 right-6 w-96 h-[500px] bg-card border border-border rounded-lg shadow-2xl z-50 flex flex-col">
-          <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-purple-600 to-indigo-600 rounded-t-lg">
-            <div className="flex items-center gap-2">
-              <BotIcon className="w-5 h-5 text-white" />
-
-              <h3 className="font-semibold text-white">AI Medical Assistant</h3>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAiChatOpen(false)}
-              className="h-8 w-8 p-0 text-white hover:bg-white/20"
-            >
-              <XIcon className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-4">
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
-                  <BotIcon className="w-4 h-4 text-white" />
+        <div
+          className="fixed bottom-6 right-6 z-50 flex h-[min(100vh-5rem,36rem)] w-[min(100vw-1.5rem,26rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_25px_50px_-12px_rgba(15,23,42,0.35)] dark:border-slate-700/80 dark:bg-slate-950"
+          role="dialog"
+          aria-label="AI Medical Assistant chat"
+        >
+          <div className="relative shrink-0 border-b border-white/10 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-700 px-4 py-3.5">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_55%)]" />
+            <div className="relative flex items-center justify-between gap-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
+                  <BotIcon className="h-5 w-5 text-white" />
                 </div>
-                <div className="flex-1 p-3 rounded-lg bg-muted">
-                  <p className="text-sm text-foreground">
-                    Hello! I'm your AI medical assistant. I can help you with:
-                  </p>
-                  <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    <li>• Drug interactions and dosages</li>
-                    <li>• Differential diagnosis suggestions</li>
-                    <li>• Treatment guidelines</li>
-                    <li>• Medical research and studies</li>
-                  </ul>
+                <div>
+                  <h3 className="text-sm font-semibold tracking-tight text-white">Chart assistant</h3>
+                  <p className="text-[11px] text-white/80">Patient chart &amp; visit history</p>
                 </div>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAiChatOpen(false)}
+                className="h-8 w-8 shrink-0 rounded-lg p-0 text-white hover:bg-white/15"
+                aria-label="Close chat"
+              >
+                <XIcon className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          <ScrollArea className="min-h-0 flex-1 bg-gradient-to-b from-slate-50/90 to-slate-100/50 dark:from-slate-900/50 dark:to-slate-950">
+            <div className="space-y-3 p-4 pb-2">
+              <div className="flex gap-2.5 rounded-xl border border-violet-200/60 bg-white/90 p-3 shadow-sm dark:border-violet-900/40 dark:bg-slate-900/50">
+                <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
+                <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                  Answers use <span className="font-medium text-slate-800 dark:text-slate-100">retrieved records</span>{" "}
+                  for this patient. Undocumented items will be called out.
+                </p>
+              </div>
+
+              {aiChatMessages.map((m, idx) => (
+                <div
+                  key={`${m.role}-${idx}`}
+                  className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+                >
+                  {m.role === "assistant" ? (
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 shadow-md ring-2 ring-white dark:ring-slate-900">
+                      <BotIcon className="h-5 w-5 text-white" />
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-teal-500 to-cyan-600 shadow-md ring-2 ring-white dark:ring-slate-900">
+                      <UserRound className="h-4 w-4 text-white" />
+                    </div>
+                  )}
+                  <div
+                    className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed shadow-sm ${
+                      m.role === "user"
+                        ? "rounded-br-md bg-gradient-to-br from-teal-600 to-cyan-700 text-white"
+                        : "rounded-bl-md border border-slate-200/80 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                  </div>
+                </div>
+              ))}
+
+              {isAiLoading && (
+                <div className="flex gap-2">
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 shadow-md ring-2 ring-white dark:ring-slate-900">
+                    <BotIcon className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200/80 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                    <span className="sr-only">Assistant is typing</span>
+                    <span className="flex gap-1.5">
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-violet-500 [animation-delay:-0.2s]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-violet-500 [animation-delay:-0.1s]" />
+                      <span className="h-2 w-2 animate-bounce rounded-full bg-violet-500" />
+                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Searching chart…</span>
+                  </div>
+                </div>
+              )}
+              <div ref={aiChatEndRef} />
             </div>
           </ScrollArea>
 
-          <div className="p-4 border-t border-border">
-            <div className="flex gap-2">
+          <div className="shrink-0 border-t border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+            <div className="flex items-end gap-2">
               <Textarea
-                placeholder="Ask me anything..."
+                placeholder="Ask about history, labs, meds…"
                 value={aiQuery}
                 onChange={(e) => setAiQuery(e.target.value)}
-                className="min-h-[60px] resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void askAI();
+                  }
+                }}
+                disabled={isAiLoading}
+                className="min-h-[52px] max-h-[120px] resize-none rounded-xl border-slate-200 bg-slate-50/80 text-sm focus-visible:ring-violet-500 dark:border-slate-700 dark:bg-slate-900/50"
+                rows={2}
               />
-
-              <Button className="bg-gradient-to-br from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white">
-                Send
+              <Button
+                type="button"
+                size="icon"
+                className="h-11 w-11 shrink-0 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 shadow-md transition hover:from-violet-600 hover:to-indigo-700 disabled:opacity-50"
+                disabled={isAiLoading || !aiQuery.trim()}
+                onClick={() => void askAI()}
+                aria-label="Send message"
+              >
+                {isAiLoading ? (
+                  <Loader2Icon className="h-5 w-5 animate-spin text-white" />
+                ) : (
+                  <SendHorizontal className="h-5 w-5 text-white" />
+                )}
               </Button>
             </div>
+            <p className="mt-2 text-center text-[10px] text-slate-400 dark:text-slate-500">
+              Shift+Enter for new line · Enter to send
+            </p>
           </div>
         </div>
       )}

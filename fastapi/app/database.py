@@ -194,6 +194,24 @@ class Database:
             await cls.database.s3_prescriptions.create_index("clinicId")
             await cls.database.s3_prescriptions.create_index("s3Key", unique=True)
 
+            # Patient RAG chunks (embeddings)
+            await cls.database.patient_rag_chunks.create_index("patientId")
+            await cls.database.patient_rag_chunks.create_index(
+                [("patientId", 1), ("sourceType", 1)]
+            )
+
+            # AI consultation chat transcripts
+            await cls.database.ai_consultation_chats.create_index("patientId")
+            await cls.database.ai_consultation_chats.create_index("appointmentId")
+            await cls.database.ai_consultation_chats.create_index("doctorId")
+            await cls.database.ai_consultation_chats.create_index([("updatedAt", -1)])
+
+            # AI-specific audit trail
+            await cls.database.ai_audit_logs.create_index([("timestamp", -1)])
+            await cls.database.ai_audit_logs.create_index("patientId")
+            await cls.database.ai_audit_logs.create_index("userId")
+            await cls.database.ai_audit_logs.create_index("category")
+
             # WhatsApp messages collection indexes
             await cls.database.whatsapp_messages.create_index("message_sid", unique=True)
             await cls.database.whatsapp_messages.create_index("patient_id")

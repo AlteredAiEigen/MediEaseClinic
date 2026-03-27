@@ -5,11 +5,12 @@ Supports both OpenAI and Google Gemini.
 
 import logging
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import json
 from fastapi import HTTPException, status
 
 from app.config import settings
+from app.utils.pii_sanitizer import patient_dict_for_llm, strip_text_pii
 
 logger = logging.getLogger(__name__)
 
@@ -495,6 +496,105 @@ Summary:"""
                 detail=f"Failed to generate AI response: {str(e)}",
             )
 
+    async def embed_texts(self, texts: List[str]) -> List[List[float]]:
+        """Create embeddings using OpenAI (required for RAG)."""
+        if not texts:
+            return []
+        if not settings.openai_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OpenAI API key required for embeddings",
+            )
+        try:
+            import openai
+
+            emb_client = openai.OpenAI(api_key=settings.openai_api_key)
+            out: List[List[float]] = []
+            batch_size = 64
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
+                resp = emb_client.embeddings.create(
+                    model=settings.openai_embedding_model,
+                    input=batch,
+                )
+                out.extend([item.embedding for item in resp.data])
+            return out
+        except Exception as e:
+            logger.error("Embedding failed: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Embedding failed: {str(e)}",
+            )
+
+    async def chat_consultation_rag(
+        self,
+        user_message: str,
+        retrieved_chunks: List[str],
+        prior_messages: List[Dict[str, str]],
+    ) -> str:
+        """
+        Doctor assistant grounded in retrieved patient chart chunks.
+        """
+        if not self.provider:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI service not configured. Please set OPENAI_API_KEY or GEMINI_API_KEY",
+            )
+
+        context_block = "\n\n---\n\n".join(retrieved_chunks) if retrieved_chunks else ""
+        system = (
+            "You are MediEase Clinic's clinical assistant. The doctor is asking about ONE patient. "
+            "Use ONLY the information in the Retrieved chart excerpts below. "
+            "Excerpts may include a patient profile (allergies, current medications, chief complaint) "
+            "and visit history. If medications or allergies are listed there, you may cite them directly. "
+            "If the excerpts do not contain enough information to answer, reply briefly: say clearly "
+            "that this is not found in the chart or in any past appointment history for this patient, "
+            "and suggest asking the patient directly (or verifying with them) for that detail. "
+            "Do not use stiff boilerplate phrases. "
+            "Do not invent diagnoses, lab values, or medications not implied by the excerpts. "
+            "Be concise. This is decision support, not a diagnosis."
+        )
+
+        try:
+            if self.provider == "openai":
+                msgs: List[Dict[str, str]] = [{"role": "system", "content": system}]
+                for m in prior_messages[-12:]:
+                    r, c = m.get("role"), m.get("content")
+                    if r in ("user", "assistant") and c:
+                        msgs.append({"role": r, "content": c})
+                final_user = (
+                    f"Retrieved chart excerpts:\n{context_block}\n\nDoctor question:\n{user_message}"
+                )
+                msgs.append({"role": "user", "content": final_user})
+                response = self.client.chat.completions.create(
+                    model=settings.openai_model,
+                    messages=msgs,
+                    temperature=0.3,
+                    max_tokens=900,
+                )
+                return (response.choices[0].message.content or "").strip()
+
+            if self.provider == "gemini":
+                history_lines = []
+                for m in prior_messages[-12:]:
+                    if m.get("content"):
+                        history_lines.append(f"{m.get('role', 'user')}: {m['content']}")
+                composed = (
+                    f"{system}\n\nRetrieved chart excerpts:\n{context_block}\n\n"
+                    f"Prior chat:\n{chr(10).join(history_lines)}\n\nDoctor question:\n{user_message}"
+                )
+                response = self.client.generate_content(composed)
+                return (response.text or "").strip()
+
+        except Exception as e:
+            logger.error("RAG chat failed: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to generate AI response: {str(e)}",
+            )
+
+        raise HTTPException(status_code=500, detail="Unsupported provider")
+
     async def generate_patient_insights(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate AI-driven patient insights used for the consultation page.
@@ -526,55 +626,47 @@ Summary:"""
                 "successRate": patient_data.get("insights", {}).get("successRate", "N/A"),
                 "keyFindings": key_findings,
                 "recommendations": recommendations,
+                "clinicalPearls": [],
+                "suggestedQuestionsForClinician": [],
+                "redFlagsToConsider": [],
+                "disclaimer": "This is AI-assisted decision support, not a diagnosis.",
                 "lastUpdatedAt": datetime.utcnow().isoformat(),
             }
 
-        # Build a compact context for the model
+        # De-identified profile + longitudinal narrative (no names, phone, email, insurance numbers)
+        safe_profile = patient_dict_for_llm(patient_data)
+        narrative = patient_data.get("cumulativeClinicalNarrative") or patient_data.get(
+            "historySummary"
+        )
+        narrative = strip_text_pii(narrative) if narrative else ""
+
         context: Dict[str, Any] = {
-            "demographics": {
-                "firstName": patient_data.get("firstName"),
-                "lastName": patient_data.get("lastName"),
-                "age": patient_data.get("age"),
-                "gender": patient_data.get("gender"),
-                "bloodGroup": patient_data.get("bloodGroup"),
-                "dateOfBirth": patient_data.get("dateOfBirth"),
-            },
-            "contact": {
-                "phone": patient_data.get("phone"),
-                "email": patient_data.get("email"),
-            },
-            "clinical": {
-                "allergies": patient_data.get("allergies"),
-                "currentMedications": patient_data.get("currentMedications"),
-                "chiefComplaint": patient_data.get("chiefComplaint"),
-                "currentSymptoms": patient_data.get("currentSymptoms"),
-                "condition": patient_data.get("condition"),
-                "carePlanSummary": patient_data.get("carePlanSummary"),
-                "followUpPlan": patient_data.get("followUpPlan"),
-                "lastVisit": patient_data.get("lastVisit"),
-            },
-            "history": {
-                # Optional longitudinal history summary prepared by the caller
-                "summary": patient_data.get("historySummary"),
-            },
+            "deIdentifiedProfile": safe_profile,
+            "longitudinalCumulativeRecords": narrative,
         }
 
         prompt = (
-            "You are MediEase Clinic's AI assistant. Analyze the following patient profile and "
-            "produce concise, clinically useful insights for the doctor before a consultation.\n\n"
-            "Patient data (JSON):\n"
+            "You are MediEase Clinic's AI assistant. Analyze the following de-identified patient "
+            "profile and cumulative longitudinal clinical record summary. Produce concise, clinically "
+            "useful insights for the doctor before or during a consultation.\n\n"
+            "Data (JSON):\n"
             f"{json.dumps(context, indent=2)}\n\n"
-            "Return ONLY a JSON object with the following exact keys:\n"
+            "Return ONLY a JSON object with the following keys:\n"
             "{\n"
             '  "riskAssessment": "Short sentence describing overall risk profile",\n'
             '  "riskLevel": "low" | "medium" | "high",\n'
-            '  "successRate": "Estimated treatment success probability as a percentage string like \\"90%\\",\n'
+            '  "successRate": "Estimated treatment success probability as a percentage string like \\"90%\\" or \\"N/A\\"",\n'
             '  "keyFindings": ["bullet 1", "bullet 2", ...],\n'
-            '  "recommendations": ["recommendation 1", "recommendation 2", ...]\n'
+            '  "recommendations": ["recommendation 1", "recommendation 2", ...],\n'
+            '  "clinicalPearls": ["optional short pearls tied to the chart"],\n'
+            '  "suggestedQuestionsForClinician": ["questions the doctor may ask the patient"],\n'
+            '  "redFlagsToConsider": ["potential red flags or follow-up triggers from the chart"],\n'
+            '  "disclaimer": "This is AI-assisted decision support, not a diagnosis."\n'
             "}\n\n"
             "Guidelines:\n"
             "- Be conservative and clinically reasonable.\n"
             "- Base your reasoning ONLY on the provided data.\n"
+            "- Do not invent diagnoses, medications, or lab values not implied by the data.\n"
             "- If some fields are missing, still provide best-effort insights without hallucinating new facts.\n"
             "- Keep keyFindings and recommendations focused and high-yield.\n"
         )
@@ -616,6 +708,11 @@ Summary:"""
                 "successRate": data.get("successRate") or "N/A",
                 "keyFindings": data.get("keyFindings") or [],
                 "recommendations": data.get("recommendations") or [],
+                "clinicalPearls": data.get("clinicalPearls") or [],
+                "suggestedQuestionsForClinician": data.get("suggestedQuestionsForClinician") or [],
+                "redFlagsToConsider": data.get("redFlagsToConsider") or [],
+                "disclaimer": data.get("disclaimer")
+                or "This is AI-assisted decision support, not a diagnosis.",
                 "lastUpdatedAt": datetime.utcnow().isoformat(),
             }
 

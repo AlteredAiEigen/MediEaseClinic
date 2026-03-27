@@ -26,6 +26,7 @@ export function useWebSocket(
   doctorId?: string
 ): WebSocketHookResult {
   const { user } = useAuth();
+  const userId = user?._id;
   const [isConnected, setIsConnected] = useState(false);
   const [lastMessage, setLastMessage] = useState<QueueUpdateMessage | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export function useWebSocket(
   }, [endpoint, doctorId]);
 
   const connect = useCallback(() => {
-    if (!user) return;
+    if (!userId) return;
 
     const url = buildWebSocketUrl();
     if (!url) return;
@@ -78,7 +79,6 @@ export function useWebSocket(
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
         setIsConnected(true);
         reconnectAttempts.current = 0;
       };
@@ -87,23 +87,19 @@ export function useWebSocket(
         try {
           const message: QueueUpdateMessage = JSON.parse(event.data);
           setLastMessage(message);
-          console.log('WebSocket message received:', message);
         } catch (error) {
           console.error('Failed to parse WebSocket message:', error);
         }
       };
 
       ws.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
         setIsConnected(false);
         wsRef.current = null;
 
-        // Attempt to reconnect if not a normal closure and within max attempts
+        // Avoid reconnect storms when tab is backgrounded or proxy drops idle WS (1006)
         if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
           reconnectAttempts.current += 1;
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
-          console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`);
-
+          const delay = Math.min(2000 * Math.pow(2, reconnectAttempts.current - 1), 30000);
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
@@ -112,8 +108,7 @@ export function useWebSocket(
         }
       };
 
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
+      ws.onerror = () => {
         setConnectionError('WebSocket connection error');
       };
 
@@ -121,7 +116,7 @@ export function useWebSocket(
       console.error('Failed to create WebSocket connection:', error);
       setConnectionError('Failed to create WebSocket connection');
     }
-  }, [user, buildWebSocketUrl]);
+  }, [userId, buildWebSocketUrl]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -141,22 +136,18 @@ export function useWebSocket(
     connect();
   }, [connect, disconnect]);
 
+  // Single lifecycle per logged-in user + channel — avoids duplicate effects reconnecting (reduces 1006 noise)
   useEffect(() => {
+    if (!userId) {
+      disconnect();
+      return;
+    }
+    reconnectAttempts.current = 0;
     connect();
-
     return () => {
       disconnect();
     };
-  }, [connect, disconnect]);
-
-  // Reconnect when user changes
-  useEffect(() => {
-    if (user) {
-      reconnect();
-    } else {
-      disconnect();
-    }
-  }, [user, reconnect, disconnect]);
+  }, [userId, doctorId, connect, disconnect]);
 
   return {
     isConnected,

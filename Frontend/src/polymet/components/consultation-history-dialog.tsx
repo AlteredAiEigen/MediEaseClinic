@@ -12,12 +12,13 @@ import {
   XIcon,
   ClockIcon,
   FileTextIcon,
-  UserIcon,
   CheckCircleIcon,
   Loader2Icon,
   EyeIcon,
+  SparklesIcon,
 } from "lucide-react";
 import { get } from "@/lib/api-client";
+import { formatSmartRelativeTime } from "@/lib/date";
 import { getPendingConsultationUploadsByDoctor } from "@/polymet/utils/pending-consultation-uploads";
 
 interface AppointmentDetails {
@@ -47,6 +48,10 @@ interface AppointmentDetails {
   followUpNotes?: string;
   transcription?: string;
   reason?: string;
+  aiRecommendations?: string;
+  /** When visit-level AI recommendations were last saved (same as record update if no dedicated field). */
+  updatedAt?: string;
+  completedAt?: string;
 }
 
 interface Recording {
@@ -82,6 +87,8 @@ interface Recording {
     gender?: string;
     phone?: string;
     email?: string;
+    insights?: { lastUpdatedAt?: string };
+    insightsMeta?: { lastGeneratedAt?: string; status?: string };
   };
   appointment?: AppointmentDetails;
 }
@@ -90,6 +97,28 @@ interface ConsultationHistoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   doctorId?: string;
+}
+
+function getPatientAiInsightsGeneratedAt(patient?: Recording["patient"]): string | undefined {
+  if (!patient) return undefined;
+  const raw = patient.insights?.lastUpdatedAt || patient.insightsMeta?.lastGeneratedAt;
+  return raw && String(raw).trim() ? String(raw) : undefined;
+}
+
+function getRecordingAiExtractionGeneratedAt(recording: Recording): string | undefined {
+  const extractionOk =
+    recording.aiProcessing?.notesExtractionStatus === "success" ||
+    Boolean(recording.aiProcessing?.structuredNotes);
+  if (!extractionOk) return undefined;
+  return recording.updatedAt;
+}
+
+function getVisitAiRecommendationsGeneratedAt(
+  appointment?: AppointmentDetails
+): string | undefined {
+  const text = appointment?.aiRecommendations?.trim();
+  if (!text) return undefined;
+  return appointment.updatedAt || appointment.completedAt;
 }
 
 export function ConsultationHistoryDialog({
@@ -104,6 +133,16 @@ export function ConsultationHistoryDialog({
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [total, setTotal] = useState(0);
+  /** Bumps periodically so relative AI timestamps stay fresh while the dialog is open. */
+  const [relativeTimeTick, setRelativeTimeTick] = useState(0);
+
+  useEffect(() => {
+    if (!open && !selectedRecording) return;
+    const id = window.setInterval(() => {
+      setRelativeTimeTick((t) => t + 1);
+    }, 30000);
+    return () => window.clearInterval(id);
+  }, [open, selectedRecording]);
 
   useEffect(() => {
     if (open && doctorId) {
@@ -310,6 +349,9 @@ export function ConsultationHistoryDialog({
 
   return (
     <>
+      <span className="hidden" aria-hidden>
+        {relativeTimeTick}
+      </span>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-6xl max-h-[90vh]">
           <DialogHeader>
@@ -485,6 +527,55 @@ export function ConsultationHistoryDialog({
                                     </Badge>
                                   )}
                                 </div>
+
+                                {(() => {
+                                  const insightsAt = getPatientAiInsightsGeneratedAt(
+                                    recording.patient
+                                  );
+                                  const extractionAt = getRecordingAiExtractionGeneratedAt(recording);
+                                  const recAt = getVisitAiRecommendationsGeneratedAt(appointmentInfo);
+                                  if (!insightsAt && !extractionAt && !recAt) return null;
+                                  return (
+                                    <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground border-l-2 border-primary/25 pl-3 py-1">
+                                      {insightsAt && (
+                                        <div className="flex items-start gap-1.5">
+                                          <SparklesIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-violet-500" />
+                                          <span>
+                                            <span className="font-medium text-foreground/85">
+                                              Patient AI insights
+                                            </span>
+                                            {" · "}
+                                            {formatSmartRelativeTime(insightsAt)}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {extractionAt && (
+                                        <div className="flex items-start gap-1.5">
+                                          <SparklesIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-600" />
+                                          <span>
+                                            <span className="font-medium text-foreground/85">
+                                              AI clinical summary (extraction)
+                                            </span>
+                                            {" · "}
+                                            {formatSmartRelativeTime(extractionAt)}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {recAt && (
+                                        <div className="flex items-start gap-1.5">
+                                          <SparklesIcon className="w-3.5 h-3.5 shrink-0 mt-0.5 text-sky-600" />
+                                          <span>
+                                            <span className="font-medium text-foreground/85">
+                                              Visit AI recommendations
+                                            </span>
+                                            {" · "}
+                                            {formatSmartRelativeTime(recAt)}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 {summaryNotes ? (
                                   <div className="mt-3 p-3 bg-muted/50 rounded-lg space-y-1 text-sm">
@@ -673,6 +764,49 @@ export function ConsultationHistoryDialog({
                     </CardContent>
                   </Card>
                 )}
+
+                {(() => {
+                  const insightsAt = getPatientAiInsightsGeneratedAt(selectedRecording.patient);
+                  const extractionAt = getRecordingAiExtractionGeneratedAt(selectedRecording);
+                  const recAt = getVisitAiRecommendationsGeneratedAt(selectedRecording.appointment);
+                  if (!insightsAt && !extractionAt && !recAt) return null;
+                  return (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <SparklesIcon className="w-5 h-5 text-violet-500" />
+                          AI generation times
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2 text-sm">
+                        {insightsAt && (
+                          <div>
+                            <span className="font-medium">Patient AI insights</span>
+                            <p className="text-muted-foreground mt-0.5">
+                              {formatSmartRelativeTime(insightsAt)}
+                            </p>
+                          </div>
+                        )}
+                        {extractionAt && (
+                          <div>
+                            <span className="font-medium">AI clinical summary (extraction)</span>
+                            <p className="text-muted-foreground mt-0.5">
+                              {formatSmartRelativeTime(extractionAt)}
+                            </p>
+                          </div>
+                        )}
+                        {recAt && (
+                          <div>
+                            <span className="font-medium">Visit AI recommendations</span>
+                            <p className="text-muted-foreground mt-0.5">
+                              {formatSmartRelativeTime(recAt)}
+                            </p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
 
                 {/* Recording Details */}
                 <Card>

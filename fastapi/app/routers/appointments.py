@@ -316,7 +316,28 @@ async def _analyze_s3_prescription(
             logger.error(f"Failed to add medications to patient profile: {e}", exc_info=True)
             # Don't fail the whole operation if medication update fails
     
-    # Add tests to appointment's prescribedTest field
+    # Add medications and tests to appointment (prescribedMedications, prescribedTest)
+    appointment_update_fields = {"updatedAt": datetime.utcnow()}
+    
+    if structured.medicines:
+        try:
+            meds_for_appointment = [
+                {
+                    "name": m.name.strip(),
+                    "dosage": (m.dosage or "").strip(),
+                    "frequency": (m.frequency or "").strip(),
+                    "duration": (m.duration or "").strip(),
+                    "instructions": (m.instructions or "").strip(),
+                }
+                for m in structured.medicines
+                if m.name and m.name.strip()
+            ]
+            if meds_for_appointment:
+                appointment_update_fields["prescribedMedications"] = meds_for_appointment
+                logger.info(f"Added {len(meds_for_appointment)} medications to appointment {appointment_id}")
+        except Exception as e:
+            logger.error(f"Failed to add medications to appointment: {e}", exc_info=True)
+    
     if structured.tests:
         try:
             test_names = [test.name.strip() for test in structured.tests if test.name and test.name.strip()]
@@ -327,21 +348,16 @@ async def _analyze_s3_prescription(
                 
                 # Merge new tests with existing ones (avoid duplicates)
                 all_tests = list(set(existing_test_list + test_names))
-                prescribed_test_str = ", ".join(all_tests)
-                
-                await db.appointments.update_one(
-                    {"_id": ObjectId(appointment_id)},
-                    {
-                        "$set": {
-                            "prescribedTest": prescribed_test_str,
-                            "updatedAt": datetime.utcnow(),
-                        }
-                    }
-                )
-                logger.info(f"Added {len(test_names)} tests to appointment {appointment_id}: {prescribed_test_str}")
+                appointment_update_fields["prescribedTest"] = ", ".join(all_tests)
+                logger.info(f"Added {len(test_names)} tests to appointment {appointment_id}: {appointment_update_fields['prescribedTest']}")
         except Exception as e:
             logger.error(f"Failed to add tests to appointment: {e}", exc_info=True)
-            # Don't fail the whole operation if test update fails
+    
+    if len(appointment_update_fields) > 1:
+        await db.appointments.update_one(
+            {"_id": ObjectId(appointment_id)},
+            {"$set": appointment_update_fields}
+        )
     
     # Update appointment with follow-up information if follow-up is required
     if structured.followUpRequired:
@@ -379,9 +395,74 @@ async def _invalidate_appointments_cache() -> None:
     await cache.clear_pattern("appointments:")
 
 
+async def _background_refresh_insights_after_booking(patient_id: str, appointment_mongo_id: str) -> None:
+    """Fire-and-forget cumulative insights + RAG after a new appointment is booked."""
+    try:
+        from app.services.patient_insights_service import patient_insights_service
+
+        await patient_insights_service.refresh_patient_insights(
+            patient_id,
+            trigger="appointment_booked",
+            triggered_by_appointment_id=appointment_mongo_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "Background patient insights refresh failed after booking: %s",
+            exc,
+            exc_info=True,
+        )
+
+
+async def _send_appointment_consent_background(appointment_obj_id: str) -> None:
+    """Send HIPAA consent email without blocking the HTTP response (SMTP can be slow)."""
+    try:
+        from app.database import Database
+        from app.services.consent_service import ConsentService
+
+        db = Database.get_database()
+        consent_service = ConsentService(db)
+        await consent_service.send_appointment_consent(appointment_obj_id)
+        logger.info("Appointment consent email sent (background) for %s", appointment_obj_id)
+    except Exception as e:
+        logger.error(
+            "Background consent email failed for %s: %s",
+            appointment_obj_id,
+            e,
+            exc_info=True,
+        )
+
+
+async def _broadcast_appointment_created_background(appointment: dict) -> None:
+    """WebSocket broadcast after response — keeps scheduling API fast."""
+    try:
+        websocket_service = WebSocketService()
+        await websocket_service.broadcast_appointment_created(appointment)
+    except Exception:
+        pass
+
+
+async def _background_refresh_insights_after_consultation(patient_id: str, appointment_mongo_id: str) -> None:
+    """Refresh cumulative insights after consultation data is saved."""
+    try:
+        from app.services.patient_insights_service import patient_insights_service
+
+        await patient_insights_service.refresh_patient_insights(
+            patient_id,
+            trigger="consultation_completed",
+            triggered_by_appointment_id=appointment_mongo_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "Background patient insights refresh failed after consultation: %s",
+            exc,
+            exc_info=True,
+        )
+
+
 @router.post("/", status_code=http_status.HTTP_201_CREATED)
 async def create_appointment(
     appointment_data: AppointmentCreateRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -405,25 +486,28 @@ async def create_appointment(
 
         await _invalidate_appointments_cache()
 
-        # Send appointment consent email after appointment is created
-        try:
-            from app.services.consent_service import ConsentService
-            appointment_obj_id = appointment.get("_id") or appointment.get("id")
-            if appointment_obj_id:
-                consent_service = ConsentService(db)
-                await consent_service.send_appointment_consent(str(appointment_obj_id))
-                logger.info(f"Appointment consent email sent for appointment {appointment_obj_id}")
-        except Exception as e:
-            logger.error(f"Failed to send appointment consent email: {e}", exc_info=True)
-            # Don't fail the request, but log the error
+        appointment_obj_id = appointment.get("_id") or appointment.get("id")
 
-        # Emit WebSocket event so doctor/receptionist workstations update instantly
+        # Defer slow / best-effort work so the client gets 201 immediately
+        if appointment_obj_id:
+            background_tasks.add_task(
+                _send_appointment_consent_background,
+                str(appointment_obj_id),
+            )
+        background_tasks.add_task(_broadcast_appointment_created_background, appointment)
+
+        # Cumulative AI insights + RAG chunks (same background queue — never blocks scheduling)
         try:
-            websocket_service = WebSocketService()
-            await websocket_service.broadcast_appointment_created(appointment)
-        except Exception:
-            # Best-effort: don't fail scheduling if WebSocket broadcast fails
-            pass
+            apt_obj = appointment.get("_id") or appointment.get("id")
+            pid = appointment.get("patientId")
+            if apt_obj and pid:
+                background_tasks.add_task(
+                    _background_refresh_insights_after_booking,
+                    str(pid),
+                    str(apt_obj),
+                )
+        except Exception as exc:
+            logger.warning("Could not schedule patient insights after booking: %s", exc)
         
         return success_response(
             message="Appointment created successfully",
@@ -1101,6 +1185,17 @@ async def complete_consultation(
                             doctor_id,
                             recording_duration
                         )
+
+        try:
+            pid = appointment.get("patientId") if isinstance(appointment, dict) else None
+            if pid:
+                background_tasks.add_task(
+                    _background_refresh_insights_after_consultation,
+                    str(pid),
+                    appointment_id,
+                )
+        except Exception as exc:
+            logger.warning("Could not schedule post-consultation insights refresh: %s", exc)
         
         return success_response(
             message="Consultation completed successfully",

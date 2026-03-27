@@ -1,45 +1,58 @@
 """
-Patient insights service.
-
-Generates and updates AI-driven patient insights that power the
-\"AI Recommendations\" section on the consultation page.
+Patient insights: cumulative longitudinal AI analysis stored on the patient record.
 """
+
+from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 from bson import ObjectId
 from fastapi import HTTPException, status
 
 from app.database import Database
 from app.services.ai_service import ai_service
+from app.services.clinical_context_builder import iter_cumulative_patient_segments
+from app.services.patient_rag_service import patient_rag_service
+from app.utils.pii_sanitizer import strip_text_pii
 
 logger = logging.getLogger(__name__)
 
+# Max chars sent to summarizer / insights model (truncate safely)
+_MAX_NARRATIVE = 24000
+
 
 class PatientInsightsService:
-    """Service for generating patient insights."""
+    """Generate cumulative patient insights for consultation."""
 
-    @staticmethod
-    async def generate_patient_insights_on_checkin(patient_id: str) -> Dict[str, Any]:
-        """
-        Generate or refresh patient insights when the patient is checked in.
-
-        This is designed to be called from the appointment check‑in flow so that
-        the consultation page has up-to-date AI recommendations.
-        """
+    async def _build_cumulative_narrative(self, patient: Dict[str, Any]) -> str:
         db = Database.get_database()
-        patients_collection = db["patients"]
-        history_collection = db.get("patient_medical_history")
-        lab_reports_collection = db.get("lab_reports")
-        clinical_notes_collection = db.get("clinical_notes")
+        segments = await iter_cumulative_patient_segments(db, patient)
+        parts = [f"[{st} {sid}]\n{txt}" for st, sid, txt in segments]
+        combined = "\n\n".join(parts)
+        if len(combined) > _MAX_NARRATIVE:
+            combined = combined[:_MAX_NARRATIVE] + "\n...[truncated]"
+        return strip_text_pii(combined)
 
+    async def refresh_patient_insights(
+        self,
+        patient_id: str,
+        *,
+        trigger: str = "manual",
+        triggered_by_appointment_id: str | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Regenerate cumulative insights and refresh RAG chunks for the patient.
+        """
         if not ObjectId.is_valid(patient_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid patient ID",
             )
+
+        db = Database.get_database()
+        patients_collection = db.patients
 
         patient = await patients_collection.find_one({"_id": ObjectId(patient_id)})
         if not patient:
@@ -48,125 +61,69 @@ class PatientInsightsService:
                 detail="Patient not found",
             )
 
-        # ------------------------------------------------------------------
-        # Build longitudinal clinical context for better AI recommendations
-        # ------------------------------------------------------------------
-        longitudinal_sections: list[str] = []
-
-        # 1) Structured medical history from patient_medical_history
-        try:
-            if history_collection is not None:
-                history_cursor = (
-                    history_collection.find(
-                        {"patientId": str(patient["_id"])}
-                    )
-                    .sort("createdAt", -1)
-                    .limit(3)
-                )
-                history_docs = await history_cursor.to_list(length=3)
-                if history_docs:
-                    parts: list[str] = []
-                    for h in history_docs:
-                        mh = h.get("medicalHistory")
-                        fh = h.get("familyHistory")
-                        ps = h.get("previousSurgeries")
-                        if mh:
-                            parts.append(f"Medical history: {mh}")
-                        if fh:
-                            parts.append(f"Family history: {fh}")
-                        if ps:
-                            parts.append(f"Previous surgeries: {ps}")
-                    if parts:
-                        longitudinal_sections.append("\n".join(parts))
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to load patient medical history: %s", exc)
-
-        # 2) Recent lab reports
-        try:
-            if lab_reports_collection is not None:
-                lab_cursor = (
-                    lab_reports_collection.find(
-                        {"patientId": str(patient["_id"])}
-                    )
-                    .sort("reportedDate", -1)
-                    .limit(3)
-                )
-                lab_docs = await lab_cursor.to_list(length=3)
-                if lab_docs:
-                    parts = []
-                    for r in lab_docs:
-                        title = r.get("title") or r.get("reportType") or ""
-                        summary = r.get("summary") or r.get("interpretation") or ""
-                        critical = r.get("isCritical")
-                        label = "[CRITICAL]" if critical else ""
-                        parts.append(
-                            f"Lab report {label} {title}: {summary}".strip()
-                        )
-                    if parts:
-                        longitudinal_sections.append("\n".join(parts))
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to load lab reports for insights: %s", exc)
-
-        # 3) Recent clinical notes
-        try:
-            if clinical_notes_collection is not None:
-                notes_cursor = (
-                    clinical_notes_collection.find(
-                        {"patient": str(patient["_id"])}
-                    )
-                    .sort("created_at", -1)
-                    .limit(5)
-                )
-                notes_docs = await notes_cursor.to_list(length=5)
-                if notes_docs:
-                    parts = []
-                    for n in notes_docs:
-                        title = n.get("title") or ""
-                        content = n.get("content") or ""
-                        category = n.get("category") or ""
-                        parts.append(
-                            f"Clinical note [{category}] {title}: {content}".strip()
-                        )
-                    if parts:
-                        longitudinal_sections.append("\n".join(parts))
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to load clinical notes for insights: %s", exc)
-
-        longitudinal_context = "\n\n".join(
-            s for s in longitudinal_sections if s.strip()
+        await patients_collection.update_one(
+            {"_id": ObjectId(patient_id)},
+            {
+                "$set": {
+                    "insightsMeta": {
+                        "status": "pending",
+                        "trigger": trigger,
+                        "triggeredAt": datetime.utcnow().isoformat(),
+                        "triggeredByAppointmentId": triggered_by_appointment_id,
+                    }
+                }
+            },
         )
 
-        # Optionally summarize long history text using AI helper
-        history_summary = longitudinal_context
-        if longitudinal_context:
+        cumulative_narrative = await self._build_cumulative_narrative(patient)
+        patient_for_model = dict(patient)
+        patient_for_model["cumulativeClinicalNarrative"] = cumulative_narrative
+
+        # Optional: compress very long narrative for the main insights call
+        history_summary = cumulative_narrative
+        if len(cumulative_narrative) > 12000:
             try:
                 history_summary = await ai_service.summarize_medical_history(
-                    longitudinal_context
+                    cumulative_narrative[:12000]
                 )
-            except Exception as exc:  # pragma: no cover
-                logger.warning(
-                    "Failed to summarize medical history for insights: %s", exc
-                )
+            except Exception as exc:
+                logger.warning("History summarization failed: %s", exc)
+                history_summary = cumulative_narrative[:12000]
 
-        # Attach longitudinal summary to patient data for the insights model
-        if history_summary:
-            patient["historySummary"] = history_summary
+        patient_for_model["historySummary"] = strip_text_pii(history_summary)
 
         try:
-            insights = await ai_service.generate_patient_insights(patient)
+            insights = await ai_service.generate_patient_insights(patient_for_model)
         except HTTPException:
-            # Bubble up FastAPI HTTP errors as-is
             raise
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.error("Failed to generate patient insights: %s", exc, exc_info=True)
+        except Exception as exc:
+            logger.error("Insights generation failed: %s", exc, exc_info=True)
+            await patients_collection.update_one(
+                {"_id": ObjectId(patient_id)},
+                {
+                    "$set": {
+                        "insightsMeta": {
+                            "status": "failed",
+                            "error": str(exc)[:500],
+                            "failedAt": datetime.utcnow().isoformat(),
+                            "trigger": trigger,
+                        }
+                    }
+                },
+            )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to generate patient insights: {str(exc)}",
             )
 
-        # Persist insights on the patient record
         update_doc: Dict[str, Any] = {
             "insights": insights,
+            "insightsMeta": {
+                "status": "ready",
+                "lastGeneratedAt": datetime.utcnow().isoformat(),
+                "trigger": trigger,
+                "triggeredByAppointmentId": triggered_by_appointment_id,
+            },
             "updatedAt": datetime.utcnow(),
         }
 
@@ -175,11 +132,22 @@ class PatientInsightsService:
             {"$set": update_doc},
         )
 
-        logger.info("Updated patient insights for patient %s", patient_id)
+        # RAG sync (best effort)
+        try:
+            n = await patient_rag_service.sync_patient_chunks(patient_id)
+            await patients_collection.update_one(
+                {"_id": ObjectId(patient_id)},
+                {"$set": {"insightsMeta.ragChunkCount": n}},
+            )
+        except Exception as exc:
+            logger.warning("RAG sync failed (non-fatal): %s", exc)
+
+        logger.info("Updated cumulative patient insights for %s", patient_id)
         return insights
 
+    async def generate_patient_insights_on_checkin(self, patient_id: str) -> Dict[str, Any]:
+        """Backward-compatible name: refresh insights (e.g. after check-in)."""
+        return await self.refresh_patient_insights(patient_id, trigger="check_in")
 
-# Global service instance
+
 patient_insights_service = PatientInsightsService()
-
-
