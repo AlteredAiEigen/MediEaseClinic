@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Tuple
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     Form,
     HTTPException,
@@ -34,6 +35,7 @@ from app.models.s3_report import s3_report_helper
 from app.services.email_service import EmailAttachment, EmailService
 from app.services.s3_service import s3_service
 from app.utils.response import success_response
+from app.services.lab_report_parse_service import schedule_lab_parse_background
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +265,7 @@ async def _notify_patient(
 @router.post("/webhooks/mailgun", tags=["Mailgun"])
 async def mailgun_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncIOMotorDatabase = Depends(get_db),
     signature: str = Form(default=""),
     token: str = Form(default=""),
@@ -342,6 +345,7 @@ async def mailgun_webhook(
     message_id = form_dict.get("Message-Id") or form_dict.get("message-id") or form_dict.get("Message-ID")
 
     report_docs = []
+    now = datetime.utcnow()
     for upload in uploads:
         doc = {
             "patientId": patient.get("patientId"),
@@ -357,9 +361,12 @@ async def mailgun_webhook(
             "mailgunMessageId": message_id,
             "metadata": {
                 "bucket": upload["bucket"],
-                "receivedAt": datetime.utcnow(),
+                "receivedAt": now,
             },
             "clinicId": patient.get("createdByClinicId"),
+            "createdAt": now,
+            "updatedAt": now,
+            "parseStatus": "pending",
         }
         result = await db["s3_reports"].insert_one(doc)
         doc["_id"] = result.inserted_id
@@ -378,6 +385,15 @@ async def mailgun_webhook(
         )
 
     formatted_reports = [await s3_report_helper(doc) for doc in report_docs]
+
+    # AI lab parse (PDF bytes already in memory; avoids duplicate S3 read)
+    for i, doc in enumerate(report_docs):
+        if i < len(attachments) and attachments[i].get("content"):
+            schedule_lab_parse_background(
+                background_tasks,
+                str(doc["_id"]),
+                attachments[i]["content"],
+            )
 
     logger.info(
         "Mailgun webhook processed",

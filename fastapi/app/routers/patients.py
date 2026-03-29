@@ -915,8 +915,8 @@ async def backfill_mediease_emails(
     Requires authentication. Only admins should run this.
     
     This endpoint will:
-    1. Find all patients without medieaseClinicEmail
-    2. Generate unique emails for each based on name and DOB
+    1. Find patients missing medieaseClinicEmail or using the legacy @mediease.com domain
+    2. Generate unique emails for each based on name and DOB (same rules as PatientService)
     3. Update the patients in the database
     
     Returns count of patients updated.
@@ -924,18 +924,19 @@ async def backfill_mediease_emails(
     try:
         patient_service = PatientService(db)
         
-        # Find all patients without medieaseClinicEmail
+        # Missing clinic email, or legacy wrong domain (inbound mail uses @mediease.alteredai.care)
         patients_without_email = await db["patients"].find({
             "$or": [
                 {"medieaseClinicEmail": {"$exists": False}},
                 {"medieaseClinicEmail": None},
-                {"medieaseClinicEmail": ""}
+                {"medieaseClinicEmail": ""},
+                {"medieaseClinicEmail": {"$regex": r"@mediease\.com$", "$options": "i"}},
             ]
         }).to_list(length=None)
         
         if not patients_without_email:
             return success_response(
-                message="All patients already have MediEase clinic emails",
+                message="All patients already have correct MediEase clinic emails",
                 data={"updated": 0, "total": 0}
             )
         

@@ -6,6 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 from typing import Optional
 import logging
+import asyncio
 from datetime import datetime
 import mimetypes
 
@@ -84,7 +85,8 @@ class S3Service:
     async def generate_presigned_url(
         self,
         s3_key: str,
-        expiration: int = None
+        expiration: int = None,
+        bucket_override: Optional[str] = None,
     ) -> str:
         """
         Generate presigned URL for temporary file access.
@@ -92,6 +94,7 @@ class S3Service:
         Args:
             s3_key: S3 object key
             expiration: URL expiration time in seconds (default from settings)
+            bucket_override: Bucket if different from default (e.g. transcripts bucket)
         
         Returns:
             Presigned URL
@@ -99,11 +102,12 @@ class S3Service:
         if expiration is None:
             expiration = settings.aws_s3_presigned_url_expiration
         
+        bucket_name = bucket_override or self.bucket_name
         try:
             presigned_url = self.s3_client.generate_presigned_url(
                 'get_object',
                 Params={
-                    'Bucket': self.bucket_name,
+                    'Bucket': bucket_name,
                     'Key': s3_key
                 },
                 ExpiresIn=expiration
@@ -185,6 +189,19 @@ class S3Service:
         except ClientError as e:
             logger.error(f"Failed to get file metadata: {e}")
             return None
+
+    def download_file_bytes(self, s3_key: str, bucket_override: Optional[str] = None) -> bytes:
+        """Download object body from S3 (sync; use asyncio.to_thread from async callers)."""
+        bucket_name = bucket_override or self.bucket_name
+        try:
+            response = self.s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+            return response["Body"].read()
+        except ClientError as e:
+            logger.error(f"S3 get_object failed for {s3_key}: {e}")
+            raise Exception(f"Failed to download file from S3: {str(e)}")
+
+    async def download_file_bytes_async(self, s3_key: str, bucket_override: Optional[str] = None) -> bytes:
+        return await asyncio.to_thread(self.download_file_bytes, s3_key, bucket_override)
 
 
 # Global S3 service instance

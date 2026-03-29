@@ -60,7 +60,7 @@ import { useAuth } from "@/context/auth-context";
 import { LabReportViewerDialog, LabReportData } from "@/polymet/components/lab-report-viewer-dialog";
 import { S3ReportViewerDialog } from "@/polymet/components/s3-report-viewer-dialog";
 import { AppointmentDetailsDialog } from "@/polymet/components/appointment-details-dialog";
-import { get } from "@/lib/api-client";
+import { get, post } from "@/lib/api-client";
 import {
   updatePatient,
   PatientUpdateInput,
@@ -210,6 +210,26 @@ interface ClinicalNote {
   doctorName?: string;
 }
 
+interface ParsedLabTestRow {
+  name?: string;
+  result?: string;
+  unit?: string;
+  normalRange?: string;
+  status?: string;
+  flag?: string;
+}
+
+interface ParsedLabReportPayload {
+  reportType?: string;
+  labName?: string;
+  collectedDate?: string;
+  reportedDate?: string;
+  interpretation?: string;
+  notes?: string;
+  tests?: ParsedLabTestRow[];
+  summaryText?: string;
+}
+
 interface S3Report {
   _id: string;
   patientId: string;
@@ -221,6 +241,10 @@ interface S3Report {
   presignedUrl?: string;
   createdAt: string;
   updatedAt: string;
+  parseStatus?: "pending" | "processing" | "success" | "failed";
+  parseError?: string | null;
+  parsedAt?: string;
+  parsedLabReport?: ParsedLabReportPayload | null;
 }
 
 interface Appointment {
@@ -560,6 +584,8 @@ export function PatientOverview() {
   // S3 report viewer state
   const [s3ReportViewerOpen, setS3ReportViewerOpen] = useState(false);
   const [selectedS3Report, setSelectedS3Report] = useState<S3Report | null>(null);
+  const labUploadInputRef = useRef<HTMLInputElement>(null);
+  const [labUploadLoading, setLabUploadLoading] = useState(false);
   const [insuranceRecords, setInsuranceRecords] = useState<PatientInsuranceRecord[]>([]);
   const [selectedInsuranceId, setSelectedInsuranceId] = useState<string | null>(null);
   const [isInsuranceDialogOpen, setIsInsuranceDialogOpen] = useState(false);
@@ -2396,6 +2422,55 @@ export function PatientOverview() {
   const handleViewS3Report = (report: S3Report) => {
     setSelectedS3Report(report);
     setS3ReportViewerOpen(true);
+  };
+
+  const handleLabUploadClick = () => {
+    labUploadInputRef.current?.click();
+  };
+
+  const handleLabPdfSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !patient?._id) return;
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast({
+        title: "Invalid file",
+        description: "Please upload a PDF lab report.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setLabUploadLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await post<{ report: S3Report }>(
+        `/api/s3-reports/patient/${patient._id}/upload`,
+        formData
+      );
+      const report = res.data?.report;
+      if (res.success && report) {
+        setS3Reports((prev) => [report, ...prev.filter((x) => x._id !== report._id)]);
+        toast({
+          title: "Report uploaded",
+          description: "AI parsing is running in the background. Refresh in a moment for full results.",
+        });
+      } else {
+        toast({
+          title: "Upload failed",
+          description: res.message || "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Upload failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setLabUploadLoading(false);
+    }
   };
 
   const displayPatient: Patient = patient ?? {
@@ -5147,11 +5222,26 @@ export function PatientOverview() {
                   Laboratory test results organized by month
                 </p>
               </div>
+              <input
+                ref={labUploadInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onChange={handleLabPdfSelected}
+              />
               <Button
                 size="sm"
+                type="button"
+                onClick={handleLabUploadClick}
+                disabled={labUploadLoading || !patient?._id}
                 className="bg-[#00C4B3] hover:bg-[#009c8f] text-white"
               >
-                + Upload Report
+                {labUploadLoading ? (
+                  <Loader2Icon className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <PlusIcon className="w-4 h-4 mr-2" />
+                )}
+                Upload Report
               </Button>
             </CardHeader>
             <CardContent>
@@ -5173,17 +5263,46 @@ export function PatientOverview() {
                           key={report._id}
                           className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
                         >
-                          <div>
-                            <p className="text-sm font-semibold text-foreground">
-                              {report.documentName}
-                            </p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {new Date(report.createdAt).toLocaleDateString('en-US', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground">
+                                {report.documentName}
+                              </p>
+                              {report.parseStatus === "success" && (
+                                <Badge className="bg-emerald-50 text-emerald-800 text-[10px]">
+                                  Parsed
+                                </Badge>
+                              )}
+                              {report.parseStatus === "processing" ||
+                              report.parseStatus === "pending" ? (
+                                <Badge variant="outline" className="text-[10px]">
+                                  Parsing…
+                                </Badge>
+                              ) : null}
+                              {report.parseStatus === "failed" && (
+                                <Badge variant="destructive" className="text-[10px]">
+                                  Parse failed
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground mt-0.5">
+                              {new Date(report.createdAt).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric",
                               })}
                             </p>
+                            {report.parseStatus === "success" &&
+                              report.parsedLabReport?.tests &&
+                              report.parsedLabReport.tests.length > 0 && (
+                                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
+                                  {report.parsedLabReport.tests
+                                    .slice(0, 4)
+                                    .map((t) => `${t.name || "?"}: ${t.result ?? "—"}`)
+                                    .join(" · ")}
+                                  {report.parsedLabReport.tests.length > 4 ? " …" : ""}
+                                </p>
+                              )}
                           </div>
                           <Button
                             variant="outline"

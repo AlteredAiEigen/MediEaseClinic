@@ -109,6 +109,11 @@ print_step "Activating virtual environment..."
 source venv/bin/activate
 print_success "Virtual environment activated"
 
+# Keep venv aligned with requirements (e.g. pymupdf for lab PDF parsing)
+print_step "Syncing Python dependencies from requirements.txt..."
+pip install -r requirements.txt -q
+print_success "Python dependencies up to date"
+
 # Create logs directory if it doesn't exist
 mkdir -p logs
 

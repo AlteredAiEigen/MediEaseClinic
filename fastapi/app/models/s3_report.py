@@ -3,7 +3,7 @@ Model definitions for patient documents persisted to S3 via inbound email.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field
@@ -48,6 +48,35 @@ class S3ReportBase(BaseModel):
     mailgunMessageId: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     clinicId: Optional[str] = None
+    # AI parsing (lab PDFs from email or manual upload)
+    parseStatus: Optional[Literal["pending", "processing", "success", "failed"]] = None
+    parseError: Optional[str] = None
+    parsedAt: Optional[datetime] = None
+    parsedLabReport: Optional[Dict[str, Any]] = None
+
+
+class ParsedLabTestItem(BaseModel):
+    """Structured test row from AI lab parse (aligned with lab_reports LabTest)."""
+
+    name: str = ""
+    result: str = ""
+    unit: Optional[str] = None
+    normalRange: Optional[str] = None
+    status: Optional[str] = None
+    flag: Optional[str] = None
+
+
+class ParsedLabReportPayload(BaseModel):
+    """Validated payload stored in s3_reports.parsedLabReport."""
+
+    reportType: str = "Laboratory report"
+    labName: Optional[str] = None
+    collectedDate: Optional[str] = None
+    reportedDate: Optional[str] = None
+    interpretation: Optional[str] = None
+    notes: Optional[str] = None
+    tests: List[ParsedLabTestItem] = Field(default_factory=list)
+    summaryText: Optional[str] = None
 
 
 class S3ReportInDB(S3ReportBase):
@@ -87,6 +116,10 @@ async def s3_report_helper(document: dict) -> dict:
         "clinicId": document.get("clinicId"),
         "createdAt": document.get("createdAt"),
         "updatedAt": document.get("updatedAt"),
+        "parseStatus": document.get("parseStatus"),
+        "parseError": document.get("parseError"),
+        "parsedAt": document.get("parsedAt"),
+        "parsedLabReport": document.get("parsedLabReport"),
     }
 
 

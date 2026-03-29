@@ -416,6 +416,12 @@ export function ConsultationSession() {
           return;
         }
 
+        // Queue snapshots may omit medieaseClinicEmail; always refresh from API for full patient
+        const freshPatient = await fetchPatientByMongoId(resolvedPatientId);
+        if (freshPatient) {
+          patientData = freshPatient;
+        }
+
         setPatient(patientData);
         setResolvedPatientObjectId(resolvedPatientId);
         

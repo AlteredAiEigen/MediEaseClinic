@@ -723,6 +723,115 @@ Summary:"""
             # Fall back to heuristic insights if model call fails
             return await self.generate_patient_insights(patient_data)
 
+    _LAB_JSON_INSTRUCTIONS = """
+Return a single JSON object with these keys only:
+- reportType: string (e.g. "CBC", "Metabolic panel", "Laboratory report")
+- labName: string or null (facility name if visible)
+- collectedDate: string or null (ISO or as printed)
+- reportedDate: string or null
+- interpretation: string or null (overall impression)
+- notes: string or null
+- tests: array of objects, each with:
+  - name: string (test name)
+  - result: string (value; use "pending" if not given)
+  - unit: string or null
+  - normalRange: string or null (reference interval)
+  - status: one of "normal","high","low","critical","pending" or null
+  - flag: string or null (e.g. H, L, *)
+- summaryText: string (concise narrative of key abnormal and normal findings for search indexing; no patient name/ID)
+
+Rules: Extract only what is supported by the document. Do not invent values. If the document is not a lab report, set tests to [] and explain in notes.
+"""
+
+    async def parse_lab_report_from_text(self, extracted_text: str) -> Dict[str, Any]:
+        """Structured lab extraction from plain text (typed or OCR)."""
+        if not self.provider or self.provider != "openai":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OpenAI is required for lab report parsing.",
+            )
+        text = (extracted_text or "").strip()
+        if len(text) > 32000:
+            text = text[:32000] + "\n...[truncated]"
+        user = (
+            "Extract structured laboratory data from the following report text.\n\n"
+            + self._LAB_JSON_INSTRUCTIONS
+            + "\n\n--- REPORT TEXT ---\n"
+            + text
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.openai_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a clinical data extraction assistant. Respond with JSON only.",
+                    },
+                    {"role": "user", "content": user},
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content or "{}"
+            return json.loads(raw)
+        except Exception as e:
+            logger.error("Lab report text parse failed: %s", e, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Lab report parsing failed: {str(e)}",
+            )
+
+    async def parse_lab_report_from_images(self, images_png_base64: List[str]) -> Dict[str, Any]:
+        """Vision extraction from one or more PNG base64 strings (no data: prefix)."""
+        if not self.provider or self.provider != "openai":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OpenAI is required for lab report parsing.",
+            )
+        if not images_png_base64:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No page images provided for vision lab parse.",
+            )
+        vision_model = getattr(settings, "openai_vision_model", None) or settings.openai_model
+        content: List[Dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": "Extract structured laboratory data from these report page images.\n\n"
+                + self._LAB_JSON_INSTRUCTIONS,
+            }
+        ]
+        for b64 in images_png_base64[:6]:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{b64}",
+                    },
+                }
+            )
+        try:
+            response = self.client.chat.completions.create(
+                model=vision_model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a clinical data extraction assistant. Respond with JSON only.",
+                    },
+                    {"role": "user", "content": content},
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
+            raw = response.choices[0].message.content or "{}"
+            return json.loads(raw)
+        except Exception as e:
+            logger.error("Lab report vision parse failed: %s", e, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Lab report vision parsing failed: {str(e)}",
+            )
+
 
 # Global AI service instance
 ai_service = AIService()

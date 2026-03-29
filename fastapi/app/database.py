@@ -186,6 +186,7 @@ class Database:
             await cls.database.s3_reports.create_index("clinicId")
             await cls.database.s3_reports.create_index("s3Key", unique=True)
             await cls.database.s3_reports.create_index("mailgunMessageId")
+            await cls.database.s3_reports.create_index("parseStatus")
             
             # S3 prescriptions collection (same structure as s3_reports)
             await cls.database.s3_prescriptions.create_index("patientId")

@@ -640,6 +640,7 @@ class PatientService:
             "age": 1,
             "phone": 1,
             "email": 1,
+            "medieaseClinicEmail": 1,
             "presentInClinic": 1,
             "chiefComplaint": 1,
             "carePlanSummary": 1,

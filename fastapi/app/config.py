@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     # Vision model (OpenAI) for image analysis (e.g., prescriptions)
     openai_vision_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
+    # Lab PDF parsing: max pages to extract text / render for vision
+    lab_parse_max_pages: int = 3
+    lab_parse_min_text_chars: int = 120
     
     # Google Gemini Configuration
     gemini_api_key: str = ""

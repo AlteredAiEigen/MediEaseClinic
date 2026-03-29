@@ -16,6 +16,33 @@ from app.utils.pii_sanitizer import strip_text_pii
 logger = logging.getLogger(__name__)
 
 
+def _format_lab_tests_lines(tests: Any) -> List[str]:
+    """Turn lab test dicts into readable lines for RAG (de-identified downstream)."""
+    lines: List[str] = []
+    if not isinstance(tests, list):
+        return lines
+    for t in tests:
+        if not isinstance(t, dict):
+            continue
+        name = (t.get("name") or "").strip()
+        result = (t.get("result") or "").strip()
+        if not name and not result:
+            continue
+        unit = (t.get("unit") or "").strip()
+        ref = (t.get("normalRange") or "").strip()
+        st = (t.get("status") or "").strip()
+        flag = (t.get("flag") or "").strip()
+        seg = f"- {name}: {result}"
+        if unit:
+            seg += f" {unit}"
+        if ref:
+            seg += f" (ref {ref})"
+        if st or flag:
+            seg += f" [{st}{(' ' + flag) if flag else ''}]"
+        lines.append(seg)
+    return lines
+
+
 async def iter_cumulative_patient_segments(
     db: AsyncIOMotorDatabase,
     patient: Dict[str, Any],
@@ -145,7 +172,15 @@ async def iter_cumulative_patient_segments(
                 title = r.get("title") or r.get("reportType") or "Lab"
                 summary = r.get("summary") or r.get("interpretation") or ""
                 crit = "[CRITICAL] " if r.get("isCritical") else ""
-                add("lab", rid, f"{crit}{title} ({r.get('reportedDate', '')}): {summary}")
+                parts: List[str] = [
+                    f"{crit}{title} ({r.get('reportedDate', '')})",
+                ]
+                if r.get("labName"):
+                    parts.append(f"Lab: {r.get('labName')}")
+                parts.extend(_format_lab_tests_lines(r.get("tests")))
+                if summary:
+                    parts.append(f"Interpretation: {summary}")
+                add("lab", rid, "\n".join(parts))
     except Exception as exc:
         logger.warning("clinical_context labs: %s", exc)
 
@@ -238,12 +273,52 @@ async def iter_cumulative_patient_segments(
     except Exception as exc:
         logger.warning("clinical_context insurance: %s", exc)
 
-    # S3 reports summaries if present
+    # S3 lab PDFs (AI-parsed + status)
     try:
-        reps = await db.s3_reports.find({"patientMongoId": pid}).limit(30).to_list(30)
-        for rep in reps:
-            rid = str(rep.get("_id", ""))
-            add("report", rid, str(rep.get("summary") or rep.get("title") or rep.get("reportType") or ""))
+        s3q: Dict[str, Any] = {}
+        if ObjectId.is_valid(pid):
+            s3q = {"patientMongoId": ObjectId(pid)}
+        if s3q:
+            reps = await db.s3_reports.find(s3q).sort("createdAt", -1).limit(30).to_list(30)
+            for rep in reps:
+                rid = str(rep.get("_id", ""))
+                doc_name = rep.get("documentName") or "report.pdf"
+                ps = rep.get("parseStatus")
+                parsed = rep.get("parsedLabReport")
+                if ps == "success" and isinstance(parsed, dict) and parsed:
+                    rt = parsed.get("reportType") or "Laboratory report"
+                    lines = [f"S3 lab report ({doc_name}): {rt}"]
+                    if parsed.get("labName"):
+                        lines.append(f"Facility: {parsed.get('labName')}")
+                    dcomb = parsed.get("reportedDate") or parsed.get("collectedDate")
+                    if dcomb:
+                        lines.append(f"Report/collection date: {dcomb}")
+                    lines.extend(_format_lab_tests_lines(parsed.get("tests")))
+                    if parsed.get("interpretation"):
+                        lines.append(f"Interpretation: {parsed.get('interpretation')}")
+                    if parsed.get("notes"):
+                        lines.append(f"Notes: {parsed.get('notes')}")
+                    if parsed.get("summaryText"):
+                        lines.append(str(parsed.get("summaryText")))
+                    add("report", rid, "\n".join(lines))
+                elif ps in ("pending", "processing"):
+                    add(
+                        "report",
+                        rid,
+                        f"Lab PDF on file ({doc_name}): AI parsing in progress.",
+                    )
+                elif ps == "failed":
+                    add(
+                        "report",
+                        rid,
+                        f"Lab PDF on file ({doc_name}): structured parse failed; PDF still available.",
+                    )
+                else:
+                    add(
+                        "report",
+                        rid,
+                        f"Lab PDF on file ({doc_name}); structured parse not available yet.",
+                    )
     except Exception as exc:
         logger.warning("clinical_context s3_reports: %s", exc)
 

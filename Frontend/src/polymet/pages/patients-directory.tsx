@@ -84,28 +84,6 @@ const createAvatarUrl = (name: string) =>
     name
   )}&background=random&color=ffffff`;
 
-const generateMediEaseEmailForPatient = (patient: PatientSummary, fullName: string) => {
-  const safePart = (value: string) =>
-    value
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, ".")
-      .replace(/^\.+|\.+$/g, "");
-
-  const first =
-    patient.firstName?.trim() ||
-    (fullName.split(" ").filter(Boolean)[0] ?? "").trim();
-  const last =
-    patient.lastName?.trim() ||
-    (fullName.split(" ").filter(Boolean).slice(1).join(" ") ?? "").trim();
-
-  const local =
-    [safePart(first), safePart(last)].filter(Boolean).join(".") ||
-    safePart(patient.patientId || patient._id || "patient");
-
-  return `${local}@mediease.com`;
-};
-
 const mapApiPatientToUi = (patient: PatientSummary): UiPatient => {
   const status: PatientStatus = patient.presentInClinic ? "in-clinic" : "remote";
   const name =
@@ -115,10 +93,11 @@ const mapApiPatientToUi = (patient: PatientSummary): UiPatient => {
 
   const personalEmail =
     (patient.email && patient.email.trim()) ? patient.email.trim() : "Not provided";
+  // Must match backend PatientService (no client-side guess—wrong domain/format was shown before).
   const medieaseEmail =
     ((patient as any)?.medieaseClinicEmail && String((patient as any).medieaseClinicEmail).trim())
       ? String((patient as any).medieaseClinicEmail).trim()
-      : generateMediEaseEmailForPatient(patient, name);
+      : "Not generated";
 
   return {
     recordId: patient._id,

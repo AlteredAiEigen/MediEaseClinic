@@ -25,6 +25,27 @@ import {
   FileDownIcon,
   SparklesIcon,
 } from "lucide-react";
+import { useAuth } from "@/context/auth-context";
+
+interface ParsedLabTestRow {
+  name?: string;
+  result?: string;
+  unit?: string;
+  normalRange?: string;
+  status?: string;
+  flag?: string;
+}
+
+interface ParsedLabReportPayload {
+  reportType?: string;
+  labName?: string;
+  collectedDate?: string;
+  reportedDate?: string;
+  interpretation?: string;
+  notes?: string;
+  tests?: ParsedLabTestRow[];
+  summaryText?: string;
+}
 
 interface S3Report {
   _id: string;
@@ -37,6 +58,11 @@ interface S3Report {
   presignedUrl?: string;
   createdAt: string;
   updatedAt: string;
+  parseStatus?: "pending" | "processing" | "success" | "failed";
+  parseError?: string | null;
+  parsedAt?: string;
+  parsedLabReport?: ParsedLabReportPayload | null;
+  metadata?: Record<string, unknown>;
 }
 
 interface Patient {
@@ -64,12 +90,22 @@ interface S3ReportViewerDialogProps {
   patient: Patient | null;
 }
 
+function formatCommentAuthorName(user: {
+  firstName?: string;
+  lastName?: string;
+} | null): string {
+  if (!user) return "Doctor";
+  const name = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
+  return name ? `Dr. ${name}` : "Doctor";
+}
+
 export function S3ReportViewerDialog({
   open,
   onOpenChange,
   report,
   patient,
 }: S3ReportViewerDialogProps) {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("results");
   const [doctorComment, setDoctorComment] = useState("");
   const [savedComments, setSavedComments] = useState<DoctorComment[]>([]);
@@ -81,7 +117,7 @@ export function S3ReportViewerDialog({
     if (doctorComment.trim()) {
       const newComment: DoctorComment = {
         id: Date.now().toString(),
-        doctorName: patient?.fullName ? "Dr. " + patient.fullName.split(" ")[0] : "Doctor",
+        doctorName: formatCommentAuthorName(user),
         comment: doctorComment,
         timestamp: new Date().toLocaleString("en-US", {
           month: "long",
@@ -119,6 +155,9 @@ export function S3ReportViewerDialog({
     month: 'long',
     day: 'numeric'
   });
+  const parsed = report.parsedLabReport;
+  const hasParsedTests = Boolean(parsed?.tests && parsed.tests.length > 0);
+  const sourceLabel = report.metadata?.uploadedByUserId ? "Manual upload" : "Email upload";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -259,8 +298,25 @@ export function S3ReportViewerDialog({
                   </div>
                   <div>
                     <p className="text-muted-foreground mb-1">Source</p>
-                    <p className="font-medium">Email Upload</p>
+                    <p className="font-medium">{sourceLabel}</p>
                   </div>
+                  {report.parseStatus && (
+                    <div>
+                      <p className="text-muted-foreground mb-1">AI parse</p>
+                      <Badge
+                        variant="outline"
+                        className={
+                          report.parseStatus === "success"
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                            : report.parseStatus === "failed"
+                              ? "border-red-200 text-red-700"
+                              : ""
+                        }
+                      >
+                        {report.parseStatus}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
@@ -268,6 +324,79 @@ export function S3ReportViewerDialog({
                 {/* Report Display */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Test Results</h3>
+
+                  {report.parseStatus === "failed" && report.parseError && (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      Structured parse failed: {report.parseError}
+                    </div>
+                  )}
+
+                  {(report.parseStatus === "pending" || report.parseStatus === "processing") && (
+                    <div className="mb-4 rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                      AI is extracting lab values from this PDF… Refresh this dialog in a few seconds.
+                    </div>
+                  )}
+
+                  {report.parseStatus === "success" && parsed && (
+                    <div className="mb-6 space-y-3 rounded-lg border border-teal-100 bg-teal-50/40 p-4">
+                      <div className="flex flex-wrap gap-2 text-sm">
+                        {parsed.reportType && (
+                          <Badge variant="secondary">{parsed.reportType}</Badge>
+                        )}
+                        {parsed.labName && (
+                          <span className="text-muted-foreground">
+                            <span className="font-medium text-foreground">Lab: </span>
+                            {parsed.labName}
+                          </span>
+                        )}
+                      </div>
+                      {(parsed.collectedDate || parsed.reportedDate) && (
+                        <p className="text-xs text-muted-foreground">
+                          {parsed.collectedDate && <>Collected: {parsed.collectedDate} </>}
+                          {parsed.reportedDate && <>· Reported: {parsed.reportedDate}</>}
+                        </p>
+                      )}
+                      {hasParsedTests && (
+                        <div className="overflow-x-auto rounded-md border bg-background">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b bg-muted/50 text-left">
+                                <th className="p-2 font-medium">Test</th>
+                                <th className="p-2 font-medium">Result</th>
+                                <th className="p-2 font-medium">Unit</th>
+                                <th className="p-2 font-medium">Ref</th>
+                                <th className="p-2 font-medium">Flag</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {parsed.tests!.map((t, idx) => (
+                                <tr key={idx} className="border-b border-border/60">
+                                  <td className="p-2">{t.name || "—"}</td>
+                                  <td className="p-2 font-medium">{t.result ?? "—"}</td>
+                                  <td className="p-2 text-muted-foreground">{t.unit || "—"}</td>
+                                  <td className="p-2 text-xs text-muted-foreground">{t.normalRange || "—"}</td>
+                                  <td className="p-2 text-xs">{t.flag || t.status || "—"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {parsed.interpretation && (
+                        <div>
+                          <p className="text-xs font-semibold text-teal-900">Interpretation</p>
+                          <p className="text-sm text-foreground whitespace-pre-wrap">{parsed.interpretation}</p>
+                        </div>
+                      )}
+                      {parsed.notes && (
+                        <div>
+                          <p className="text-xs font-semibold text-teal-900">Notes</p>
+                          <p className="text-sm text-muted-foreground whitespace-pre-wrap">{parsed.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {report.presignedUrl ? (
                     <div className="w-full border rounded-lg overflow-hidden bg-muted/20">
                       {isPDF ? (
@@ -300,7 +429,7 @@ export function S3ReportViewerDialog({
                 <Separator />
                 <div className="text-xs text-muted-foreground text-center">
                   <p>
-                    This report was uploaded via email and stored securely in AWS S3
+                    This report is stored securely in AWS S3 ({sourceLabel.toLowerCase()})
                   </p>
                   <p className="mt-1">
                     Upload Date: {reportDate} | Report ID: {report._id.slice(-8)}
@@ -314,8 +443,9 @@ export function S3ReportViewerDialog({
                   <HistoryIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold mb-2">Compare Results</h3>
                   <p className="text-muted-foreground">
-                    Comparison feature is not available for uploaded reports.
-                    This feature requires structured lab data.
+                    {hasParsedTests
+                      ? "Trend comparison across visits is not implemented yet. Use Test Results for the parsed table and PDF."
+                      : "Comparison requires structured lab data. After AI parsing completes, open this report again."}
                   </p>
                 </div>
               </TabsContent>
