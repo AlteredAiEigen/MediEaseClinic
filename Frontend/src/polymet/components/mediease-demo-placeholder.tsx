@@ -65,7 +65,7 @@ export function MedieaseDemoPlaceholder() {
                   onClick={() => setIsPlaying(true)}
                 >
                   {/* Placeholder video - Big Buck Bunny (open source demo video) */}
-                  <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4" />
+                  <source src="/mediease-demo.mp4" type="video/mp4" />
                   Your browser does not support the video tag.
                 </video>
 
