@@ -1,7 +1,6 @@
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/context/auth-context";
 
 interface PrescriptionFooterProps {
   prescribedTests: string;
@@ -9,18 +8,18 @@ interface PrescriptionFooterProps {
   nextAppointment: string;
   setNextAppointment: (v: string) => void;
   readOnly?: boolean;
+  clinicPhone?: string;
 }
 
 export function PrescriptionFooter(props: PrescriptionFooterProps) {
-  const { user } = useAuth();
-  const clinicPhone = user?.phone?.trim();
   const readOnly = props.readOnly ?? false;
+  const clinicPhone = props.clinicPhone?.trim();
 
   return (
     <div className="space-y-3 mt-4 pt-4 border-t border-border">
       <div className="w-full">
         <Label className="text-xs text-muted-foreground font-semibold">
-          निर्धारित परीक्षण (Prescribed Tests)
+          Prescribed Tests
         </Label>
         <Textarea
           value={props.prescribedTests}
@@ -32,7 +31,7 @@ export function PrescriptionFooter(props: PrescriptionFooterProps) {
       </div>
       <div className="flex items-center gap-3">
         <Label className="text-xs text-muted-foreground font-semibold whitespace-nowrap">
-          अगली तारीख़ (Next Appointment)
+          Next Appointment
         </Label>
         <Input
           type="date"

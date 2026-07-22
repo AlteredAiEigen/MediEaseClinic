@@ -34,6 +34,8 @@ import {
   EditIcon,
   SparklesIcon,
   CheckCircleIcon,
+  SearchIcon,
+  Clock3Icon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -592,7 +594,9 @@ export function PatientOverview() {
   const [s3ReportViewerOpen, setS3ReportViewerOpen] = useState(false);
   const [selectedS3Report, setSelectedS3Report] = useState<S3Report | null>(null);
   const labUploadInputRef = useRef<HTMLInputElement>(null);
+  const medicationHistoryRef = useRef<HTMLDivElement>(null);
   const [labUploadLoading, setLabUploadLoading] = useState(false);
+  const [medicationSearch, setMedicationSearch] = useState("");
   const [insuranceRecords, setInsuranceRecords] = useState<PatientInsuranceRecord[]>([]);
   const [selectedInsuranceId, setSelectedInsuranceId] = useState<string | null>(null);
   const [isInsuranceDialogOpen, setIsInsuranceDialogOpen] = useState(false);
@@ -1214,7 +1218,7 @@ export function PatientOverview() {
           })()
         );
 
-        // S3 reports (latest 5)
+        // S3 reports (complete patient history)
         tasks.push(
           (async () => {
             try {
@@ -1225,11 +1229,18 @@ export function PatientOverview() {
               if (s3ReportsResponse.success && s3ReportsResponse.data?.reports) {
                 const sortedReports = s3ReportsResponse.data.reports
                   .sort((a, b) => {
-                    const dateA = new Date(a.createdAt).getTime();
-                    const dateB = new Date(b.createdAt).getTime();
+                    const dateA = new Date(
+                      a.parsedLabReport?.reportedDate ||
+                        a.parsedLabReport?.collectedDate ||
+                        a.createdAt,
+                    ).getTime();
+                    const dateB = new Date(
+                      b.parsedLabReport?.reportedDate ||
+                        b.parsedLabReport?.collectedDate ||
+                        b.createdAt,
+                    ).getTime();
                     return dateB - dateA;
-                  })
-                  .slice(0, 5);
+                  });
                 setS3Reports(sortedReports);
                 if (sortedReports.length > 0) {
                   setHasAnyData(true);
@@ -2583,40 +2594,78 @@ export function PatientOverview() {
 
   const savedMedications = editForm.currentMedications.filter((med) => !med.isNew);
   
-  // Separate active and past medications based on end date
   const today = new Date();
-  today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
-  
-  const activeMedicationsList = savedMedications.filter((med) => {
-    if (!med.endDate) {
-      // No end date means ongoing/active
-      return true;
-    }
-    const endDate = new Date(med.endDate);
-    endDate.setHours(0, 0, 0, 0);
-    // Active if end date is today or in the future
-    return endDate >= today;
-  });
-  
-  const pastMedicationsList = useMemo(() => {
-    const past = savedMedications.filter((med) => {
-      if (!med.endDate) {
-        // No end date means ongoing/active, not past
-        return false;
+  today.setHours(0, 0, 0, 0);
+
+  const medicationHistory = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        name: string;
+        entries: EditableMedicationEntry[];
+        latest: EditableMedicationEntry;
+        latestTimestamp: number;
       }
-      const endDate = new Date(med.endDate);
-      endDate.setHours(0, 0, 0, 0);
-      // Past if end date is before today
-      return endDate < today;
+    >();
+
+    savedMedications.forEach((med) => {
+      const name = med.name?.trim() || "Unnamed medication";
+      const key = name.toLocaleLowerCase();
+      const timestamp = new Date(
+        med.startDate || med.endDate || ""
+      ).getTime();
+      const sortableTimestamp = Number.isNaN(timestamp) ? 0 : timestamp;
+      const existing = groups.get(key);
+
+      if (!existing) {
+        groups.set(key, {
+          key,
+          name,
+          entries: [med],
+          latest: med,
+          latestTimestamp: sortableTimestamp,
+        });
+        return;
+      }
+
+      existing.entries.push(med);
+      if (sortableTimestamp >= existing.latestTimestamp) {
+        existing.latest = med;
+        existing.latestTimestamp = sortableTimestamp;
+      }
     });
-    
-    // Sort by end date (most recent first)
-    return past.sort((a, b) => {
-      const dateA = a.endDate ? new Date(a.endDate).getTime() : 0;
-      const dateB = b.endDate ? new Date(b.endDate).getTime() : 0;
-      return dateB - dateA;
-    });
-  }, [savedMedications, today]);
+
+    return Array.from(groups.values()).sort(
+      (a, b) => b.latestTimestamp - a.latestTimestamp || a.name.localeCompare(b.name),
+    );
+  }, [savedMedications]);
+
+  const filteredMedicationHistory = useMemo(() => {
+    const query = medicationSearch.trim().toLocaleLowerCase();
+    if (!query) return medicationHistory;
+    return medicationHistory.filter(({ name, latest, entries }) =>
+      [name, latest.dosage, latest.frequency, latest.instructions, ...entries.map((entry) => entry.duration)]
+        .filter(Boolean)
+        .some((value) => value!.toLocaleLowerCase().includes(query)),
+    );
+  }, [medicationHistory, medicationSearch]);
+
+  const medicationPrescriptionCount = useMemo(
+    () =>
+      new Set(
+        savedMedications.map(
+          (med) =>
+            `${med.startDate || ""}|${med.instructions || ""}|${med._localId.split("-").slice(0, -1).join("-")}`,
+        ),
+      ).size,
+    [savedMedications],
+  );
+
+  const focusMedicationHistory = () => {
+    setMedicationSearch("");
+    medicationHistoryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const groupedLabReports = useMemo(() => {
     if (!labReports.length) return [];
@@ -2672,7 +2721,11 @@ export function PatientOverview() {
     >();
 
     s3Reports.forEach((report) => {
-      const parsedDate = report.createdAt ? new Date(report.createdAt) : null;
+      const reportDate =
+        report.parsedLabReport?.reportedDate ||
+        report.parsedLabReport?.collectedDate ||
+        report.createdAt;
+      const parsedDate = reportDate ? new Date(reportDate) : null;
       const label = parsedDate
         ? parsedDate.toLocaleString("en-US", { month: "long", year: "numeric" })
         : "Uncategorized";
@@ -4857,15 +4910,15 @@ export function PatientOverview() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <PillIcon className="w-5 h-5 text-[#00C4B3]" />
-                  Active Medications
+                  Medication history
                   <span className="inline-flex items-center justify-center rounded-full bg-[#00C4B3]/10 px-2.5 py-0.5 text-xs font-semibold text-[#00C4B3]">
-                    {activeMedicationsList.length}
+                    {medicationHistory.length}
                   </span>
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
                   {isMedicationsEditing
                     ? "Existing prescriptions are shown below. Use the editor to add corrections."
-                    : "Current medications on record for this patient."}
+                    : "Every medication recorded for this patient, including past prescriptions."}
                 </p>
               </div>
               {canEditPatientProfile && !isGlobalEditMode && (
@@ -5084,195 +5137,136 @@ export function PatientOverview() {
                 </>
               ) : (
                 <>
-                  {activeMedicationsList.length === 0 ? (
+                  <div className="flex flex-col gap-4 rounded-xl border border-[#00C4B3]/15 bg-[#F7FFFE] p-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00C4B3]/10 text-[#00C4B3]">
+                          <PillIcon className="h-4 w-4" />
+                        </span>
+                        <h3 className="font-semibold text-foreground">Patient medication history</h3>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Review medicines prescribed across all recorded visits.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-[#00C4B3]/30 text-[#008f84] hover:bg-[#00C4B3]/10"
+                      onClick={focusMedicationHistory}
+                    >
+                      <FileTextIcon className="mr-2 h-4 w-4" />
+                      Open prescriptions
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border bg-card p-4 shadow-sm">
+                      <p className="text-2xl font-semibold tabular-nums">{medicationHistory.length}</p>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">Unique medicines</p>
+                    </div>
+                    <div className="rounded-xl border bg-card p-4 shadow-sm">
+                      <p className="text-2xl font-semibold tabular-nums">{medicationPrescriptionCount}</p>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">Total prescriptions</p>
+                    </div>
+                    <div className="rounded-xl border bg-card p-4 shadow-sm">
+                      <p className="text-2xl font-semibold tabular-nums">{savedMedications.length}</p>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">Medication line items</p>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={medicationSearch}
+                      onChange={(event) => setMedicationSearch(event.target.value)}
+                      placeholder='Search medication history, e.g. "Metformin"'
+                      className="pl-9"
+                      aria-label="Search medication history"
+                    />
+                  </div>
+
+                  <div ref={medicationHistoryRef} className="space-y-2">
+                    <div className="flex items-center justify-between px-1">
+                      <p className="text-sm font-semibold text-foreground">All medicines</p>
+                      <p className="text-xs text-muted-foreground">
+                        {filteredMedicationHistory.length} of {medicationHistory.length} · most recent first
+                      </p>
+                    </div>
+
+                  {medicationHistory.length === 0 ? (
                     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/20 py-12 text-center text-muted-foreground">
                       <PillIcon className="h-12 w-12 opacity-40" />
                       <p className="mt-3 text-sm font-medium">
-                        No active medications recorded for this patient.
+                        No medications recorded for this patient.
                       </p>
                       <p className="mt-1 max-w-sm text-xs text-muted-foreground">
                         When a doctor adds a prescription, it will appear here automatically.
                       </p>
                     </div>
+                  ) : filteredMedicationHistory.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border/70 py-10 text-center text-sm text-muted-foreground">
+                      No medications match “{medicationSearch}”.
+                    </div>
                   ) : (
-                    <div className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {activeMedicationsList.map((med) => {
-                          const startDate = med.startDate
-                            ? new Date(med.startDate).toLocaleDateString("en-US", {
+                    <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
+                      {filteredMedicationHistory.map(({ key, name, entries, latest, latestTimestamp }) => {
+                        const latestDate =
+                          latestTimestamp > 0
+                            ? new Date(latestTimestamp).toLocaleDateString("en-US", {
                                 month: "short",
                                 day: "numeric",
                                 year: "numeric",
                               })
-                            : null;
-                          const endDate = med.endDate
-                            ? new Date(med.endDate).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })
-                            : null;
-                          const durationLabel = med.duration?.trim();
-                          const frequencyLabel = med.frequency?.trim();
+                            : "Date not recorded";
+                        const doseVariants = new Set(
+                          entries.map((entry) => `${entry.dosage || ""}|${entry.frequency || ""}`),
+                        ).size;
+                        const isActive = entries.some((entry) => {
+                          if (!entry.endDate) return true;
+                          return new Date(entry.endDate).getTime() >= today.getTime();
+                        });
 
-                          return (
-                            <div
-                              key={`active-med-${med._localId}`}
-                              className="rounded-2xl border border-[#00C4B3]/40 bg-[#00C4B3]/5 p-4 shadow-sm"
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00C4B3]/15 text-[#00C4B3]">
-                                    <PillIcon className="h-5 w-5" />
-                                  </span>
-                                  <div>
-                                    <p className="text-base font-semibold text-foreground">
-                                      {med.name || "Medication"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {med.dosage || "Dosage not specified"}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mt-4 space-y-1 text-xs font-medium">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {startDate && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                      <CalendarIcon className="h-3.5 w-3.5" />
-                                      {`Since ${startDate}`}
-                                    </span>
-                                  )}
-                                  {endDate && (
-                                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-[#00C4B3]">
-                                      <CalendarIcon className="h-3.5 w-3.5" />
-                                      {`Till ${endDate}`}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {(frequencyLabel || durationLabel) && (
-                                  <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground">
-                                    {frequencyLabel && (
-                                      <span className="truncate">
-                                        Frequency: {frequencyLabel}
-                                      </span>
-                                    )}
-                                    {durationLabel && (
-                                      <span className="ml-auto truncate text-right">
-                                        Duration: {durationLabel}
-                                      </span>
-                                    )}
-                                  </div>
+                        return (
+                          <div
+                            key={key}
+                            className="flex flex-col gap-3 border-b border-border/60 px-4 py-4 last:border-0 md:flex-row md:items-center"
+                          >
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00C4B3]/10 text-[#00C4B3]">
+                              <PillIcon className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-foreground">{name}</p>
+                                <Badge variant="secondary" className="text-[10px]">
+                                  {entries.length} {entries.length === 1 ? "prescribed" : "prescriptions"}
+                                </Badge>
+                                {doseVariants > 1 && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {doseVariants} dose variants
+                                  </Badge>
                                 )}
                               </div>
-
-                              {med.instructions && (
-                                <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                                  {med.instructions}
-                                </p>
-                              )}
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                Most recent: {latest.dosage || "Dosage not specified"}
+                                {latest.frequency ? ` · ${latest.frequency}` : ""}
+                                {latest.duration ? ` · ${latest.duration}` : ""}
+                              </p>
                             </div>
-                          );
-                        })}
-                      </div>
+                            <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground md:text-right">
+                              <Clock3Icon className="h-3.5 w-3.5" />
+                              <div>
+                                <p className="font-medium text-foreground">{isActive ? "Active" : "Past"}</p>
+                                <p>Last: {latestDate}</p>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-
-                  {pastMedicationsList.length > 0 && (
-                    <div className="mt-8 space-y-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                          Past Medications
-                        </h3>
-                        <span className="inline-flex items-center justify-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
-                          {pastMedicationsList.length}
-                        </span>
-                      </div>
-                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                        {pastMedicationsList.map((med) => {
-                          const startDate = med.startDate
-                            ? new Date(med.startDate).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })
-                            : null;
-                          const endDate = med.endDate
-                            ? new Date(med.endDate).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })
-                            : null;
-                          const durationLabel = med.duration?.trim();
-                          const frequencyLabel = med.frequency?.trim();
-
-                          return (
-                            <div
-                              key={`past-med-${med._localId}`}
-                              className="rounded-2xl border border-muted/40 bg-muted/5 p-4 shadow-sm"
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="flex items-center gap-3">
-                                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/30 text-muted-foreground">
-                                    <PillIcon className="h-5 w-5" />
-                                  </span>
-                                  <div>
-                                    <p className="text-base font-semibold text-foreground">
-                                      {med.name || "Medication"}
-                                    </p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {med.dosage || "Dosage not specified"}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="mt-4 space-y-1 text-xs font-medium">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  {startDate && (
-                                    <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
-                                      <CalendarIcon className="h-3.5 w-3.5" />
-                                      {`From ${startDate}`}
-                                    </span>
-                                  )}
-                                  {endDate && (
-                                    <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 text-muted-foreground">
-                                      <CalendarIcon className="h-3.5 w-3.5" />
-                                      {`Until ${endDate}`}
-                                    </span>
-                                  )}
-                                </div>
-
-                                {(frequencyLabel || durationLabel) && (
-                                  <div className="flex items-center gap-2 text-[11px] font-normal text-muted-foreground">
-                                    {frequencyLabel && (
-                                      <span className="truncate">
-                                        Frequency: {frequencyLabel}
-                                      </span>
-                                    )}
-                                    {durationLabel && (
-                                      <span className="ml-auto truncate text-right">
-                                        Duration: {durationLabel}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {med.instructions && (
-                                <p className="mt-4 text-xs leading-relaxed text-muted-foreground">
-                                  {med.instructions}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </>
               )}
             </CardContent>
@@ -5360,7 +5354,11 @@ export function PatientOverview() {
                                     {report.documentName}
                                   </p>
                                   <p className="text-[11px] text-muted-foreground mt-0.5">
-                                    {new Date(report.createdAt).toLocaleDateString("en-US", {
+                                    {new Date(
+                                      report.parsedLabReport?.reportedDate ||
+                                        report.parsedLabReport?.collectedDate ||
+                                        report.createdAt,
+                                    ).toLocaleDateString("en-US", {
                                       year: "numeric",
                                       month: "long",
                                       day: "numeric",

@@ -168,12 +168,20 @@ export function TodayVitalsCard({ vital }: { vital: VitalRecord | null }) {
     ["SpO₂", vital?.oxygenSaturation, "%"],
     ["Temp", vital?.temperature, "°F"],
   ].filter(([, value]) => value != null && value !== "");
+  const vitalToneClasses = [
+    "border-violet-200 bg-gradient-to-br from-violet-100 via-violet-50 to-fuchsia-50 text-violet-950 dark:border-violet-800 dark:from-violet-950/60 dark:via-violet-900/30 dark:to-fuchsia-950/20 dark:text-violet-100",
+    "border-emerald-200 bg-gradient-to-br from-emerald-100 via-emerald-50 to-teal-50 text-emerald-950 dark:border-emerald-800 dark:from-emerald-950/60 dark:via-emerald-900/30 dark:to-teal-950/20 dark:text-emerald-100",
+    "border-sky-200 bg-gradient-to-br from-sky-100 via-sky-50 to-cyan-50 text-sky-950 dark:border-sky-800 dark:from-sky-950/60 dark:via-sky-900/30 dark:to-cyan-950/20 dark:text-sky-100",
+    "border-amber-200 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-50 text-amber-950 dark:border-amber-800 dark:from-amber-950/60 dark:via-amber-900/30 dark:to-orange-950/20 dark:text-amber-100",
+  ];
 
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="overflow-hidden border-violet-200/80 bg-gradient-to-br from-violet-50 via-white to-emerald-50 shadow-sm dark:border-violet-900/70 dark:from-violet-950/30 dark:via-background dark:to-emerald-950/20">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <HeartPulseIcon className="h-4 w-4 text-teal-600" />
+          <span className="rounded-lg bg-gradient-to-br from-violet-600 to-emerald-500 p-1.5 text-white shadow-sm">
+            <HeartPulseIcon className="h-4 w-4" />
+          </span>
           Latest vitals
         </CardTitle>
         {vital?.recordedAt && <p className="text-xs text-muted-foreground">Recorded {new Date(vital.recordedAt).toLocaleString()}</p>}
@@ -183,9 +191,12 @@ export function TodayVitalsCard({ vital }: { vital: VitalRecord | null }) {
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No vitals recorded.</p>
         ) : (
           <div className="grid grid-cols-2 gap-2">
-            {rows.map(([label, value, unit]) => (
-              <div key={label as string} className="rounded-lg border bg-slate-50 p-3">
-                <p className="text-xs text-muted-foreground">{label}</p>
+            {rows.map(([label, value, unit], index) => (
+              <div
+                key={label as string}
+                className={`rounded-lg border p-3 shadow-sm ${vitalToneClasses[index % vitalToneClasses.length]}`}
+              >
+                <p className="text-xs font-medium opacity-75">{label}</p>
                 <p className="mt-1 text-lg font-bold tabular-nums">{String(value)} <span className="text-xs font-normal">{unit}</span></p>
               </div>
             ))}

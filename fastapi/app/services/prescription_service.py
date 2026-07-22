@@ -90,6 +90,19 @@ class PrescriptionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Doctor not found"
             )
+
+        if prescription_data.appointmentId:
+            existing_for_appointment = await self.prescriptions_collection.find_one(
+                {"appointmentId": prescription_data.appointmentId}
+            )
+            if existing_for_appointment:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "This appointment already has a prescription. "
+                        "An appointment can have only one prescription."
+                    ),
+                )
         
         # Generate prescription ID
         prescription_id = await self.generate_prescription_id()
@@ -381,6 +394,48 @@ class PrescriptionService:
             {"_id": ObjectId(prescription_id)},
             {"$set": update_dict}
         )
+
+        # A changed draft must not reuse an older PDF. Leave the old S3 object
+        # for the PDF service to replace, but clear its appointment link so the
+        # next Save, Print, or WhatsApp action regenerates it.
+        changed_fields = (
+            "medications",
+            "diagnosis",
+            "notes",
+            "language",
+            "imageUrl",
+            "imagePublicId",
+        )
+        content_changed = any(
+            field in update_dict and update_dict[field] != existing.get(field)
+            for field in changed_fields
+        )
+        if content_changed and appointment_id and ObjectId.is_valid(str(appointment_id)):
+            await self.appointments_collection.update_one(
+                {"_id": ObjectId(str(appointment_id))},
+                {
+                    "$unset": {
+                        "prescriptionFileUrl": "",
+                        "prescriptionFileKey": "",
+                        "prescriptionFileName": "",
+                        "prescriptionFileType": "",
+                        "prescriptionUploadedAt": "",
+                        "prescriptionUploadedBy": "",
+                        "prescriptionUploadedByName": "",
+                    },
+                    "$set": {"updatedAt": datetime.utcnow()},
+                },
+            )
+            await self.prescriptions_collection.update_one(
+                {"_id": ObjectId(prescription_id)},
+                {
+                    "$unset": {
+                        "pdfS3Key": "",
+                        "pdfUrl": "",
+                        "pdfGeneratedAt": "",
+                    }
+                },
+            )
         
         updated = await self.prescriptions_collection.find_one({"_id": ObjectId(prescription_id)})
 
@@ -418,56 +473,14 @@ class PrescriptionService:
         return await prescription_helper(prescription)
     
     async def start_new_prescription_after_send(self, appointment_id: str) -> dict:
-        """
-        After a WhatsApp send, allow the doctor to start a fresh prescription:
-        deactivate prior Rx rows and clear the appointment send lock.
-        """
-        if not ObjectId.is_valid(appointment_id):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid appointment ID",
-            )
-
-        appointment = await self.appointments_collection.find_one(
-            {"_id": ObjectId(appointment_id)}
+        """Reject legacy create-new requests: one prescription belongs to one appointment."""
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "This appointment already has its prescription. "
+                "Creating another prescription for the same appointment is not allowed."
+            ),
         )
-        if not appointment:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Appointment not found",
-            )
-
-        await self.prescriptions_collection.update_many(
-            {"appointmentId": appointment_id, "isActive": {"$ne": False}},
-            {"$set": {"isActive": False, "updatedAt": datetime.utcnow()}},
-        )
-
-        await self.appointments_collection.update_one(
-            {"_id": ObjectId(appointment_id)},
-            {
-                "$set": {
-                    "prescriptionWhatsappSent": False,
-                    "prescriptionWhatsappSentAt": None,
-                    "prescriptionFinalized": False,
-                    "prescriptionFinalizedAt": None,
-                    "prescriptionFinalizedVia": None,
-                    "prescriptionWhatsappDeliveryFailed": False,
-                    "prescriptionWhatsappDeliveryError": None,
-                    "diagnosis": "",
-                    "prescribedTest": "",
-                    "followUpInstructions": "",
-                    "prescription": "",
-                    "updatedAt": datetime.utcnow(),
-                }
-            },
-        )
-
-        return {
-            "appointmentId": appointment_id,
-            "prescriptionWhatsappSent": False,
-            "prescriptionFinalized": False,
-            "cleared": True,
-        }
 
     async def delete_prescription(self, prescription_id: str) -> bool:
         """Hard-delete prescription so no row remains in the prescriptions table."""

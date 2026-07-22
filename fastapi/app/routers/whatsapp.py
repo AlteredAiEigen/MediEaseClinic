@@ -651,6 +651,9 @@ async def twilio_status_webhook(
                 # Delivery failed — allow WhatsApp retry, but keep finalized lock if doctor already completed.
                 if MessageStatus in ("failed", "undelivered") and scenario == "prescription_utility_format":
                     update_data["prescriptionWhatsappSent"] = False
+                    update_data["prescriptionFinalized"] = True
+                    update_data["prescriptionFinalizedAt"] = datetime.utcnow()
+                    update_data["prescriptionFinalizedVia"] = "whatsapp_failed"
                     update_data["prescriptionWhatsappDeliveryFailed"] = True
                     update_data["prescriptionWhatsappDeliveryError"] = (
                         ErrorMessage or f"WhatsApp delivery failed (status={MessageStatus})"

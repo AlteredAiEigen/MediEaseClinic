@@ -81,9 +81,19 @@ class PrescriptionWhatsAppService:
             update["prescriptionFinalizedVia"] = "whatsapp"
             update["prescriptionWhatsappDeliveryFailed"] = False
             update["prescriptionWhatsappDeliveryError"] = None
-        elif not success and set_flag:
-            # Keep flag false so End Consultation / retry can send again
-            update[set_flag] = False
+        elif not success and scenario == PRESCRIPTION_TEMPLATE_NAME:
+            # A WhatsApp attempt is terminal for this appointment's single
+            # prescription, whether it reaches the patient or not.
+            update[PRESCRIPTION_FLAG_FIELD] = False
+            update[PRESCRIPTION_FINALIZED_FIELD] = True
+            update["prescriptionFinalizedAt"] = datetime.utcnow()
+            update["prescriptionFinalizedVia"] = "whatsapp_failed"
+            update["prescriptionWhatsappDeliveryFailed"] = True
+            update["prescriptionWhatsappDeliveryError"] = (
+                details.get("error_message")
+                or details.get("error_code")
+                or "WhatsApp delivery failed"
+            )
 
         await self.appointments.update_one({"_id": appointment["_id"]}, {"$set": update})
 
@@ -341,6 +351,14 @@ class PrescriptionWhatsAppService:
                 "success": False,
                 "skipped": True,
                 "reason": "appointment_not_found",
+            }
+
+        if appointment.get(PRESCRIPTION_FINALIZED_FIELD):
+            return {
+                "success": False,
+                "skipped": True,
+                "reason": "prescription_completed",
+                "error_message": "This appointment's prescription is already completed and cannot be sent again.",
             }
 
         s3_key = appointment.get("prescriptionFileKey")

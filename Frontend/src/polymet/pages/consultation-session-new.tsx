@@ -37,7 +37,10 @@ import {
   Shield,
 } from "lucide-react";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
-import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
+import {
+  ClinicalNotesCard,
+  ConsultationSidebar,
+} from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
 import {
   ActiveProblemsCard,
@@ -2182,12 +2185,12 @@ export function ConsultationSession() {
       </Dialog>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Left Column - AI Analysis & Lab Results */}
+        {/* Left Column - patient context and active problems */}
         <div className="lg:col-span-2 space-y-6">
           {/* AI Analysis Section - Main Focus */}
           <Card className="border-border shadow-md bg-gradient-to-br from-purple-50/50 to-indigo-50/50 dark:from-purple-950/20 dark:to-indigo-950/20">
             <CardHeader className="pb-4">
-              <CardTitle className="text-xl flex flex-wrap items-center gap-2 justify-between">
+              <CardTitle className="text-base flex flex-wrap items-center gap-2 justify-between">
                 <span className="flex items-center gap-2">
                   <SparklesIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                   AI Clinical Insight
@@ -2347,9 +2350,18 @@ export function ConsultationSession() {
 
           <ClinicalTrendCards vitals={vitalsHistory} />
           <ActiveProblemsCard problems={activeProblems} />
+          <ClinicalNotesCard
+            notes={notes}
+            diagnosis={diagnosis}
+            treatment={treatment}
+            followUp={followUp}
+            onNotesChange={setNotes}
+            onDiagnosisChange={setDiagnosis}
+            onTreatmentChange={setTreatment}
+            onFollowUpChange={setFollowUp}
+            fullWidth
+          />
 
-          {/* Recent Lab Results */}
-          <LabResultsCard results={labResults} />
         </div>
 
         {/* Right Column - Quick actions, context, vitals, and notes */}
@@ -2386,8 +2398,14 @@ export function ConsultationSession() {
           isDeletingPrescription={isDeletingPrescription}
           onOpenDigitalPrescription={handleOpenDigitalPrescription}
             digitalPrescriptions={digitalPrescriptionList}
+            showClinicalNotes={false}
           />
         </div>
+      </div>
+
+      {/* Lab information remains full width immediately before visit history. */}
+      <div className="space-y-5">
+        <LabResultsCard results={labResults} />
       </div>
 
       {/* Patient Visit History Section - Bottom */}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Plus, Save, FileText, X, Loader2, Send, MessageCircle, AlertTriangle, Trash2 } from "lucide-react";
-import { post, put, get, del } from "@/lib/api-client";
+import { post, put, get, del, getFileBlob } from "@/lib/api-client";
 import { upsertPrescriptionCatalogItem } from "@/lib/prescription-catalog-api";
 import type { PrescriptionCatalogType } from "@/lib/prescription-catalog";
 import { toast } from "@/components/ui/use-toast";
@@ -24,7 +24,10 @@ import {
   type MedicineEntry,
 } from "@/polymet/components/prescription/medicine-row";
 import { PrescriptionFooter } from "@/polymet/components/prescription/prescription-footer";
-import { PrescriptionHeader } from "@/polymet/components/prescription/prescription-header";
+import {
+  PrescriptionHeader,
+  type PrescriptionLetterhead,
+} from "@/polymet/components/prescription/prescription-header";
 import {
   buildDigitalRxNotes,
   buildPrescriptionSummary,
@@ -155,17 +158,19 @@ export function WritePrescriptionPanel({
   const [existingPrescriptionId, setExistingPrescriptionId] = useState<string | null>(null);
   const [prescriptionOptions, setPrescriptionOptions] = useState<SavedPrescription[]>([]);
   const [selectedIsActive, setSelectedIsActive] = useState(true);
-  const [language, setLanguage] = useState<"en" | "hi">("hi");
+  const [language, setLanguage] = useState<"en" | "hi">("en");
   const [sendViaWhatsapp, setSendViaWhatsapp] = useState(true);
   const [alreadySentOnWhatsapp, setAlreadySentOnWhatsapp] = useState(false);
   const [prescriptionFinalized, setPrescriptionFinalized] = useState(false);
-  const [finalizedVia, setFinalizedVia] = useState<"whatsapp" | "print" | null>(null);
+  const [finalizedVia, setFinalizedVia] = useState<
+    "whatsapp" | "whatsapp_failed" | "print" | null
+  >(null);
   const [deliveryFailedMessage, setDeliveryFailedMessage] = useState<string | null>(null);
+  const [letterhead, setLetterhead] = useState<PrescriptionLetterhead | null>(null);
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   const [confirmNewRxOpen, setConfirmNewRxOpen] = useState(false);
   const [sendErrorOpen, setSendErrorOpen] = useState(false);
   const [sendErrorMessage, setSendErrorMessage] = useState("");
-  const [startingNew, setStartingNew] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -245,6 +250,7 @@ export function WritePrescriptionPanel({
       setPrescriptionFinalized(false);
       setFinalizedVia(null);
       setDeliveryFailedMessage(null);
+      setLetterhead(null);
     };
 
     const loadSavedPrescription = async () => {
@@ -256,22 +262,33 @@ export function WritePrescriptionPanel({
 
         let sentFlag = false;
         let finalizedFlag = false;
-        let via: "whatsapp" | "print" | null = null;
+        let via: "whatsapp" | "whatsapp_failed" | "print" | null = null;
         const appointmentResponse = await get<{
           appointment?: {
+            clinicName?: string;
+            doctorName?: string;
             prescriptionWhatsappSent?: boolean;
             prescriptionFinalized?: boolean;
-            prescriptionFinalizedVia?: "whatsapp" | "print" | string;
+            prescriptionFinalizedVia?: "whatsapp" | "whatsapp_failed" | "print" | string;
             prescriptionWhatsappDeliveryFailed?: boolean;
             prescriptionWhatsappDeliveryError?: string;
           };
+          prescriptionLetterhead?: PrescriptionLetterhead;
         }>(`/api/appointments/${appointmentId}`);
         if (!cancelled && appointmentResponse.success) {
           const apt = appointmentResponse.data?.appointment;
+          setLetterhead(
+            appointmentResponse.data?.prescriptionLetterhead || {
+              clinicName: apt?.clinicName,
+              doctorName: apt?.doctorName,
+            },
+          );
           sentFlag = Boolean(apt?.prescriptionWhatsappSent);
           finalizedFlag = Boolean(apt?.prescriptionFinalized) || sentFlag;
           via =
-            apt?.prescriptionFinalizedVia === "print" || apt?.prescriptionFinalizedVia === "whatsapp"
+            apt?.prescriptionFinalizedVia === "print" ||
+            apt?.prescriptionFinalizedVia === "whatsapp" ||
+            apt?.prescriptionFinalizedVia === "whatsapp_failed"
               ? apt.prescriptionFinalizedVia
               : sentFlag
                 ? "whatsapp"
@@ -493,10 +510,7 @@ export function WritePrescriptionPanel({
     const prescriptionSummary = buildPrescriptionSummary(validMedicines);
     const medications = validMedicines.map(mapDigitalRxMedicine);
     const notes = buildDigitalRxNotes(payload);
-    const hasHindiContent = validMedicines.some((m) =>
-      /[\u0900-\u097F]/.test(m.timingFreqDuration || ""),
-    );
-    const saveLanguage = hasHindiContent ? "hi" : language;
+    const saveLanguage = "en";
 
     // Only PUT an active existing draft. After create-new / delete, always POST a fresh row.
     const canUpdateExisting =
@@ -564,6 +578,61 @@ export function WritePrescriptionPanel({
     return { payload, prescriptionSummary };
   };
 
+  const autoSaveAndClose = async () => {
+    if (formLocked || saving || sending || loadingPrescription) {
+      onOpenChange(false);
+      return;
+    }
+
+    const hasDraftContent =
+      medicines.some((medicine) => medicine.name.trim()) ||
+      Boolean(diagnosis.trim() || prescribedTests.trim() || nextAppointment.trim());
+    if (!hasDraftContent) {
+      onOpenChange(false);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (!medicines.some((medicine) => medicine.name.trim())) {
+        await put(`/api/appointments/${appointmentId}`, {
+          diagnosis: diagnosis.trim() || null,
+          prescribedTest: prescribedTests.trim() || null,
+          followUpInstructions: nextAppointment.trim() || null,
+        });
+        onSaved?.({
+          diagnosis: diagnosis.trim(),
+          prescribedTests: prescribedTests.trim(),
+          nextAppointment: nextAppointment.trim(),
+          prescriptionSummary: "",
+        });
+        toast({ title: "Consultation details saved" });
+        onOpenChange(false);
+        return;
+      }
+
+      const result = await persistPrescription();
+      if (!result) return;
+
+      onSaved?.({
+        diagnosis: result.payload.diagnosis,
+        prescribedTests: result.payload.prescribedTests,
+        nextAppointment: result.payload.nextAppointment,
+        prescriptionSummary: result.prescriptionSummary,
+      });
+      toast({ title: "Prescription draft saved" });
+      onOpenChange(false);
+    } catch (err) {
+      toast({
+        title: "Could not save prescription draft",
+        description: err instanceof Error ? err.message : "Please complete the required medicine details.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const savePrescription = async () => {
     if (formLocked) {
       setConfirmNewRxOpen(true);
@@ -573,16 +642,35 @@ export function WritePrescriptionPanel({
     try {
       const result = await persistPrescription();
       if (!result) return;
+      const pdfResponse = await post<{
+        s3Url: string;
+        s3Key: string;
+        documentName?: string;
+      }>(
+        `/api/appointments/${appointmentId}/generate-prescription-pdf?sendWhatsApp=false&language=en`,
+      );
+      if (!pdfResponse.success || !pdfResponse.data?.s3Key) {
+        throw new Error(
+          typeof pdfResponse.message === "string"
+            ? pdfResponse.message
+            : "Failed to create prescription PDF",
+        );
+      }
 
       toast({
         title: "Prescription saved",
-        description: "Saved successfully. You can still edit until it is sent on WhatsApp.",
+        description: "Saved successfully and linked to the appointment PDF.",
       });
       onSaved?.({
         diagnosis: result.payload.diagnosis,
         prescribedTests: result.payload.prescribedTests,
         nextAppointment: result.payload.nextAppointment,
         prescriptionSummary: result.prescriptionSummary,
+      });
+      onPdfGenerated?.({
+        s3Url: pdfResponse.data.s3Url,
+        s3Key: pdfResponse.data.s3Key,
+        documentName: pdfResponse.data.documentName,
       });
       onOpenChange(false);
     } catch (err) {
@@ -611,10 +699,7 @@ export function WritePrescriptionPanel({
       const result = await persistPrescription();
       if (!result) return;
 
-      const hasHindiContent = result.payload.medicines.some((m) =>
-        /[\u0900-\u097F]/.test(m.timingFreqDuration || ""),
-      );
-      const pdfLanguage = hasHindiContent ? "hi" : language;
+      const pdfLanguage = "en";
 
       const pdfResponse = await post<{
         s3Url: string;
@@ -658,7 +743,7 @@ export function WritePrescriptionPanel({
           toast({
             title: "Prescription sent on WhatsApp",
             description:
-              "Patient will receive the download link. Further edits require a new prescription.",
+              "Patient will receive the download link. This prescription is now view only.",
           });
           onSaved?.({
             diagnosis: result.payload.diagnosis,
@@ -681,7 +766,7 @@ export function WritePrescriptionPanel({
           setConfirmNewRxOpen(true);
           toast({
             title: "Prescription already sent",
-            description: "Create a new prescription if you need to change medicines or tests.",
+            description: "This appointment's prescription is already completed and view only.",
           });
           return;
         }
@@ -691,6 +776,12 @@ export function WritePrescriptionPanel({
           pdfResponse.message.toLowerCase().includes("whatsapp")
             ? pdfResponse.message
             : null) || formatWhatsappFailureMessage(whatsapp);
+        // A failed attempt is still terminal for this appointment's one prescription.
+        // The backend persists this state; update the panel immediately as well.
+        setAlreadySentOnWhatsapp(false);
+        setPrescriptionFinalized(true);
+        setFinalizedVia("whatsapp_failed");
+        setDeliveryFailedMessage(message);
         setConfirmSendOpen(false);
         setSendErrorMessage(message);
         // Open after confirm dialog unmounts so the failure popup is visible.
@@ -754,90 +845,113 @@ export function WritePrescriptionPanel({
     void executeSendPrescription();
   };
 
-  const finalizeAndPrint = async () => {
-    if (!appointmentId) {
-      window.print();
-      return;
-    }
+  const printGeneratedPrescriptionPdf = async () => {
     setFinalizing(true);
+    setSendErrorOpen(false);
     try {
-      const response = await post(`/api/appointments/${appointmentId}/prescription/finalize`);
-      if (!response.success) {
-        throw new Error(
-          typeof response.message === "string"
-            ? response.message
-            : "Failed to mark prescription as completed",
-        );
+      if (!appointmentId) {
+        throw new Error("An appointment is required to print the saved prescription PDF.");
       }
-      setPrescriptionFinalized(true);
-      setFinalizedVia("print");
-      setSendErrorOpen(false);
-      toast({
-        title: "Prescription completed",
-        description: "Marked as done after print. This prescription is now non-editable.",
-      });
-      window.print();
+
+      const pdfBlob = await getFileBlob(
+        `/api/appointments/${appointmentId}/prescription/print-pdf`,
+      );
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      const printFrame = document.createElement("iframe");
+      printFrame.style.cssText =
+        "position:fixed; width:0; height:0; border:0; visibility:hidden; pointer-events:none;";
+      printFrame.src = pdfUrl;
+      document.body.appendChild(printFrame);
+
+      printFrame.addEventListener(
+        "load",
+        () => {
+          // Do not revoke the blob/remove the frame while Chromium is still
+          // rendering the PDF print preview. Doing so leaves the preview on
+          // "Loading preview…" (most visible after a WhatsApp failure).
+          let cleanedUp = false;
+          const cleanup = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
+            URL.revokeObjectURL(pdfUrl);
+            printFrame.remove();
+          };
+          window.addEventListener("afterprint", cleanup, { once: true });
+          window.setTimeout(() => {
+            printFrame.contentWindow?.focus();
+            printFrame.contentWindow?.print();
+          }, 1_250);
+          // Cleanup if the user leaves the print dialog open or the browser
+          // does not fire afterprint for its PDF viewer.
+          window.setTimeout(cleanup, 60_000);
+        },
+        { once: true },
+      );
     } catch (err) {
       toast({
-        title: "Could not finalize prescription",
-        description: err instanceof Error ? err.message : "Printing anyway.",
+        title: "Could not print prescription PDF",
+        description: err instanceof Error ? err.message : "Please try again.",
         variant: "destructive",
       });
-      window.print();
     } finally {
       setFinalizing(false);
     }
   };
 
-  const startNewPrescription = async () => {
+  const generateAndPrintPrescriptionPdf = async () => {
     if (!appointmentId) {
-      resetFormToBlank();
-      setAlreadySentOnWhatsapp(false);
-      setPrescriptionFinalized(false);
-      setFinalizedVia(null);
-      setDeliveryFailedMessage(null);
-      setConfirmNewRxOpen(false);
+      toast({
+        title: "Appointment required",
+        description: "An appointment is required to create the prescription PDF.",
+        variant: "destructive",
+      });
       return;
     }
-    setStartingNew(true);
+
+    setFinalizing(true);
     try {
-      const response = await post(
-        `/api/appointments/${appointmentId}/prescription/start-new`,
+      if (!formLocked) {
+        const result = await persistPrescription();
+        if (!result) return;
+        onSaved?.({
+          diagnosis: result.payload.diagnosis,
+          prescribedTests: result.payload.prescribedTests,
+          nextAppointment: result.payload.nextAppointment,
+          prescriptionSummary: result.prescriptionSummary,
+        });
+      }
+
+      const pdfResponse = await post<{
+        s3Url: string;
+        s3Key: string;
+        documentName?: string;
+      }>(
+        `/api/appointments/${appointmentId}/generate-prescription-pdf?sendWhatsApp=false&language=en`,
       );
-      if (!response.success) {
+      if (!pdfResponse.success || !pdfResponse.data?.s3Key) {
         throw new Error(
-          typeof response.message === "string"
-            ? response.message
-            : "Failed to start a new prescription",
+          typeof pdfResponse.message === "string"
+            ? pdfResponse.message
+            : "Failed to create prescription PDF",
         );
       }
-      resetFormToBlank();
-      setAlreadySentOnWhatsapp(false);
-      setPrescriptionFinalized(false);
-      setFinalizedVia(null);
-      setDeliveryFailedMessage(null);
-      setConfirmNewRxOpen(false);
-      await refreshPrescriptionList();
-      toast({
-        title: "New prescription started",
-        description:
-          "Form is blank. Previous prescriptions remain available in the list on the consultation page.",
-      });
-      onSaved?.({
-        diagnosis: "",
-        prescribedTests: "",
-        nextAppointment: "",
-        prescriptionSummary: "",
+      onPdfGenerated?.({
+        s3Url: pdfResponse.data.s3Url,
+        s3Key: pdfResponse.data.s3Key,
+        documentName: pdfResponse.data.documentName,
       });
     } catch (err) {
       toast({
-        title: "Could not start new prescription",
-        description: err instanceof Error ? err.message : "Please try again",
+        title: "Could not create prescription PDF",
+        description: err instanceof Error ? err.message : "Please try again.",
         variant: "destructive",
       });
+      return;
     } finally {
-      setStartingNew(false);
+      setFinalizing(false);
     }
+
+    void printGeneratedPrescriptionPdf();
   };
 
   const deletePrescription = async () => {
@@ -845,17 +959,6 @@ export function WritePrescriptionPanel({
     try {
       if (existingPrescriptionId) {
         const response = await del(`/api/prescriptions/${existingPrescriptionId}`);
-        if (!response.success) {
-          throw new Error(
-            typeof response.message === "string"
-              ? response.message
-              : "Failed to delete prescription",
-          );
-        }
-      } else if (alreadySentOnWhatsapp && appointmentId) {
-        const response = await post(
-          `/api/appointments/${appointmentId}/prescription/start-new`,
-        );
         if (!response.success) {
           throw new Error(
             typeof response.message === "string"
@@ -898,7 +1001,7 @@ export function WritePrescriptionPanel({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50"
-        onClick={() => onOpenChange(false)}
+        onClick={() => void autoSaveAndClose()}
       />
       <div className="relative z-10 w-full max-w-5xl max-h-[92vh] overflow-y-auto rounded-xl bg-background shadow-2xl border border-border">
         <div className="sticky top-0 z-30 bg-background">
@@ -907,68 +1010,51 @@ export function WritePrescriptionPanel({
               <div className="flex items-center gap-2 min-w-0">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                 <p className="truncate">
-                  {finalizedVia === "print"
-                    ? "Prescription completed via print — view only. Create a new prescription to make changes."
-                    : "Prescription already sent — view only. Create a new prescription to make changes."}
+                  {finalizedVia === "whatsapp_failed"
+                    ? "WhatsApp delivery failed — prescription completed and view only."
+                    : finalizedVia === "print"
+                      ? "Prescription completed via print — view only."
+                      : "Prescription already sent — view only."}
                   {deliveryFailedMessage ? ` WhatsApp delivery issue: ${deliveryFailedMessage}` : ""}
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-7 shrink-0 border-amber-400 bg-white text-xs hover:bg-amber-100"
-                onClick={() => setConfirmNewRxOpen(true)}
-              >
-                Create new
-              </Button>
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <div className="flex flex-wrap items-center gap-3 min-w-0">
-              <h2 className="text-lg font-semibold whitespace-nowrap">Write Prescription</h2>
-              {prescriptionOptions.length > 1 && (
-                <select
-                  className="text-sm border border-border rounded-md px-2 py-1 bg-background max-w-[220px]"
-                  value={existingPrescriptionId || ""}
-                  onChange={(e) => {
-                    if (e.target.value) selectPrescriptionById(e.target.value);
-                  }}
-                  aria-label="Select prescription"
-                >
-                  {!existingPrescriptionId && (
-                    <option value="">New draft</option>
-                  )}
-                  {prescriptionOptions.map((rx, index) => {
-                    const medCount = (rx.medications || []).filter((m) => m.name?.trim()).length;
-                    const when = rx.updatedAt || rx.prescribedAt || rx.createdAt;
-                    const labelDate = when
-                      ? new Date(when).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : `Rx ${index + 1}`;
-                    const status =
-                      rx.isActive === false ? "sent/archived" : "active";
-                    return (
-                      <option key={rx._id} value={rx._id}>
-                        {labelDate} · {medCount} med · {status}
-                      </option>
-                    );
-                  })}
-                </select>
-              )}
-            </div>
-            <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
 
-        <div className="p-4 sm:p-6">
+        <div className="relative p-4 sm:p-6">
+          {prescriptionOptions.length > 1 && (
+            <div className="absolute right-3 top-3 z-10">
+              <select
+                className="h-8 max-w-[220px] rounded-md border border-border bg-background px-2 text-xs"
+                value={existingPrescriptionId || ""}
+                onChange={(e) => {
+                  if (e.target.value) selectPrescriptionById(e.target.value);
+                }}
+                aria-label="Select prescription"
+              >
+                {!existingPrescriptionId && <option value="">New draft</option>}
+                {prescriptionOptions.map((rx, index) => {
+                  const medCount = (rx.medications || []).filter((m) => m.name?.trim()).length;
+                  const when = rx.updatedAt || rx.prescribedAt || rx.createdAt;
+                  const labelDate = when
+                    ? new Date(when).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : `Rx ${index + 1}`;
+                  return (
+                    <option key={rx._id} value={rx._id}>
+                      {labelDate} · {medCount} med · {rx.isActive === false ? "sent" : "draft"}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
           {loadingPrescription ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 className="h-5 w-5 mr-2 animate-spin" />
@@ -976,20 +1062,7 @@ export function WritePrescriptionPanel({
             </div>
           ) : (
             <>
-              <PrescriptionHeader />
-
-              <div className="flex items-center justify-between mb-2">
-                <div />
-                <select
-                  className="text-sm border border-border rounded-md px-2 py-1 bg-background"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value as "en" | "hi")}
-                  disabled={formLocked}
-                >
-                  <option value="en">English</option>
-                  <option value="hi">हिंदी</option>
-                </select>
-              </div>
+              <PrescriptionHeader letterhead={letterhead} />
 
               <PrescriptionPatientDetails
                 patientName={patientName}
@@ -1011,19 +1084,21 @@ export function WritePrescriptionPanel({
                 readOnlyPatient={formLocked}
               />
 
-              <div className="rounded-md border border-border overflow-hidden mt-4">
-                <div className="overflow-x-auto">
+              <h3 className="mt-4 text-sm font-semibold text-foreground">Medicines</h3>
+              <div className="rounded-md border border-border overflow-hidden mt-2">
+                <div
+                  className="max-h-[18rem] overflow-x-auto overflow-y-auto overscroll-contain"
+                  aria-label="Medicines list"
+                >
                   <table className="w-full text-sm">
-                    <thead className="bg-muted/50">
+                    <thead className="sticky top-0 z-10 bg-muted/50 shadow-sm">
                       <tr>
-                        <th className="px-2 py-2 text-left font-medium">#</th>
+                        <th className="px-2 py-2 text-left font-medium w-8">#</th>
                         <th className="px-2 py-2 text-left font-medium">Medicine</th>
-                        <th className="px-2 py-2 text-left font-medium">Type</th>
-                        <th className="px-2 py-2 text-left font-medium">Composition</th>
                         <th className="px-2 py-2 text-left font-medium">Dosage</th>
-                        <th className="px-2 py-2 text-left font-medium">Timing / Freq / Duration</th>
+                        <th className="px-2 py-2 text-left font-medium">Timing - Freq. - Duration</th>
                         <th className="px-2 py-2 text-left font-medium">Qty</th>
-                        <th className="px-2 py-2" />
+                        <th className="px-2 py-2 w-8" />
                       </tr>
                     </thead>
                     <tbody>
@@ -1073,6 +1148,7 @@ export function WritePrescriptionPanel({
                   setNextAppointment(value);
                 }}
                 readOnly={formLocked}
+                clinicPhone={letterhead?.clinicPhone}
               />
 
               <div className="mt-4 rounded-md border border-border bg-muted/20 p-3">
@@ -1089,7 +1165,7 @@ export function WritePrescriptionPanel({
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       {formLocked
-                        ? "Already sent for this visit. Create a new prescription to send again."
+                        ? "This appointment's prescription is completed and cannot be sent again."
                         : patientPhone.trim()
                           ? `Uses approved template with download link for ${patientPhone.trim()}.`
                           : "Add a patient phone number to enable WhatsApp delivery."}
@@ -1104,32 +1180,28 @@ export function WritePrescriptionPanel({
                   disabled={
                     saving ||
                     sending ||
-                    startingNew ||
                     loadingPrescription ||
-                    !appointmentId
+                    !appointmentId ||
+                    formLocked
                   }
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  {sending || startingNew ? (
+                  {sending ? (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : formLocked ? (
-                    <Plus className="h-4 w-4 mr-2" />
                   ) : sendViaWhatsapp ? (
                     <MessageCircle className="h-4 w-4 mr-2" />
                   ) : (
                     <Send className="h-4 w-4 mr-2" />
                   )}
-                  {startingNew
-                    ? "Starting..."
-                    : sending
-                      ? sendViaWhatsapp
-                        ? "Sending on WhatsApp..."
-                        : "Saving PDF..."
-                      : formLocked
-                        ? "Create new prescription"
-                        : sendViaWhatsapp
-                          ? "Send Prescription on WhatsApp"
-                          : "Save Prescription PDF"}
+                  {sending
+                    ? sendViaWhatsapp
+                      ? "Sending on WhatsApp..."
+                      : "Saving PDF..."
+                    : formLocked
+                      ? "Prescription completed"
+                      : sendViaWhatsapp
+                        ? "Send Prescription on WhatsApp"
+                        : "Save Prescription PDF"}
                 </Button>
                 <Button
                   onClick={savePrescription}
@@ -1145,7 +1217,7 @@ export function WritePrescriptionPanel({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => window.print()}
+                  onClick={() => void generateAndPrintPrescriptionPdf()}
                   disabled={saving || sending || finalizing}
                 >
                   <FileText className="h-4 w-4 mr-2" />
@@ -1159,7 +1231,7 @@ export function WritePrescriptionPanel({
                   variant="ghost"
                   size="sm"
                   className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  disabled={deleting || saving || sending || loadingPrescription}
+                  disabled={deleting || saving || sending || loadingPrescription || formLocked}
                   onClick={() => setConfirmDeleteOpen(true)}
                 >
                   {deleting ? (
@@ -1185,8 +1257,8 @@ export function WritePrescriptionPanel({
                   Please confirm the prescription is complete (medicines, tests, and follow-up).
                 </p>
                 <p>
-                  After it is sent, you will not be able to edit this prescription. To change
-                  anything later, you will need to create a new prescription.
+                  Once this send attempt is made, this appointment's prescription will be completed
+                  and can no longer be edited or sent again, even if delivery fails.
                 </p>
               </div>
             </AlertDialogDescription>
@@ -1210,31 +1282,18 @@ export function WritePrescriptionPanel({
       <AlertDialog open={confirmNewRxOpen} onOpenChange={setConfirmNewRxOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Prescription already sent</AlertDialogTitle>
+            <AlertDialogTitle>Prescription completed</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p>
-                  This prescription was already sent to the patient on WhatsApp, so it cannot be
-                  modified.
-                </p>
-                <p>
-                  Create a new prescription to add or change medicines and tests. The new form
-                  will start blank (no previous medicines or tests).
+                  This appointment has one prescription only. It is completed and cannot be
+                  modified, resent, or replaced.
                 </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={startingNew}>Keep as sent</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={startingNew}
-              onClick={(e) => {
-                e.preventDefault();
-                void startNewPrescription();
-              }}
-            >
-              {startingNew ? "Starting..." : "Create new prescription"}
-            </AlertDialogAction>
+            <AlertDialogCancel>Close</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1253,10 +1312,10 @@ export function WritePrescriptionPanel({
               disabled={finalizing}
               onClick={(e) => {
                 e.preventDefault();
-                void finalizeAndPrint();
+                void generateAndPrintPrescriptionPdf();
               }}
             >
-              {finalizing ? "Saving..." : "Print & mark done"}
+              {finalizing ? "Opening PDF..." : "Print PDF"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1268,13 +1327,10 @@ export function WritePrescriptionPanel({
             <AlertDialogTitle>Delete this prescription?</AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-sm text-muted-foreground">
-                <p>
-                  This removes the prescription for this visit so you can start over.
-                </p>
+                <p>This removes this unsent prescription and returns to consultation.</p>
                 {alreadySentOnWhatsapp ? (
                   <p>
-                    It was already sent on WhatsApp. Deleting clears the lock and blanks the form;
-                    the patient may still have the previous message.
+                    Completed prescriptions cannot be deleted.
                   </p>
                 ) : null}
               </div>

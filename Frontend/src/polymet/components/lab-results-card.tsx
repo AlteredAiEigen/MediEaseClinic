@@ -1,12 +1,24 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { FileTextIcon, FlaskConicalIcon, ExternalLinkIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ExternalLinkIcon,
+  FileTextIcon,
+  FlaskConicalIcon,
+} from "lucide-react";
 
 interface LabResult {
   name: string;
@@ -25,6 +37,8 @@ interface LabResultsCardProps {
 }
 
 export function LabResultsCard({ results = [], className = "" }: LabResultsCardProps) {
+  const [open, setOpen] = useState(false);
+  const recentResults = results.slice(0, 5);
   const getStatusStyle = (status: string) => {
     switch (status) {
       case "high":
@@ -49,21 +63,34 @@ export function LabResultsCard({ results = [], className = "" }: LabResultsCardP
 
   return (
     <Card className={`border-slate-200 shadow-sm ${className}`}>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <FlaskConicalIcon className="h-4 w-4 text-teal-600" />
-          Recent Lab Results
-          {results.length > 0 && <Badge variant="secondary" className="ml-auto font-normal">{results.length} reports</Badge>}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {results.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No lab reports are available for this patient.
-          </div>
-        ) : (
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader className="pb-3">
+          <CollapsibleTrigger className="flex w-full items-center gap-2 text-left">
+            <CardTitle className="flex min-w-0 flex-1 items-center gap-2 text-base">
+              <FlaskConicalIcon className="h-4 w-4 text-teal-600" />
+              Recent Lab Results
+              {results.length > 0 && (
+                <Badge variant="secondary" className="ml-auto font-normal">
+                  {Math.min(results.length, 5)} of {results.length} reports
+                </Badge>
+              )}
+            </CardTitle>
+            {open ? (
+              <ChevronUpIcon className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDownIcon className="h-4 w-4 text-muted-foreground" />
+            )}
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent>
+            {results.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                No lab reports are available for this patient.
+              </div>
+            ) : (
           <Accordion type="single" collapsible className="overflow-hidden rounded-lg border">
-            {results.map((result, index) => (
+            {recentResults.map((result, index) => (
               <AccordionItem key={`${result.name}-${result.date}-${index}`} value={`report-${index}`} className="last:border-b-0">
                 <AccordionTrigger className="px-3 py-3 no-underline hover:bg-slate-50 hover:no-underline">
                   <div className="flex min-w-0 flex-1 items-center gap-3 pr-3 text-left">
@@ -107,8 +134,10 @@ export function LabResultsCard({ results = [], className = "" }: LabResultsCardP
               </AccordionItem>
             ))}
           </Accordion>
-        )}
-      </CardContent>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }

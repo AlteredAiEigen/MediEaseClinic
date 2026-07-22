@@ -80,6 +80,7 @@ interface ConsultationSidebarProps {
     createdAt?: string;
     statusLabel?: string;
   }>;
+  showClinicalNotes?: boolean;
   className?: string;
 }
 
@@ -114,6 +115,7 @@ export function ConsultationSidebar({
   isDeletingPrescription = false,
   onOpenDigitalPrescription,
   digitalPrescriptions = [],
+  showClinicalNotes = true,
   className = "",
 }: ConsultationSidebarProps) {
   const [prescriptionOpen, setPrescriptionOpen] = useState(false);
@@ -189,7 +191,7 @@ export function ConsultationSidebar({
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-sm">Consultation Actions</CardTitle>
+          <CardTitle className="text-base">Consultation Actions</CardTitle>
             {appointmentId && onPrescriptionFileUpload && (
                 <div className="flex flex-col items-end gap-1">
                   <Button
@@ -355,7 +357,7 @@ export function ConsultationSidebar({
       {/* Quick Medical Info */}
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Quick Info</CardTitle>
+          <CardTitle className="text-base">Quick Info</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
@@ -401,7 +403,7 @@ export function ConsultationSidebar({
       {transcriptionStatus === "completed" && transcriptionText && (
         <Card className="border-border shadow-md">
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg flex items-center gap-2">
+          <CardTitle className="text-base flex items-center gap-2">
               <FileTextIcon className="w-5 h-5 text-[#00C4B3]" />
               AI Analysis
             </CardTitle>
@@ -447,76 +449,18 @@ export function ConsultationSidebar({
         </Card>
       )}
 
-      {/* Clinical Notes */}
-      <Card className="border-border shadow-md">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Clinical Notes</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Diagnosis */}
-          <div className="space-y-2">
-            <Label htmlFor="diagnosis" className="text-sm font-medium">
-              Diagnosis
-            </Label>
-            <Input
-              id="diagnosis"
-              placeholder="Primary diagnosis..."
-              value={diagnosis}
-              onChange={(e) => onDiagnosisChange(e.target.value)}
-            />
-          </div>
-
-          {/* Treatment Plan */}
-          <div className="space-y-2">
-            <Label htmlFor="treatment" className="text-sm font-medium">
-              Treatment Plan
-            </Label>
-            <Textarea
-              id="treatment"
-              placeholder="Treatment recommendations and medications..."
-              value={treatment}
-              onChange={(e) => onTreatmentChange(e.target.value)}
-              className="min-h-[80px] resize-none"
-            />
-          </div>
-
-          {/* Follow-up */}
-          <div className="space-y-2">
-            <Label htmlFor="followUp" className="text-sm font-medium">
-              Follow-up Instructions
-            </Label>
-            <Input
-              id="followUp"
-              placeholder="When to follow up, what to monitor..."
-              value={followUp}
-              onChange={(e) => onFollowUpChange(e.target.value)}
-            />
-          </div>
-
-          {/* Detailed Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes" className="text-sm font-medium">
-              Detailed Notes
-            </Label>
-            <Textarea
-              id="notes"
-              placeholder="Additional observations, patient concerns, and clinical details..."
-              value={notes}
-              onChange={(e) => onNotesChange(e.target.value)}
-              className="min-h-[120px] resize-none"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pt-2">
-            <p className="text-xs text-muted-foreground">
-              {notes.length + diagnosis.length + treatment.length + followUp.length} characters total
-            </p>
-            <Button size="sm" variant="outline">
-              Save Draft
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {showClinicalNotes && (
+        <ClinicalNotesCard
+          notes={notes}
+          diagnosis={diagnosis}
+          treatment={treatment}
+          followUp={followUp}
+          onNotesChange={onNotesChange}
+          onDiagnosisChange={onDiagnosisChange}
+          onTreatmentChange={onTreatmentChange}
+          onFollowUpChange={onFollowUpChange}
+        />
+      )}
 
       {/* Upload Prescription Dialog */}
       <Dialog open={uploadDialogOpen} onOpenChange={handleCloseDialog}>
@@ -670,5 +614,94 @@ export function ConsultationSidebar({
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+interface ClinicalNotesCardProps {
+  notes: string;
+  diagnosis: string;
+  treatment: string;
+  followUp: string;
+  onNotesChange: (notes: string) => void;
+  onDiagnosisChange: (diagnosis: string) => void;
+  onTreatmentChange: (treatment: string) => void;
+  onFollowUpChange: (followUp: string) => void;
+  fullWidth?: boolean;
+}
+
+export function ClinicalNotesCard({
+  notes,
+  diagnosis,
+  treatment,
+  followUp,
+  onNotesChange,
+  onDiagnosisChange,
+  onTreatmentChange,
+  onFollowUpChange,
+  fullWidth = false,
+}: ClinicalNotesCardProps) {
+  const fieldLayout = fullWidth
+    ? "grid gap-4 md:grid-cols-2"
+    : "space-y-4";
+
+  return (
+    <Card className="border-border shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardTitle className="text-base">Clinical Notes</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          {notes.length + diagnosis.length + treatment.length + followUp.length} characters
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className={fieldLayout}>
+          <div className="space-y-2">
+            <Label htmlFor="consultation-diagnosis" className="text-sm font-medium">
+              Diagnosis
+            </Label>
+            <Input
+              id="consultation-diagnosis"
+              placeholder="Primary diagnosis..."
+              value={diagnosis}
+              onChange={(e) => onDiagnosisChange(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="consultation-treatment" className="text-sm font-medium">
+              Treatment Plan
+            </Label>
+            <Textarea
+              id="consultation-treatment"
+              placeholder="Treatment recommendations and medications..."
+              value={treatment}
+              onChange={(e) => onTreatmentChange(e.target.value)}
+              className="min-h-[80px] resize-none"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="consultation-follow-up" className="text-sm font-medium">
+              Follow-up Instructions
+            </Label>
+            <Input
+              id="consultation-follow-up"
+              placeholder="When to follow up, what to monitor..."
+              value={followUp}
+              onChange={(e) => onFollowUpChange(e.target.value)}
+            />
+          </div>
+          <div className={fullWidth ? "space-y-2 md:col-span-2" : "space-y-2"}>
+            <Label htmlFor="consultation-notes" className="text-sm font-medium">
+              Detailed Notes
+            </Label>
+            <Textarea
+              id="consultation-notes"
+              placeholder="Additional observations, patient concerns, and clinical details..."
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+              className={fullWidth ? "min-h-[96px] resize-y" : "min-h-[120px] resize-none"}
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

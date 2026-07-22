@@ -2,7 +2,7 @@
 Appointment management router.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, UploadFile, File, Form, BackgroundTasks
 from fastapi import status as http_status
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import Optional
@@ -606,9 +606,51 @@ async def get_appointment(
             detail="Appointment not found"
         )
     
+    # The prescription composer needs the clinic/doctor information belonging to
+    # this appointment, not values baked into the frontend.
+    doctor = None
+    doctor_id = appointment.get("doctorId")
+    if doctor_id and ObjectId.is_valid(str(doctor_id)):
+        doctor = await db.users.find_one({"_id": ObjectId(str(doctor_id))})
+
+    clinic_id = appointment.get("clinicId") or (doctor or {}).get("clinicId")
+    provider = None
+    if clinic_id:
+        provider = await db.healthcare_providers.find_one({"clinicId": clinic_id})
+
+    address_parts = [
+        (provider or {}).get("address"),
+        (provider or {}).get("city"),
+        (provider or {}).get("state"),
+        (provider or {}).get("pincode"),
+    ]
+    prescription_letterhead = {
+        "clinicName": (
+            appointment.get("clinicName")
+            or (provider or {}).get("name")
+            or (doctor or {}).get("clinicName")
+            or ""
+        ),
+        "clinicAddress": ", ".join(str(part).strip() for part in address_parts if part),
+        "clinicPhone": (provider or {}).get("phone") or (doctor or {}).get("phone") or "",
+        "doctorName": (
+            appointment.get("doctorName")
+            or " ".join(
+                str(part).strip()
+                for part in [(doctor or {}).get("firstName"), (doctor or {}).get("lastName")]
+                if part
+            )
+        ),
+        "doctorSpeciality": (doctor or {}).get("speciality") or "",
+        "doctorLicense": (doctor or {}).get("licenseNumber") or "",
+    }
+
     return success_response(
         message="Appointment retrieved successfully",
-        data={"appointment": appointment}
+        data={
+            "appointment": appointment,
+            "prescriptionLetterhead": prescription_letterhead,
+        }
     )
 
 
@@ -741,10 +783,7 @@ async def start_new_prescription_after_whatsapp(
     current_user: dict = Depends(require_roles(["doctor", "admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
-    """
-    After a prescription was sent on WhatsApp, start a blank new prescription:
-    deactivate previous Rx rows and clear the WhatsApp-sent lock on the appointment.
-    """
+    """Legacy endpoint retained for compatibility; one appointment has one prescription."""
     if not ObjectId.is_valid(appointment_id):
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
@@ -756,10 +795,7 @@ async def start_new_prescription_after_whatsapp(
         service = PrescriptionService(db)
         result = await service.start_new_prescription_after_send(appointment_id)
         await _invalidate_appointments_cache()
-        return success_response(
-            message="Previous prescription closed. You can write a new one.",
-            data=result,
-        )
+        return success_response(message="Prescription state updated.", data=result)
     except HTTPException:
         raise
     except Exception as e:
@@ -813,7 +849,7 @@ async def finalize_prescription(
 async def generate_prescription_pdf(
     appointment_id: str,
     send_whatsapp: bool = Query(False, alias="sendWhatsApp"),
-    language: str = Query("en", description="PDF language from Prescription tab: en | hi"),
+    language: str = Query("en", description="Reserved for backwards compatibility; PDFs are English-only."),
     current_user: dict = Depends(require_roles(["doctor", "admin"])),
     db: AsyncIOMotorDatabase = Depends(get_db),
 ):
@@ -838,13 +874,37 @@ async def generate_prescription_pdf(
         from app.services.digital_prescription_service import get_digital_prescription_service
         from app.services.prescription_whatsapp_service import get_prescription_whatsapp_service
 
-        pdf_service = get_digital_prescription_service(db)
-        result = await pdf_service.generate_and_store(
-            appointment_id,
-            str(current_user["_id"]),
-            require_structured_prescription=bool(send_whatsapp),
-            language=language,
-        )
+        appointment = await db.appointments.find_one({"_id": ObjectId(appointment_id)})
+        if not appointment:
+            raise HTTPException(
+                status_code=http_status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found",
+            )
+
+        # A PDF belongs to the appointment. Reuse it until the draft changes;
+        # prescription updates clear prescriptionFileKey, which makes the next
+        # action generate a new PDF.
+        existing_key = appointment.get("prescriptionFileKey")
+        if existing_key:
+            filename = appointment.get("prescriptionFileName") or "prescription.pdf"
+            result = {
+                "s3Key": existing_key,
+                "s3Url": appointment.get("prescriptionFileUrl") or "",
+                "downloadUrl": await s3_service.generate_prescription_download_url(
+                    existing_key,
+                    filename=filename,
+                ),
+                "documentName": filename,
+                "reused": True,
+            }
+        else:
+            pdf_service = get_digital_prescription_service(db)
+            result = await pdf_service.generate_and_store(
+                appointment_id,
+                str(current_user["_id"]),
+                require_structured_prescription=bool(send_whatsapp),
+                language=language,
+            )
 
         whatsapp_result = None
         if send_whatsapp:
@@ -1163,6 +1223,64 @@ async def get_prescription_presigned_url(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate presigned URL: {str(e)}"
         )
+
+
+@router.get("/{appointment_id}/prescription/print-pdf")
+async def get_prescription_pdf_for_print(
+    appointment_id: str,
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Return the saved S3 prescription PDF inline for the browser print flow."""
+    if not ObjectId.is_valid(appointment_id):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid appointment ID format",
+        )
+
+    appointment_service = AppointmentService(db)
+    appointment = await appointment_service.get_appointment(appointment_id)
+    if not appointment:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Appointment not found",
+        )
+
+    user_clinic_id = current_user.get("clinicId")
+    appointment_clinic_id = appointment.get("clinicId")
+    if (
+        current_user.get("role") != "admin"
+        and user_clinic_id
+        and appointment_clinic_id
+        and str(user_clinic_id) != str(appointment_clinic_id)
+    ):
+        raise HTTPException(
+            status_code=http_status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this prescription file",
+        )
+
+    s3_key = appointment.get("prescriptionFileKey")
+    if not s3_key:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="No generated prescription PDF was found for this appointment",
+        )
+
+    try:
+        pdf_bytes = await s3_service.download_file_bytes_async(s3_key)
+    except Exception as exc:
+        logger.error("Unable to retrieve prescription PDF for printing %s: %s", appointment_id, exc)
+        raise HTTPException(
+            status_code=http_status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to retrieve the saved prescription PDF",
+        ) from exc
+
+    filename = (appointment.get("prescriptionFileName") or "prescription.pdf").replace('"', "")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
 
 
 @router.patch("/{appointment_id}/check-in")

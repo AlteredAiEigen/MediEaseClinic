@@ -220,6 +220,28 @@ export async function get<T = unknown>(path: string, options?: ApiRequestOptions
   return apiRequest<T>(path, { ...options, method: "GET" });
 }
 
+/** Fetch an authenticated binary response, such as a PDF prepared for printing. */
+export async function getFileBlob(path: string): Promise<Blob> {
+  const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+  const request = async (token?: string | null) =>
+    fetch(url, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+  let response = await request(getStoredAccessToken());
+  if (response.status === 401) {
+    const refreshedToken = await attemptTokenRefresh();
+    if (refreshedToken) response = await request(refreshedToken);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Unable to retrieve prescription PDF (${response.status}).`);
+  }
+  return response.blob();
+}
+
 export async function post<T = unknown>(
   path: string,
   body?: unknown,

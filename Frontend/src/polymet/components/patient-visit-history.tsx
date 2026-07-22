@@ -4,6 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   CalendarIcon,
   ClockIcon,
   FileTextIcon,
@@ -38,28 +43,33 @@ export function PatientVisitHistory({
   className = "",
 }: PatientVisitHistoryProps) {
   const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const recentVisits = visits.slice(0, 5);
 
   const toggleExpand = (visitId: string) => {
     setExpandedVisit(expandedVisit === visitId ? null : visitId);
   };
 
   return (
-    <div className={`space-y-4 ${className}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ActivityIcon className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-
-          <h3 className="text-lg font-semibold text-foreground">
-            Visit History
-          </h3>
-          <Badge variant="outline" className="text-xs">
-            {visits.length} visits
-          </Badge>
-        </div>
-        {/* HIPAA: Full patient history link removed (available only in active consultation) */}
-      </div>
-
-      <div className="relative border-l-2 border-teal-100 ml-2 pl-5 space-y-4">
+    <Card className={`border-slate-200 shadow-sm ${className}`}>
+      <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+        <CardContent className="p-0">
+          <CollapsibleTrigger className="flex w-full items-center gap-2 p-4 text-left">
+            <ActivityIcon className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            <h3 className="text-base font-semibold text-foreground">Visit History</h3>
+            <Badge variant="outline" className="ml-auto text-xs">
+              {Math.min(visits.length, 5)} of {visits.length} visits
+            </Badge>
+            {historyOpen ? (
+              <ChevronUpIcon className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDownIcon className="h-4 w-4 text-muted-foreground" />
+            )}
+          </CollapsibleTrigger>
+        </CardContent>
+        <CollapsibleContent>
+          <CardContent className="pt-0">
+      <div className="relative ml-2 space-y-4 border-l-2 border-teal-100 pl-5">
         {visits.length === 0 && (
           <Card className="border-border shadow-sm">
             <CardContent className="p-4 text-sm text-muted-foreground">
@@ -68,7 +78,7 @@ export function PatientVisitHistory({
           </Card>
         )}
 
-        {visits.map((visit) => {
+        {recentVisits.map((visit) => {
           const isExpanded = expandedVisit === visit.id;
 
           return (
@@ -211,9 +221,9 @@ export function PatientVisitHistory({
           );
         })}
       </div>
-
-      {/* Show More Button */}
-      {/* HIPAA: removed patient overview navigation */}
-    </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
   );
 }

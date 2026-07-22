@@ -38,7 +38,7 @@ export function PrescriptionMedicineRow({
   medicine,
   onChange,
   onRemove,
-  language,
+  language: _language,
   readOnly = false,
   fieldErrors,
 }: MedicineRowProps) {
@@ -133,12 +133,27 @@ export function PrescriptionMedicineRow({
     requestAnimationFrame(() => nameInputRef.current?.focus());
   };
 
-  const presets = TIMING_PRESETS[language];
+  // Prescription timing choices are intentionally English-only, regardless of
+  // the document language selected elsewhere in the prescription workflow.
+  const presets = TIMING_PRESETS.en;
   const timingQuery = medicine.timingFreqDuration.trim().toLowerCase();
   const filteredPresets =
     timingQuery.length === 0
       ? presets
       : presets.filter((p) => p.toLowerCase().includes(timingQuery));
+
+  const selectTimingPreset = (preset: string) => {
+    onChange(medicine.id, "timingFreqDuration", preset);
+
+    // Approved timing presets include a course duration. Keep quantity aligned
+    // for the common 30- and 60-day selections without overriding other values.
+    const duration = preset.match(/\b(30|60)\s*days?\b/i)?.[1];
+    if (duration) {
+      onChange(medicine.id, "quantity", duration);
+    }
+
+    setShowTimingPresets(false);
+  };
 
   return (
     <tr className="border-b border-border hover:bg-accent/30 transition-colors group align-top">
@@ -328,11 +343,7 @@ export function PrescriptionMedicineRow({
             onKeyDown={(e) => {
               if (e.key === "Tab" || e.key === "Escape") setShowTimingPresets(false);
             }}
-            placeholder={
-              language === "hi"
-                ? "खाने से पहले - रोज़ - 60 दिन"
-                : "Before food - Daily - 60 days"
-            }
+            placeholder="Before food - Daily - 60 days"
             className="h-8 text-xs"
             autoComplete="off"
             readOnly={readOnly}
@@ -358,10 +369,7 @@ export function PrescriptionMedicineRow({
                         e.preventDefault();
                         e.stopPropagation();
                       }}
-                      onClick={() => {
-                        onChange(medicine.id, "timingFreqDuration", preset);
-                        setShowTimingPresets(false);
-                      }}
+                      onClick={() => selectTimingPreset(preset)}
                       className="w-full text-left px-3 py-2 hover:bg-accent text-xs border-b border-border last:border-0"
                     >
                       {preset}

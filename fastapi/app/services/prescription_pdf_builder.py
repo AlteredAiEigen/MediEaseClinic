@@ -160,13 +160,15 @@ def _is_indic_char(ch: str) -> bool:
 
 def _font_rich(text: str, *, bold: bool = False) -> str:
     """
-    Escape text and wrap Latin vs Devanagari runs in the correct font tags
-    so English medicine/patient names and Hindi timing both render.
+    Escape text using the English prescription font.
+
+    Hindi/Devanagari rendering is deliberately not supported for digital
+    prescriptions. The prescription editor and PDF share English labels.
     """
     _ensure_fonts()
     if text is None:
         return ""
-    raw = str(text)
+    raw = "".join(ch for ch in str(text) if not _is_indic_char(ch))
     if not raw:
         return ""
 
@@ -214,14 +216,13 @@ def _font_rich(text: str, *, bold: bool = False) -> str:
 
 
 def _normalize_language(language: Optional[str]) -> str:
-    lang = (language or "en").strip().lower()
-    if lang in ("hi", "hi-in", "hindi"):
-        return "hi"
+    # Digital prescriptions are English-only.
     return "en"
 
 
 def _labels(language: str) -> Dict[str, str]:
-    return _LABELS["hi" if language == "hi" else "en"]
+    # Keep wording identical to the English prescription layout.
+    return _LABELS["en"]
 
 
 def _contains_devanagari(value: Any) -> bool:
@@ -252,15 +253,7 @@ def _resolve_pdf_language(
     medications: Optional[List[Dict[str, Any]]] = None,
     diagnosis: str = "",
 ) -> str:
-    """
-    Use explicit language when set. If medicines/diagnosis contain Devanagari
-    but language was saved as en, auto-switch to hi so glyphs are not stripped.
-    """
-    lang = _normalize_language(language)
-    if lang == "hi":
-        return "hi"
-    if _medications_have_devanagari(medications) or _contains_devanagari(diagnosis):
-        return "hi"
+    """Digital prescriptions are generated in English only."""
     return "en"
 
 _CONTENT_WIDTH = 174 * mm
@@ -458,7 +451,7 @@ def _pdf_cell(value: Any, *, allow_unicode: bool = False) -> str:
     """
     Normalize a field for PDF output.
     Missing/placeholder values (incl. Unicode em dashes) become blank.
-    Devanagari is always preserved (Hindi may be stored even when language=en).
+    Hindi/Devanagari is not emitted in English-only prescription PDFs.
     """
     if value is None:
         return ""
@@ -494,9 +487,8 @@ def _pdf_cell(value: Any, *, allow_unicode: bool = False) -> str:
             continue
         if 0xD800 <= o <= 0xDFFF:
             continue
-        # Always keep Devanagari (Hindi medicine timing/frequency/duration)
+        # Do not emit Devanagari in English-only PDFs.
         if 0x0900 <= o <= 0x097F or 0xA8E0 <= o <= 0xA8FF:
-            cleaned.append(ch)
             continue
         if allow_unicode or o < 256:
             cleaned.append(ch)

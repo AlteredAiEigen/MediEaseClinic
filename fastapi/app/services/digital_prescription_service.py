@@ -274,8 +274,9 @@ class DigitalPrescriptionService:
             provider=context.get("provider"),
         )
 
-        # Prefer explicit language from the Prescription tab; else saved prescription language
-        pdf_language = language or (prescription_doc or {}).get("language") or "en"
+        # Digital prescription PDFs use the English editor terminology only.
+        # Keep the argument for backwards-compatible callers, but do not use it.
+        pdf_language = "en"
 
         pdf_bytes = build_prescription_pdf(
             clinic_id=context["clinic_id"],
