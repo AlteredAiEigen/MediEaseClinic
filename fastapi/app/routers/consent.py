@@ -22,7 +22,7 @@ router = APIRouter()
 
 def _get_verification_form_html(patient_name: str, patient_id: str, base_url: str) -> str:
     """Generate HTML form for email verification."""
-    logo_url = f"{settings.frontend_base_url}/favicon.svg"
+    logo_url = f"{settings.frontend_base_url}/landing-assets/mediease-logo.png"
     return f"""
 <!DOCTYPE html>
 <html>
@@ -165,7 +165,7 @@ def _get_consent_form_html(patient_name: str, doctor_name: str, clinic_name: str
                            appointment_date: str, appointment_time: str, 
                            appointment_id: str, base_url: str) -> str:
     """Generate HTML form for appointment consent."""
-    logo_url = f"{settings.frontend_base_url}/favicon.svg"
+    logo_url = f"{settings.frontend_base_url}/landing-assets/mediease-logo.png"
     return f"""
 <!DOCTYPE html>
 <html>
@@ -320,7 +320,7 @@ def _get_consent_form_html(patient_name: str, doctor_name: str, clinic_name: str
 
 def _get_success_page_html(title: str, message: str, is_success: bool = True, acknowledgment: str = None) -> str:
     """Generate success/error confirmation page."""
-    logo_url = f"{settings.frontend_base_url}/favicon.svg"
+    logo_url = f"{settings.frontend_base_url}/landing-assets/mediease-logo.png"
     message_class = "success-message" if is_success else "error-message"
     icon = "✓" if is_success else "✗"
     icon_color = "#27ae60" if is_success else "#e74c3c"
@@ -862,7 +862,7 @@ async def verify_pre_registration_email(
             base_url = settings.frontend_base_url.rstrip("/")
             verification_url_approve = f"{base_url}/api/consent/verify-pre-registration-email?email={email}&token={token}&action=approve"
             verification_url_reject = f"{base_url}/api/consent/verify-pre-registration-email?email={email}&token={token}&action=reject"
-            logo_url = f"{settings.frontend_base_url}/favicon.svg"
+            logo_url = f"{settings.frontend_base_url}/landing-assets/mediease-logo.png"
             
             html_content = f"""
 <!DOCTYPE html>

@@ -75,3 +75,24 @@ def patient_dict_for_llm(patient: Dict[str, Any]) -> Dict[str, Any]:
     }
     # Drop empty values to shorten prompts
     return {k: v for k, v in out.items() if v not in (None, "", [], {})}
+
+
+def redact_patient_identifiers(text: Optional[str], patient: Optional[Dict[str, Any]]) -> str:
+    """Strip PII and redact known patient name variants from free text."""
+    s = strip_text_pii(text)
+    if not patient or not s:
+        return s
+
+    names: list[str] = []
+    for key in ("fullName", "firstName", "lastName"):
+        value = patient.get(key)
+        if isinstance(value, str) and len(value.strip()) > 1:
+            names.append(value.strip())
+
+    friendly = patient.get("patientId")
+    if isinstance(friendly, str) and friendly.strip():
+        names.append(friendly.strip())
+
+    for name in sorted(set(names), key=len, reverse=True):
+        s = re.sub(re.escape(name), "[redacted-name]", s, flags=re.IGNORECASE)
+    return s

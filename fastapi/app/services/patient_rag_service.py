@@ -109,6 +109,29 @@ class PatientRAGService:
         top_k: int = 12,
     ) -> List[Tuple[str, float]]:
         """Return list of (chunk_text, score) for the patient."""
+        hits = await self.search_with_sources(patient_id, query, top_k=top_k)
+        return [(h["text"], h["score"]) for h in hits]
+
+    def _source_label(self, source_type: Optional[str]) -> str:
+        labels = {
+            "patient_profile": "Profile snapshot",
+            "appointment": "Visit record",
+            "medical_history": "Medical history",
+            "lab_report": "Lab report",
+            "s3_lab_report": "Uploaded lab report",
+            "prescription": "Prescription",
+            "clinical_note": "Clinical note",
+            "vital": "Vitals record",
+        }
+        return labels.get(source_type or "", "Chart record")
+
+    async def search_with_sources(
+        self,
+        patient_id: str,
+        query: str,
+        top_k: int = 12,
+    ) -> List[Dict[str, Any]]:
+        """Return ranked chunks with de-identified source metadata."""
         if not query.strip():
             return []
 
@@ -117,33 +140,52 @@ class PatientRAGService:
 
         cur = coll.find(
             {"patientId": patient_id},
-            {"text": 1, "embedding": 1},
+            {"text": 1, "embedding": 1, "sourceType": 1, "sourceId": 1},
         ).limit(MAX_RAG_CHUNKS_PER_SEARCH)
         rows = await cur.to_list(length=MAX_RAG_CHUNKS_PER_SEARCH)
         if not rows:
             return []
 
         if not settings.openai_api_key:
-            scored_kw: List[Tuple[str, float]] = []
+            scored_kw: List[Dict[str, Any]] = []
             for r in rows:
                 t = r.get("text") or ""
                 sc = _keyword_score(t, query) * 10.0
                 if sc > 0:
-                    scored_kw.append((t, sc))
-            scored_kw.sort(key=lambda x: -x[1])
+                    source_type = r.get("sourceType")
+                    scored_kw.append(
+                        {
+                            "text": t,
+                            "score": sc,
+                            "sourceType": source_type,
+                            "sourceId": r.get("sourceId"),
+                            "sourceLabel": self._source_label(source_type),
+                            "excerpt": t[:240],
+                        }
+                    )
+            scored_kw.sort(key=lambda x: -x["score"])
             return scored_kw[:top_k]
 
         q_emb = (await ai_service.embed_texts([query]))[0]
-        scored: List[Tuple[str, float]] = []
+        scored: List[Dict[str, Any]] = []
         for r in rows:
             text = r.get("text") or ""
             emb = r.get("embedding") or []
             vec = _cosine(q_emb, emb) if emb else 0.0
             kw = _keyword_score(text, query)
-            # Hybrid: semantic + keyword (medications names often need keyword overlap)
             combined = 0.62 * vec + 0.38 * kw
-            scored.append((text, combined))
-        scored.sort(key=lambda x: -x[1])
+            source_type = r.get("sourceType")
+            scored.append(
+                {
+                    "text": text,
+                    "score": combined,
+                    "sourceType": source_type,
+                    "sourceId": r.get("sourceId"),
+                    "sourceLabel": self._source_label(source_type),
+                    "excerpt": text[:240],
+                }
+            )
+        scored.sort(key=lambda x: -x["score"])
         return scored[:top_k]
 
 

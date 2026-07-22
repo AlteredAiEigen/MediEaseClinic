@@ -36,7 +36,7 @@ class Medication(BaseModel):
     duration: str = Field("", description="Optional; blank when not specified")
     instructions: Optional[str] = ""
     medicineType: Optional[str] = None
-    composition: Optional[str] = None
+    composition: str = Field(..., min_length=1)
     quantity: Optional[int] = None
 
 

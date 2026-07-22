@@ -2664,6 +2664,37 @@ export function PatientOverview() {
     return Array.from(groups.values()).sort((a, b) => b.sortKey - a.sortKey);
   }, [labReports]);
 
+  const groupedS3Reports = useMemo(() => {
+    if (!s3Reports.length) return [];
+    const groups = new Map<
+      string,
+      { label: string; reports: S3Report[]; sortKey: number }
+    >();
+
+    s3Reports.forEach((report) => {
+      const parsedDate = report.createdAt ? new Date(report.createdAt) : null;
+      const label = parsedDate
+        ? parsedDate.toLocaleString("en-US", { month: "long", year: "numeric" })
+        : "Uncategorized";
+
+      const existing = groups.get(label);
+      if (existing) {
+        existing.reports.push(report);
+        if (parsedDate && parsedDate.getTime() > existing.sortKey) {
+          existing.sortKey = parsedDate.getTime();
+        }
+      } else {
+        groups.set(label, {
+          label,
+          reports: [report],
+          sortKey: parsedDate ? parsedDate.getTime() : 0,
+        });
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => b.sortKey - a.sortKey);
+  }, [s3Reports]);
+
   const appointmentBuckets = useMemo(() => {
     if (!appointments || appointments.length === 0) {
       return { upcoming: [] as Appointment[], past: [] as Appointment[] };
@@ -2748,6 +2779,37 @@ export function PatientOverview() {
 
   const upcomingAppointments = appointmentBuckets.upcoming;
   const pastAppointments = appointmentBuckets.past;
+
+  const groupedPastAppointments = useMemo(() => {
+    if (!pastAppointments.length) return [];
+    const groups = new Map<
+      string,
+      { label: string; appointments: Appointment[]; sortKey: number }
+    >();
+
+    pastAppointments.forEach((appointment) => {
+      const parsedDate = appointment.date ? new Date(appointment.date) : null;
+      const label = parsedDate
+        ? parsedDate.toLocaleString("en-US", { month: "long", year: "numeric" })
+        : "Uncategorized";
+
+      const existing = groups.get(label);
+      if (existing) {
+        existing.appointments.push(appointment);
+        if (parsedDate && parsedDate.getTime() > existing.sortKey) {
+          existing.sortKey = parsedDate.getTime();
+        }
+      } else {
+        groups.set(label, {
+          label,
+          appointments: [appointment],
+          sortKey: parsedDate ? parsedDate.getTime() : 0,
+        });
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => b.sortKey - a.sortKey);
+  }, [pastAppointments]);
 
   // Group clinical notes by appointment for quick lookup in the UI
   const clinicalNotesByAppointment = useMemo(() => {
@@ -5264,66 +5326,62 @@ export function PatientOverview() {
                 <div className="space-y-4">
                   {/* S3 Reports Section */}
                   {s3Reports.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-semibold text-foreground mb-3">Uploaded Reports</h4>
-                      {s3Reports.map((report) => (
-                        <div
-                          key={report._id}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
+                    <Accordion type="multiple" className="space-y-4">
+                      {groupedS3Reports.map((group) => (
+                        <AccordionItem
+                          key={`s3-${group.label}`}
+                          value={`s3-${group.label}`}
+                          className="rounded-2xl border border-border bg-card/60 px-4"
                         >
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-semibold text-foreground">
-                                {report.documentName}
-                              </p>
-                              {report.parseStatus === "success" && (
-                                <Badge className="bg-emerald-50 text-emerald-800 text-[10px]">
-                                  Parsed
-                                </Badge>
-                              )}
-                              {report.parseStatus === "processing" ||
-                              report.parseStatus === "pending" ? (
-                                <Badge variant="outline" className="text-[10px]">
-                                  Parsing…
-                                </Badge>
-                              ) : null}
-                              {report.parseStatus === "failed" && (
-                                <Badge variant="destructive" className="text-[10px]">
-                                  Parse failed
-                                </Badge>
-                              )}
+                          <AccordionTrigger className="px-0 hover:no-underline">
+                            <div className="flex w-full items-center justify-between gap-4">
+                              <div className="flex items-center gap-4">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#00C4B3]/10">
+                                  <FlaskConicalIcon className="h-5 w-5 text-[#00C4B3]" />
+                                </div>
+                                <div className="text-left">
+                                  <p className="text-sm font-semibold text-foreground">{group.label}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {group.reports.length} uploaded report
+                                    {group.reports.length === 1 ? "" : "s"}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
-                            <p className="text-[11px] text-muted-foreground mt-0.5">
-                              {new Date(report.createdAt).toLocaleDateString("en-US", {
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              })}
-                            </p>
-                            {report.parseStatus === "success" &&
-                              report.parsedLabReport?.tests &&
-                              report.parsedLabReport.tests.length > 0 && (
-                                <p className="text-xs text-muted-foreground mt-2 line-clamp-2">
-                                  {report.parsedLabReport.tests
-                                    .slice(0, 4)
-                                    .map((t) => `${t.name || "?"}: ${t.result ?? "—"}`)
-                                    .join(" · ")}
-                                  {report.parsedLabReport.tests.length > 4 ? " …" : ""}
-                                </p>
-                              )}
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
-                            onClick={() => handleViewS3Report(report)}
-                          >
-                            <FileTextIcon className="w-4 h-4 mr-2" />
-                            View Report
-                          </Button>
-                        </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="space-y-2 pb-4">
+                            {group.reports.map((report) => (
+                              <div
+                                key={report._id}
+                                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-background/70 px-4 py-3"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {report.documentName}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                                    {new Date(report.createdAt).toLocaleDateString("en-US", {
+                                      year: "numeric",
+                                      month: "long",
+                                      day: "numeric",
+                                    })}
+                                  </p>
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-[#00C4B3]/20 text-[#00C4B3] hover:bg-[#00C4B3]/10"
+                                  onClick={() => handleViewS3Report(report)}
+                                >
+                                  <FileTextIcon className="w-4 h-4 mr-2" />
+                                  View Report
+                                </Button>
+                              </div>
+                            ))}
+                          </AccordionContent>
+                        </AccordionItem>
                       ))}
-                    </div>
+                    </Accordion>
                   )}
                   {/* Regular Lab Reports Section */}
                   {labReports.length > 0 && (
@@ -5550,8 +5608,25 @@ export function PatientOverview() {
             </CardHeader>
             <CardContent>
               {pastAppointments.length > 0 ? (
-                <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-3">
-                  {pastAppointments.map((appointment) => {
+                <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-4">
+                  <Accordion type="multiple" className="space-y-3">
+                    {groupedPastAppointments.map((group) => (
+                      <AccordionItem
+                        key={`past-month-${group.label}`}
+                        value={`past-month-${group.label}`}
+                        className="rounded-xl border border-border px-3"
+                      >
+                        <AccordionTrigger className="hover:no-underline py-3">
+                          <div className="flex w-full items-center justify-between gap-2 pr-2">
+                            <span className="text-sm font-semibold">{group.label}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {group.appointments.length} visit
+                              {group.appointments.length === 1 ? "" : "s"}
+                            </Badge>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent className="space-y-3 pb-3">
+                          {group.appointments.map((appointment) => {
                     const appointmentKey = appointment._id || appointment.appointmentId;
                     const mergedClinicalNotes =
                       appointment.clinicalNotes && appointment.clinicalNotes.length > 0
@@ -6007,7 +6082,11 @@ export function PatientOverview() {
                       </AccordionItem>
                     </Accordion>
                     );
-                  })}
+                          })}
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">

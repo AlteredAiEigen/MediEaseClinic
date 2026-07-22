@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Tuple
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
-from app.utils.pii_sanitizer import strip_text_pii
+from app.utils.pii_sanitizer import strip_text_pii, redact_patient_identifiers
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ async def iter_cumulative_patient_segments(
     segments: List[Tuple[str, str, str]] = []
 
     def add(st: str, sid: str, body: str) -> None:
-        body = strip_text_pii(body)
+        body = redact_patient_identifiers(strip_text_pii(body), patient)
         if body and len(body.strip()) > 2:
             segments.append((st, sid, body.strip()))
 

@@ -32,6 +32,8 @@ import {
   parseNextAppointmentFromNotes,
   parsePrescribedTestsFromNotes,
   unmapMedicationToMedicineEntry,
+  validatePrescriptionMedicines,
+  type MedicineFieldErrors,
   type SavedPrescription,
 } from "@/polymet/utils/digital-prescription-save";
 
@@ -77,7 +79,7 @@ const createEmptyMedicine = (): MedicineEntry => ({
   dosageAfternoon: 0,
   dosageNight: 0,
   timingFreqDuration: "",
-  quantity: 60,
+  quantity: "",
 });
 
 function formatWhatsappFailureMessage(whatsapp?: {
@@ -167,6 +169,9 @@ export function WritePrescriptionPanel({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [medicineFieldErrors, setMedicineFieldErrors] = useState<
+    Record<number, MedicineFieldErrors>
+  >({});
 
   const applySavedToForm = useCallback((saved: SavedPrescription) => {
     setDiagnosis(saved.diagnosis?.trim() || "");
@@ -388,8 +393,15 @@ export function WritePrescriptionPanel({
       setMedicines((prev) =>
         prev.map((m) => (m.id === id ? { ...m, [field]: value } : m)),
       );
+      setMedicineFieldErrors((prev) => {
+        const rowIndex = medicines.findIndex((m) => m.id === id);
+        if (rowIndex < 0 || !prev[rowIndex]) return prev;
+        const next = { ...prev };
+        delete next[rowIndex];
+        return next;
+      });
     },
-    [prescriptionFinalized, alreadySentOnWhatsapp, selectedIsActive],
+    [prescriptionFinalized, alreadySentOnWhatsapp, selectedIsActive, medicines],
   );
 
   const selectPrescriptionById = (prescriptionId: string) => {
@@ -439,6 +451,18 @@ export function WritePrescriptionPanel({
       toast({ title: "Add at least one medicine", variant: "destructive" });
       return null;
     }
+
+    const fieldErrors = validatePrescriptionMedicines(medicines);
+    if (Object.keys(fieldErrors).length > 0) {
+      setMedicineFieldErrors(fieldErrors);
+      toast({
+        title: "Fix prescription fields",
+        description: "Each medicine needs composition, quantity, and dosage or timing.",
+        variant: "destructive",
+      });
+      return null;
+    }
+    setMedicineFieldErrors({});
 
     for (const med of validMedicines) {
       await upsertPrescriptionCatalogItem({
@@ -1012,6 +1036,7 @@ export function WritePrescriptionPanel({
                           onRemove={removeMedicine}
                           language={language}
                           readOnly={formLocked}
+                          fieldErrors={medicineFieldErrors[index]}
                         />
                       ))}
                     </tbody>

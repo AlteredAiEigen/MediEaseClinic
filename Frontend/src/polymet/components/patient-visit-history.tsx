@@ -38,7 +38,6 @@ export function PatientVisitHistory({
   className = "",
 }: PatientVisitHistoryProps) {
   const [expandedVisit, setExpandedVisit] = useState<string | null>(null);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   const toggleExpand = (visitId: string) => {
     setExpandedVisit(expandedVisit === visitId ? null : visitId);
@@ -51,7 +50,7 @@ export function PatientVisitHistory({
           <ActivityIcon className="w-5 h-5 text-teal-600 dark:text-teal-400" />
 
           <h3 className="text-lg font-semibold text-foreground">
-            Recent Visit History
+            Visit History
           </h3>
           <Badge variant="outline" className="text-xs">
             {visits.length} visits
@@ -60,8 +59,7 @@ export function PatientVisitHistory({
         {/* HIPAA: Full patient history link removed (available only in active consultation) */}
       </div>
 
-      {/* Stacked Cards with Dynamic Hover Effect */}
-      <div className="relative perspective-1000">
+      <div className="relative border-l-2 border-teal-100 ml-2 pl-5 space-y-4">
         {visits.length === 0 && (
           <Card className="border-border shadow-sm">
             <CardContent className="p-4 text-sm text-muted-foreground">
@@ -70,45 +68,19 @@ export function PatientVisitHistory({
           </Card>
         )}
 
-        {visits.map((visit, index) => {
+        {visits.map((visit) => {
           const isExpanded = expandedVisit === visit.id;
-          const isHovered = hoveredIndex === index;
-
-          // Calculate dynamic stacking - cards below the hovered one move down
-          let stackOffset = 0;
-          if (hoveredIndex !== null) {
-            if (index > hoveredIndex) {
-              // Cards below hovered card move down more dramatically
-              stackOffset = (index - hoveredIndex) * 12;
-            } else if (index === hoveredIndex) {
-              // Hovered card lifts up
-              stackOffset = -8;
-            }
-          }
 
           return (
             <Card
               key={visit.id}
               className={`
-                border-border shadow-lg transition-all duration-500 ease-out cursor-pointer
-                ${index > 0 ? "-mt-16" : ""}
-                ${isExpanded ? "ring-2 ring-teal-500 dark:ring-teal-600 mt-4" : ""}
-                ${isHovered ? "scale-105 shadow-2xl ring-2 ring-teal-400/50 dark:ring-teal-600/50" : ""}
-                ${!isExpanded && !isHovered ? "hover:shadow-xl" : ""}
+                relative border-slate-200 shadow-sm transition-shadow cursor-pointer hover:shadow-md
+                ${isExpanded ? "ring-2 ring-teal-500" : ""}
               `}
-              style={{
-                transform: `translateY(${stackOffset}px) ${isHovered ? "rotateX(2deg)" : "rotateX(0deg)"}`,
-                zIndex: isExpanded
-                  ? 100
-                  : isHovered
-                    ? 50
-                    : visits.length - index,
-                transformStyle: "preserve-3d",
-              }}
-              onMouseEnter={() => setHoveredIndex(index)}
-              onMouseLeave={() => setHoveredIndex(null)}
               onClick={() => toggleExpand(visit.id)}
             >
+              <span className="absolute -left-[31px] top-5 h-3 w-3 rounded-full border-2 border-white bg-teal-500" />
               <CardContent className="p-4">
                 {/* Compact View */}
                 <div className="flex items-start justify-between gap-4">

@@ -3,6 +3,7 @@ S3 Reports API endpoints for patient lab reports stored in AWS S3.
 """
 
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -13,6 +14,15 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.auth import require_any_role
 from app.models.s3_report import s3_report_helper
+from app.services.lab_report_compare_service import (
+    build_comparison,
+    build_longitudinal_comparison,
+    derive_compare_profile,
+    find_prior_report_by_id,
+    list_compare_candidates,
+    pick_best_prior_report,
+    report_meta,
+)
 from app.services.lab_report_parse_service import schedule_lab_parse_background
 from app.services.s3_service import s3_service
 from app.utils.response import success_response
@@ -230,6 +240,7 @@ async def get_patient_s3_reports(
 @router.get("/{report_id}/presigned-url")
 async def get_report_presigned_url(
     report_id: str,
+    inline: bool = Query(False, description="Inline display for PDF iframe (Content-Disposition: inline)"),
     current_user: dict = Depends(require_any_role),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
@@ -271,9 +282,20 @@ async def get_report_presigned_url(
         
         meta = report.get("metadata") or {}
         bucket_ov = meta.get("bucket")
+        doc_name = report.get("documentName") or "lab-report.pdf"
+        disposition = None
+        content_type = None
+        if inline:
+            safe_name = doc_name.replace('"', "").strip() or "lab-report.pdf"
+            disposition = f'inline; filename="{safe_name}"'
+            if safe_name.lower().endswith(".pdf"):
+                content_type = "application/pdf"
+
         presigned_url = await s3_service.generate_presigned_url(
             s3_key,
             bucket_override=bucket_ov,
+            response_content_disposition=disposition,
+            response_content_type=content_type,
         )
 
         return success_response(
@@ -297,4 +319,116 @@ async def get_report_presigned_url(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate presigned URL: {str(e)}"
         )
+
+
+@router.get("/patient/{patient_id}/compare")
+async def compare_s3_report_with_prior(
+    patient_id: str,
+    reportId: str = Query(..., alias="reportId"),
+    priorReportId: Optional[str] = Query(None, alias="priorReportId"),
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Compare parsed tests with a selected prior report.
+
+    Auto-selection when priorReportId is omitted:
+    - Sample date must be before current report's sample date
+    - Prefer same reportType / panel + highest test overlap
+    """
+    if not ObjectId.is_valid(patient_id) or not ObjectId.is_valid(reportId):
+        raise HTTPException(status_code=400, detail="Invalid patient or report ID")
+
+    patient_oid = ObjectId(patient_id)
+    report_oid = ObjectId(reportId)
+
+    current = await db["s3_reports"].find_one(
+        {"_id": report_oid, "patientMongoId": patient_oid},
+    )
+    if not current:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    current_tests = (current.get("parsedLabReport") or {}).get("tests") or []
+    if not current_tests:
+        return success_response(
+            message="No parsed tests on current report",
+            data={
+                "comparisons": [],
+                "previousReportDate": None,
+                "compareCandidates": [],
+                "currentReportMeta": report_meta(current),
+                "compareProfile": derive_compare_profile(current).get("profileLabel"),
+            },
+        )
+
+    prior_cursor = (
+        db["s3_reports"]
+        .find(
+            {
+                "patientMongoId": patient_oid,
+                "parseStatus": "success",
+                "_id": {"$ne": report_oid},
+            }
+        )
+        .sort("createdAt", -1)
+        .limit(50)
+    )
+    prior_reports = await prior_cursor.to_list(length=50)
+    candidates = list_compare_candidates(current, prior_reports)
+
+    candidate_ids = {candidate["reportId"] for candidate in candidates}
+    relevant_prior_reports = [
+        report for report in prior_reports
+        if str(report.get("_id")) in candidate_ids
+    ]
+
+    prior_report = None
+    if priorReportId:
+        if not ObjectId.is_valid(priorReportId):
+            raise HTTPException(status_code=400, detail="Invalid prior report ID")
+        prior_report = find_prior_report_by_id(prior_reports, priorReportId)
+        if not prior_report:
+            raise HTTPException(status_code=404, detail="Prior report not found")
+        if priorReportId not in candidate_ids:
+            raise HTTPException(
+                status_code=400,
+                detail="Selected prior report is not eligible (no overlap, wrong panel, or not before current sample date)",
+            )
+    else:
+        prior_report = pick_best_prior_report(current, relevant_prior_reports)
+
+    if not relevant_prior_reports:
+        return success_response(
+            message="No prior parsed report found",
+            data={
+                "comparisons": [],
+                "previousReportDate": None,
+                "compareCandidates": candidates,
+                "currentReportMeta": report_meta(current),
+                "compareProfile": derive_compare_profile(current).get("profileLabel"),
+                "longitudinal": {
+                    "reports": [{**report_meta(current), "isCurrent": True}],
+                    "reportCount": 1,
+                    "priorReportCount": 0,
+                    "trends": [],
+                    "groupedTrends": [],
+                    "priorityTrends": [],
+                },
+            },
+        )
+
+    # Longitudinal data is the default doctor-facing view. Keep a single
+    # comparison payload for compatibility and optional detail drill-down.
+    result = build_comparison(current, prior_report)
+    result["longitudinal"] = build_longitudinal_comparison(
+        current, relevant_prior_reports
+    )
+    result["compareCandidates"] = candidates
+    result["selectedPriorReportId"] = str(prior_report.get("_id"))
+    result["compareProfile"] = derive_compare_profile(current).get("profileLabel")
+
+    return success_response(
+        message="Comparison ready",
+        data=result,
+    )
 

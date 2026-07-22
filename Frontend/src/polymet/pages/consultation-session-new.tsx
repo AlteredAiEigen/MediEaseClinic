@@ -7,7 +7,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   MicIcon,
   MicOffIcon,
@@ -23,10 +34,18 @@ import {
   FileAudioIcon,
   EyeIcon,
   UploadIcon,
+  Shield,
 } from "lucide-react";
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
+import {
+  ActiveProblemsCard,
+  ClinicalTrendCards,
+  TodayVitalsCard,
+  type DashboardProblem,
+  type VitalRecord,
+} from "@/polymet/components/consultation/consultation-dashboard-cards";
 import { cn } from "@/lib/utils";
 import { get, post, put, patch, del } from "@/lib/api-client";
 import { todayLocalYYYYMMDD } from "@/lib/date";
@@ -118,6 +137,8 @@ export function ConsultationSession() {
   const [labResults, setLabResults] = useState<LabResultDisplay[]>([]);
   const [visitHistory, setVisitHistory] = useState<VisitHistoryItem[]>([]);
   const [latestVitals, setLatestVitals] = useState<any>(null);
+  const [vitalsHistory, setVitalsHistory] = useState<VitalRecord[]>([]);
+  const [medicalHistory, setMedicalHistory] = useState<Array<{ title?: string; diagnosis?: string; notes?: string }>>([]);
 
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -167,7 +188,15 @@ export function ConsultationSession() {
   const [aiQuery, setAiQuery] = useState("");
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiConversationId, setAiConversationId] = useState<string | null>(null);
-  const [aiChatMessages, setAiChatMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [aiChatMessages, setAiChatMessages] = useState<
+    Array<{
+      role: "user" | "assistant";
+      content: string;
+      sources?: Array<{ sourceLabel?: string; excerpt?: string }>;
+    }>
+  >([]);
+  const [endConsultRxPromptOpen, setEndConsultRxPromptOpen] = useState(false);
+  const [insightsTab, setInsightsTab] = useState("overview");
   const aiChatEndRef = useRef<HTMLDivElement | null>(null);
   const [insightsRefreshing, setInsightsRefreshing] = useState(false);
 
@@ -288,12 +317,13 @@ export function ConsultationSession() {
         bloodGroup: "",
         phone: "",
         email: "",
-        condition: "Under Observation",
+        condition: "",
         lastVisit: "",
         carePlanSummary: "",
         followUpPlan: "",
         allergies: [] as string[],
         medications: [],
+        chiefComplaint: "",
       };
     }
     return {
@@ -312,10 +342,11 @@ export function ConsultationSession() {
       bloodGroup: patient.insights?.bloodGroup || patient.bloodGroup || "",
       phone: patient.phone || "",
       email: patient.email || "",
-      condition: patient.condition || patient.insights?.riskAssessment || "Under Observation",
-      lastVisit: patient.lastVisit || patient.insights?.lastUpdatedAt || "",
-      carePlanSummary: patient.carePlanSummary || patient.insights?.recommendations?.join("; ") || "",
-      followUpPlan: patient.followUpPlan || patient.insights?.followUpInstructions || "",
+      condition: patient.condition || "",
+      lastVisit: patient.lastVisit || "",
+      carePlanSummary: patient.carePlanSummary || "",
+      followUpPlan: patient.followUpPlan || "",
+      chiefComplaint: patient.chiefComplaint || "",
       allergies:
         Array.isArray(patient.allergies)
           ? patient.allergies
@@ -355,6 +386,23 @@ export function ConsultationSession() {
       })(),
     };
   }, [patient, consultationIdentifiers]);
+
+  const activeProblems = useMemo<DashboardProblem[]>(() => {
+    const seen = new Set<string>();
+    const items: DashboardProblem[] = [];
+    const add = (label: unknown, source: DashboardProblem["source"]) => {
+      const value = typeof label === "string" ? label.trim() : "";
+      const key = value.toLowerCase();
+      if (!value || seen.has(key)) return;
+      seen.add(key);
+      items.push({ label: value, source });
+    };
+
+    add(patient?.condition, "Current condition");
+    medicalHistory.forEach((entry) => add(entry.diagnosis || entry.title, "Medical history"));
+    visitHistory.forEach((visit) => add(visit.title, "Visit diagnosis"));
+    return items.slice(0, 8);
+  }, [patient?.condition, medicalHistory, visitHistory]);
 
   const prescriptionPrefill = useMemo<WritePrescriptionPrefill | null>(() => {
     if (!patient) return null;
@@ -442,6 +490,17 @@ export function ConsultationSession() {
       console.warn("Failed to load consultation prescriptions:", err);
     }
   }, [appointmentId]);
+
+  const unsentPrescriptionDraft = useMemo(
+    () =>
+      digitalPrescriptionList.find(
+        (rx) =>
+          rx.isActive !== false &&
+          (rx.medicationCount ?? 0) > 0 &&
+          (rx.statusLabel || "").toLowerCase().includes("draft"),
+      ) ?? null,
+    [digitalPrescriptionList],
+  );
 
   const handleOpenDigitalPrescription = useCallback(
     (prescriptionId?: string) => {
@@ -630,8 +689,31 @@ export function ConsultationSession() {
           if (vitalsResponse.success && vitalsResponse.data) {
             setLatestVitals(vitalsResponse.data);
           }
+          const historyResponse = await get<any>(`/api/patient-vitals/${resolvedPatientId}?limit=10`);
+          const history = historyResponse.success
+            ? (historyResponse.data?.vitals ?? historyResponse.data ?? [])
+            : [];
+          setVitalsHistory(Array.isArray(history) ? history : []);
         } catch (err) {
           console.warn("Failed to fetch vitals:", err);
+          setLatestVitals(null);
+          setVitalsHistory([]);
+        }
+
+        try {
+          const historyResponse = await get<any>(
+            `/api/patient-medical-history/current?patientId=${encodeURIComponent(resolvedPatientId)}`
+          );
+          const entries = historyResponse.success
+            ? (historyResponse.data?.medicalHistory?.medicalHistory ??
+              historyResponse.data?.medicalHistory ??
+              historyResponse.data?.entries ??
+              [])
+            : [];
+          setMedicalHistory(Array.isArray(entries) ? entries : []);
+        } catch (err) {
+          console.warn("Failed to fetch medical history:", err);
+          setMedicalHistory([]);
         }
         
         if (localAppointmentId) {
@@ -757,24 +839,49 @@ export function ConsultationSession() {
   // Fetch lab results (S3 reports) and recent visits (appointments) for the patient
   useEffect(() => {
     const fetchLabResultsAndVisits = async () => {
-      if (!patientId) return;
+      const mongoPatientId = resolvedPatientObjectId || patient?._id;
+      if (!mongoPatientId) return;
 
       // Lab results from S3 reports (best-effort)
       try {
-        const s3Response = await get(`/api/s3-reports?patient_id=${patientId}&limit=5`);
+        const s3Response = await get(`/api/s3-reports/patient/${encodeURIComponent(mongoPatientId)}`);
         if (s3Response.success) {
           const reports = (s3Response.data as any)?.reports ?? s3Response.data ?? [];
           const mapped = Array.isArray(reports)
-            ? reports.map((r: any) => {
-                const created = r.createdAt || r.reportedDate || r.collectedDate;
+            ? [...reports]
+              .sort((a: any, b: any) => {
+                const aDate = new Date(a.parsedLabReport?.collectedDate || a.parsedLabReport?.reportedDate || a.createdAt || 0).getTime();
+                const bDate = new Date(b.parsedLabReport?.collectedDate || b.parsedLabReport?.reportedDate || b.createdAt || 0).getTime();
+                return bDate - aDate;
+              })
+              .map((r: any) => {
+                const parsed = r.parsedLabReport ?? {};
+                const tests = Array.isArray(parsed.tests) ? parsed.tests : [];
+                const abnormalCount = tests.filter((test: any) => {
+                  const flag = String(test.flag || test.status || "").toLowerCase();
+                  return ["high", "low", "abnormal", "h", "l", "hh", "ll"].includes(flag);
+                }).length;
+                const genericType = !parsed.reportType || /^(laboratory|lab)\s*report$/i.test(parsed.reportType);
+                const testNames = tests.map((test: any) => String(test.name || "").toLowerCase());
+                const inferredType = testNames.some((name: string) => /hba1c|fasting.*glucose|post.*glucose/.test(name))
+                  ? "Diabetic profile"
+                  : testNames.some((name: string) => /cholesterol|triglyceride|ldl|hdl/.test(name))
+                    ? "Lipid profile"
+                    : testNames.some((name: string) => /haemoglobin|hemoglobin|platelet|wbc|rbc/.test(name))
+                      ? "Complete blood count"
+                      : "Laboratory report";
+                const created = parsed.collectedDate || parsed.reportedDate || r.createdAt;
                 const d = created ? new Date(created) : null;
                 const dateStr = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : "—";
                 return {
-                  name: r.reportType || r.category || r.title || r.filename || "Lab Report",
-                  value: r.summary || r.status || "View",
+                  name: genericType ? inferredType : parsed.reportType,
+                  value: tests.length ? `${tests.length} parsed tests` : "Report available",
                   date: dateStr,
-                  status: "normal" as const,
-                  url: r.fileUrl || r.url,
+                  status: abnormalCount > 0 ? "high" as const : "normal" as const,
+                  url: r.presignedUrl,
+                  summary: parsed.summaryText || parsed.interpretation || "",
+                  abnormalCount,
+                  testCount: tests.length || undefined,
                 };
               })
             : [];
@@ -788,7 +895,7 @@ export function ConsultationSession() {
 
       // Recent visit history from appointments (best-effort)
       try {
-        const apptResponse = await get(`/api/appointments?limit=5&patient_id=${patientId}`);
+        const apptResponse = await get(`/api/appointments?limit=5&patient_id=${encodeURIComponent(mongoPatientId)}`);
         if (apptResponse.success) {
           const list =
             (apptResponse.data as any)?.appointments ??
@@ -823,7 +930,7 @@ export function ConsultationSession() {
     };
 
     fetchLabResultsAndVisits();
-  }, [patientId]);
+  }, [resolvedPatientObjectId, patient?._id]);
 
   useEffect(() => {
     if (!autoRecordingIntent || autoRecordingActive || isRecording || isLoading) return;
@@ -1460,6 +1567,7 @@ export function ConsultationSession() {
       const response = await post<{
         response: string;
         conversationId?: string;
+        sources?: Array<{ sourceLabel?: string; excerpt?: string }>;
       }>("/api/ai/chat", {
         query: userMsg,
         patientId: mongoPatientId,
@@ -1477,7 +1585,14 @@ export function ConsultationSession() {
         if (response.data.conversationId) {
           setAiConversationId(response.data.conversationId);
         }
-        setAiChatMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+        setAiChatMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: answer,
+            sources: response.data.sources,
+          },
+        ]);
       } else {
         setAiChatMessages((prev) => [
           ...prev,
@@ -1713,6 +1828,15 @@ export function ConsultationSession() {
     }
   };
 
+  const requestEndConsultation = async (): Promise<boolean> => {
+    if (unsentPrescriptionDraft) {
+      setEndConsultRxPromptOpen(true);
+      return false;
+    }
+    await handleEndConsultation();
+    return true;
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -1798,10 +1922,10 @@ export function ConsultationSession() {
 
   return (
     <div className="space-y-6 pb-6">
-      {/* Header with Patient Info and Controls */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Patient workspace header */}
+      <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
-          <Avatar className="w-16 h-16 border-2 border-border">
+            <Avatar className="w-14 h-14 border-2 border-emerald-100">
             <AvatarImage src={`https://ui-avatars.com/api/?name=${encodeURIComponent(displayPatient.fullName)}&background=random&color=ffffff&size=64`} alt={displayPatient.fullName} />
 
             <AvatarFallback className="bg-gradient-to-br from-[#00C4B3] to-[#10b981] text-white">
@@ -1814,21 +1938,21 @@ export function ConsultationSession() {
             </AvatarFallback>
           </Avatar>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">
+            <h1 className="text-xl font-bold text-foreground">
                 {displayPatient.fullName}
             </h1>
-            <div className="flex items-center gap-3 mt-1">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               <p className="text-sm text-muted-foreground">
                   {displayPatient.age ? `${displayPatient.age} years` : ""}{" "}
                   {displayPatient.gender ? `• ${displayPatient.gender}` : ""}{" "}
                   • ID: {displayPatient.patientId}
               </p>
-              <Badge
+              {displayPatient.condition && <Badge
                 variant="outline"
-                className="text-xs bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800"
+                className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
               >
                   {displayPatient.condition}
-              </Badge>
+              </Badge>}
             </div>
           </div>
 
@@ -1970,8 +2094,8 @@ export function ConsultationSession() {
             <Button
               onClick={async (e) => {
                 e.preventDefault();
-                await handleEndConsultation();
-                navigate("/doctor-workstation");
+                const completed = await requestEndConsultation();
+                if (completed) navigate("/doctor-workstation");
               }}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
             >
@@ -2066,7 +2190,7 @@ export function ConsultationSession() {
               <CardTitle className="text-xl flex flex-wrap items-center gap-2 justify-between">
                 <span className="flex items-center gap-2">
                   <SparklesIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  AI Health Analysis
+                  AI Clinical Insight
                   <Badge
                     variant="outline"
                     className="text-xs bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700"
@@ -2104,162 +2228,134 @@ export function ConsultationSession() {
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-2">{aiAnalysis.disclaimer}</p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent>
               {(aiAnalysis.insightsSource === "none" || aiAnalysis.insightsSource === "empty") && (
-                <div className="rounded-lg border border-dashed border-purple-300/80 bg-purple-50/40 dark:bg-purple-950/20 p-4 text-sm text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-purple-300/80 bg-purple-50/40 dark:bg-purple-950/20 p-4 text-sm text-muted-foreground mb-4">
                   {aiAnalysis.insightsSource === "none"
                     ? "No AI insights yet for this patient. They are generated when an appointment is booked or after check-in. Use Refresh insights to run them now."
                     : "Insights are still empty or pending. Try Refresh insights, or wait for the background job to finish after booking/check-in."}
                 </div>
               )}
 
-              {/* Risk Level */}
-              <div className="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-                    Risk Assessment
-                  </p>
-                  <Badge
-                    variant="outline"
-                    className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700"
-                  >
-                    {typeof aiAnalysis.riskLevel === "string"
-                      ? aiAnalysis.riskLevel.toUpperCase()
-                      : "—"}
-                  </Badge>
-                </div>
-                {aiAnalysis.riskAssessment ? (
-                  <p className="text-sm text-amber-900 dark:text-amber-100/90">{aiAnalysis.riskAssessment}</p>
-                ) : null}
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                  {aiAnalysis.insightsSource === "backend"
-                    ? `Model-estimated success outlook: ${aiAnalysis.successRate}`
-                    : "Run insights to see risk summary from cumulative records."}
-                </p>
-              </div>
+              <Tabs value={insightsTab} onValueChange={setInsightsTab}>
+                <TabsList className="grid w-full grid-cols-3 mb-4">
+                  <TabsTrigger value="overview">Overview</TabsTrigger>
+                  <TabsTrigger value="findings">Key Findings</TabsTrigger>
+                  <TabsTrigger value="recommendations">Care Plan</TabsTrigger>
+                </TabsList>
 
-              {/* Key Findings */}
-              <div>
-                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <AlertCircleIcon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  Key Findings
-                </h4>
-                {aiAnalysis.keyFindings.length === 0 ? (
-                  <p className="text-sm text-muted-foreground pl-1">
-                    {aiAnalysis.insightsSource === "backend"
-                      ? "No key findings returned."
-                      : "—"}
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {aiAnalysis.keyFindings.map((finding, index) => (
-                      <li
-                        key={index}
-                        className="flex items-start gap-2 p-3 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800"
+                <TabsContent value="overview" className="space-y-4 mt-0">
+                  <div className="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                        Risk Assessment
+                      </p>
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700"
                       >
-                        <ActivityIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                        {typeof aiAnalysis.riskLevel === "string"
+                          ? aiAnalysis.riskLevel.toUpperCase()
+                          : "—"}
+                      </Badge>
+                    </div>
+                    {aiAnalysis.riskAssessment ? (
+                      <p className="text-sm text-amber-900 dark:text-amber-100/90">
+                        {aiAnalysis.riskAssessment}
+                      </p>
+                    ) : null}
+                    {displayPatient.chiefComplaint ? (
+                      <p className="text-xs text-muted-foreground mt-3">
+                        <span className="font-semibold text-foreground">Chief complaint:</span>{" "}
+                        {displayPatient.chiefComplaint}
+                      </p>
+                    ) : null}
+                  </div>
 
-                        <span className="text-sm text-foreground">{finding}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                  {aiAnalysis.redFlags.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                        <AlertCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
+                        Red flags to consider
+                      </h4>
+                      <ul className="space-y-2">
+                        {aiAnalysis.redFlags.map((f, i) => (
+                          <li
+                            key={i}
+                            className="text-sm p-3 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
+                          >
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </TabsContent>
 
-              <Separator />
-
-              {/* AI Recommendations */}
-              <div>
-                <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                  <SparklesIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  AI Recommendations
-                </h4>
-                {aiAnalysis.recommendations.length === 0 ? (
-                  <p className="text-sm text-muted-foreground pl-1">
-                    {aiAnalysis.insightsSource === "backend"
-                      ? "No recommendations returned."
-                      : "—"}
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {aiAnalysis.recommendations.map((rec, index) => (
-                      <li
-                        key={index}
-                        className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
-                      >
-                        <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
-
-                        <span className="text-sm text-foreground">{rec}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {aiAnalysis.redFlags.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                      <AlertCircleIcon className="w-4 h-4 text-red-600 dark:text-red-400" />
-                      Red flags to consider
-                    </h4>
+                <TabsContent value="findings" className="space-y-3 mt-0">
+                  {aiAnalysis.keyFindings.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {aiAnalysis.insightsSource === "backend"
+                        ? "No key findings returned."
+                        : "—"}
+                    </p>
+                  ) : (
                     <ul className="space-y-2">
-                      {aiAnalysis.redFlags.map((f, i) => (
+                      {aiAnalysis.keyFindings.map((finding, index) => (
                         <li
-                          key={i}
-                          className="text-sm p-3 rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-200 dark:border-red-900"
+                          key={index}
+                          className="flex items-start gap-2 p-3 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800"
                         >
-                          {f}
+                          <ActivityIcon className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm text-foreground">{finding}</span>
                         </li>
                       ))}
                     </ul>
-                  </div>
-                </>
-              )}
+                  )}
+                </TabsContent>
 
-              {aiAnalysis.clinicalPearls.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground mb-3">Clinical pearls</h4>
+                <TabsContent value="recommendations" className="space-y-3 mt-0">
+                  {aiAnalysis.recommendations.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {aiAnalysis.insightsSource === "backend"
+                        ? "No recommendations returned."
+                        : "—"}
+                    </p>
+                  ) : (
                     <ul className="space-y-2">
-                      {aiAnalysis.clinicalPearls.map((p, i) => (
-                        <li key={i} className="text-sm text-muted-foreground">
-                          {p}
+                      {aiAnalysis.recommendations.map((rec, index) => (
+                        <li
+                          key={index}
+                          className="flex items-start gap-2 p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800"
+                        >
+                          <CheckCircleIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400 mt-0.5 flex-shrink-0" />
+                          <span className="text-sm text-foreground">{rec}</span>
                         </li>
                       ))}
                     </ul>
-                  </div>
-                </>
-              )}
-
-              {aiAnalysis.suggestedQuestions.length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground mb-3">
-                      Suggested questions for the patient
-                    </h4>
-                    <ul className="space-y-2">
-                      {aiAnalysis.suggestedQuestions.map((q, i) => (
-                        <li key={i} className="text-sm text-muted-foreground list-disc list-inside">
-                          {q}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </>
-              )}
+                  )}
+                  {displayPatient.carePlanSummary ? (
+                    <p className="text-sm text-muted-foreground pt-2 border-t">
+                      <span className="font-semibold text-foreground">Care plan:</span>{" "}
+                      {displayPatient.carePlanSummary}
+                    </p>
+                  ) : null}
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
+
+          <ClinicalTrendCards vitals={vitalsHistory} />
+          <ActiveProblemsCard problems={activeProblems} />
 
           {/* Recent Lab Results */}
           <LabResultsCard results={labResults} />
         </div>
 
-        {/* Right Column - Quick Info & Consultation Actions */}
-        <ConsultationSidebar
+        {/* Right Column - Quick actions, context, vitals, and notes */}
+        <div className="space-y-5">
+          <TodayVitalsCard vital={latestVitals} />
+          <ConsultationSidebar
           notes={notes}
           diagnosis={diagnosis}
           treatment={treatment}
@@ -2289,15 +2385,16 @@ export function ConsultationSession() {
           onDeletePrescriptionFile={handleDeletePrescriptionFile}
           isDeletingPrescription={isDeletingPrescription}
           onOpenDigitalPrescription={handleOpenDigitalPrescription}
-          digitalPrescriptions={digitalPrescriptionList}
-        />
+            digitalPrescriptions={digitalPrescriptionList}
+          />
+        </div>
       </div>
 
       {/* Patient Visit History Section - Bottom */}
-      <div className="mt-8">
+      <div className="mt-2">
         <PatientVisitHistory
           visits={visitHistory}
-          patientId={patient.id}
+          patientId={patient._id}
         />
       </div>
 
@@ -2316,7 +2413,7 @@ export function ConsultationSession() {
         <div
           className="fixed bottom-6 right-6 z-50 flex h-[min(100vh-5rem,36rem)] w-[min(100vw-1.5rem,26rem)] flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_25px_50px_-12px_rgba(15,23,42,0.35)] dark:border-slate-700/80 dark:bg-slate-950"
           role="dialog"
-          aria-label="AI Medical Assistant chat"
+          aria-label="Chart Data Finder"
         >
           <div className="relative shrink-0 border-b border-white/10 bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-700 px-4 py-3.5">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_55%)]" />
@@ -2326,8 +2423,11 @@ export function ConsultationSession() {
                   <BotIcon className="h-5 w-5 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold tracking-tight text-white">Chart assistant</h3>
-                  <p className="text-[11px] text-white/80">Patient chart &amp; visit history</p>
+                  <h3 className="text-sm font-semibold tracking-tight text-white">Chart Data Finder</h3>
+                  <p className="text-[11px] text-white/80 flex items-center gap-1">
+                    <Shield className="h-3 w-3" />
+                    De-identified chart search — no name sent to AI
+                  </p>
                 </div>
               </div>
               <Button
@@ -2347,9 +2447,27 @@ export function ConsultationSession() {
               <div className="flex gap-2.5 rounded-xl border border-violet-200/60 bg-white/90 p-3 shadow-sm dark:border-violet-900/40 dark:bg-slate-900/50">
                 <SparklesIcon className="mt-0.5 h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" />
                 <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                  Answers use <span className="font-medium text-slate-800 dark:text-slate-100">retrieved records</span>{" "}
-                  for this patient. Undocumented items will be called out.
+                  Search indexed clinical records — labs, meds, visits, notes. Only de-identified
+                  data is sent to AI.
                 </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "Latest abnormal lab results",
+                  "Current medications list",
+                  "Summarize last 3 visits",
+                  "Any allergy documented?",
+                ].map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setAiQuery(chip)}
+                    className="rounded-full border border-violet-200 bg-white px-3 py-1 text-[11px] text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:bg-slate-900 dark:text-violet-300"
+                  >
+                    {chip}
+                  </button>
+                ))}
               </div>
 
               {aiChatMessages.map((m, idx) => (
@@ -2374,6 +2492,19 @@ export function ConsultationSession() {
                     }`}
                   >
                     <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                    {m.role === "assistant" && m.sources && m.sources.length > 0 ? (
+                      <details className="mt-2 text-[11px] text-muted-foreground">
+                        <summary className="cursor-pointer font-medium">Sources</summary>
+                        <ul className="mt-1 space-y-1">
+                          {m.sources.map((source, sourceIdx) => (
+                            <li key={`${source.sourceLabel}-${sourceIdx}`}>
+                              <span className="font-medium">{source.sourceLabel || "Chart record"}</span>
+                              {source.excerpt ? `: ${source.excerpt}` : ""}
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -2401,7 +2532,7 @@ export function ConsultationSession() {
           <div className="shrink-0 border-t border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
             <div className="flex items-end gap-2">
               <Textarea
-                placeholder="Ask about history, labs, meds…"
+                placeholder="Search chart data: labs, meds, visits…"
                 value={aiQuery}
                 onChange={(e) => setAiQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -2511,6 +2642,38 @@ export function ConsultationSession() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={endConsultRxPromptOpen} onOpenChange={setEndConsultRxPromptOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsent prescription</AlertDialogTitle>
+            <AlertDialogDescription>
+              This consultation has a saved prescription that has not been sent on WhatsApp yet.
+              Open it to send or print, or end the consultation without sending.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setEndConsultRxPromptOpen(false);
+                handleOpenDigitalPrescription(unsentPrescriptionDraft?._id);
+              }}
+            >
+              Open prescription to send
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={async () => {
+                setEndConsultRxPromptOpen(false);
+                await handleEndConsultation();
+                navigate("/doctor-workstation");
+              }}
+            >
+              End without sending
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <WritePrescriptionPanel
         open={digitalPrescriptionOpen}

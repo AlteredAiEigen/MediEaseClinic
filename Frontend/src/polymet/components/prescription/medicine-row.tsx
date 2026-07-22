@@ -16,7 +16,7 @@ export interface MedicineEntry {
   dosageAfternoon: number;
   dosageNight: number;
   timingFreqDuration: string;
-  quantity: number;
+  quantity: string;
 }
 
 interface MedicineRowProps {
@@ -26,6 +26,11 @@ interface MedicineRowProps {
   onRemove: (id: string) => void;
   language: "en" | "hi";
   readOnly?: boolean;
+  fieldErrors?: {
+    composition?: string;
+    quantity?: string;
+    dosage?: string;
+  };
 }
 
 export function PrescriptionMedicineRow({
@@ -35,6 +40,7 @@ export function PrescriptionMedicineRow({
   onRemove,
   language,
   readOnly = false,
+  fieldErrors,
 }: MedicineRowProps) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showTimingPresets, setShowTimingPresets] = useState(false);
@@ -249,11 +255,16 @@ export function PrescriptionMedicineRow({
             <Input
               value={medicine.composition}
               onChange={(e) => onChange(medicine.id, "composition", e.target.value)}
-              placeholder="Composition"
-              className="h-6 text-[10px] text-muted-foreground mt-1 border-dashed"
+              placeholder="Composition *"
+              className={`h-6 text-[10px] text-muted-foreground mt-1 border-dashed ${
+                fieldErrors?.composition ? "border-destructive" : ""
+              }`}
               readOnly={readOnly}
               disabled={readOnly}
             />
+            {fieldErrors?.composition ? (
+              <p className="text-[10px] text-destructive mt-0.5">{fieldErrors.composition}</p>
+            ) : null}
           </div>
         </div>
       </td>
@@ -266,7 +277,9 @@ export function PrescriptionMedicineRow({
             onChange={(e) =>
               onChange(medicine.id, "dosageMorning", parseInt(e.target.value) || 0)
             }
-            className="h-8 w-10 text-xs text-center p-0"
+            className={`h-8 w-10 text-xs text-center p-0 ${
+              fieldErrors?.dosage ? "border-destructive" : ""
+            }`}
             readOnly={readOnly}
             disabled={readOnly}
           />
@@ -278,7 +291,9 @@ export function PrescriptionMedicineRow({
             onChange={(e) =>
               onChange(medicine.id, "dosageAfternoon", parseInt(e.target.value) || 0)
             }
-            className="h-8 w-10 text-xs text-center p-0"
+            className={`h-8 w-10 text-xs text-center p-0 ${
+              fieldErrors?.dosage ? "border-destructive" : ""
+            }`}
             readOnly={readOnly}
             disabled={readOnly}
           />
@@ -290,11 +305,16 @@ export function PrescriptionMedicineRow({
             onChange={(e) =>
               onChange(medicine.id, "dosageNight", parseInt(e.target.value) || 0)
             }
-            className="h-8 w-10 text-xs text-center p-0"
+            className={`h-8 w-10 text-xs text-center p-0 ${
+              fieldErrors?.dosage ? "border-destructive" : ""
+            }`}
             readOnly={readOnly}
             disabled={readOnly}
           />
         </div>
+        {fieldErrors?.dosage ? (
+          <p className="text-[10px] text-destructive mt-0.5">{fieldErrors.dosage}</p>
+        ) : null}
       </td>
       <td className="p-2 align-top">
         <div className="relative" ref={timingWrapRef}>
@@ -359,14 +379,25 @@ export function PrescriptionMedicineRow({
       </td>
       <td className="p-2 align-top">
         <Input
-          type="number"
-          min={0}
+          type="text"
+          inputMode="numeric"
           value={medicine.quantity}
-          onChange={(e) => onChange(medicine.id, "quantity", parseInt(e.target.value) || 0)}
-          className="h-8 w-16 text-xs text-center"
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "" || /^\d+$/.test(raw)) {
+              onChange(medicine.id, "quantity", raw);
+            }
+          }}
+          placeholder="Qty"
+          className={`h-8 w-16 text-xs text-left ${
+            fieldErrors?.quantity ? "border-destructive" : ""
+          }`}
           readOnly={readOnly}
           disabled={readOnly}
         />
+        {fieldErrors?.quantity ? (
+          <p className="text-[10px] text-destructive mt-0.5">{fieldErrors.quantity}</p>
+        ) : null}
       </td>
       <td className="p-2 w-8 align-top">
         <Button

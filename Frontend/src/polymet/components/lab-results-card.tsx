@@ -1,5 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { FileTextIcon, FlaskConicalIcon, ExternalLinkIcon } from "lucide-react";
 
 interface LabResult {
   name: string;
@@ -7,6 +14,9 @@ interface LabResult {
   date: string;
   status: "normal" | "high" | "low";
   url?: string;
+  summary?: string;
+  abnormalCount?: number;
+  testCount?: number;
 }
 
 interface LabResultsCardProps {
@@ -15,14 +25,14 @@ interface LabResultsCardProps {
 }
 
 export function LabResultsCard({ results = [], className = "" }: LabResultsCardProps) {
-  const getStatusColor = (status: string) => {
+  const getStatusStyle = (status: string) => {
     switch (status) {
       case "high":
-        return "text-amber-600 dark:text-amber-400";
+        return "border-amber-200 bg-amber-50 text-amber-800";
       case "low":
-        return "text-blue-600 dark:text-blue-400";
+        return "border-blue-200 bg-blue-50 text-blue-800";
       default:
-        return "text-emerald-600 dark:text-emerald-400";
+        return "border-emerald-200 bg-emerald-50 text-emerald-800";
     }
   };
 
@@ -38,49 +48,65 @@ export function LabResultsCard({ results = [], className = "" }: LabResultsCardP
   };
 
   return (
-    <Card className={`border-border shadow-md ${className}`}>
-      <CardHeader className="pb-4">
-        <CardTitle className="text-base">Recent Lab Results</CardTitle>
+    <Card className={`border-slate-200 shadow-sm ${className}`}>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <FlaskConicalIcon className="h-4 w-4 text-teal-600" />
+          Recent Lab Results
+          {results.length > 0 && <Badge variant="secondary" className="ml-auto font-normal">{results.length} reports</Badge>}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {results.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No lab results available.</p>
+          <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            No lab reports are available for this patient.
+          </div>
         ) : (
-          <div className="space-y-3">
+          <Accordion type="single" collapsible className="overflow-hidden rounded-lg border">
             {results.map((result, index) => (
-              <div key={index}>
-                {index > 0 && <Separator className="mb-3" />}
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {result.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{result.date}</p>
+              <AccordionItem key={`${result.name}-${result.date}-${index}`} value={`report-${index}`} className="last:border-b-0">
+                <AccordionTrigger className="px-3 py-3 no-underline hover:bg-slate-50 hover:no-underline">
+                  <div className="flex min-w-0 flex-1 items-center gap-3 pr-3 text-left">
+                    <div className="rounded-md bg-teal-50 p-2">
+                      <FileTextIcon className="h-4 w-4 text-teal-700" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-foreground">{result.name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{result.date}</p>
+                    </div>
+                    <Badge variant="outline" className={`shrink-0 text-xs ${getStatusStyle(result.status)}`}>
+                      {result.abnormalCount
+                        ? `${result.abnormalCount} abnormal`
+                        : getStatusText(result.status)}
+                    </Badge>
                   </div>
-                  <div className="text-right">
-                    <p
-                      className={`text-sm font-bold ${getStatusColor(result.status)}`}
-                    >
-                      {result.value}
-                    </p>
-                    <p className={`text-xs ${getStatusColor(result.status)}`}>
-                      {getStatusText(result.status)}
-                    </p>
+                </AccordionTrigger>
+                <AccordionContent className="border-t bg-slate-50/60 px-4 pt-3">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      {result.testCount != null && <Badge variant="secondary">{result.testCount} parsed tests</Badge>}
+                      {result.value && <Badge variant="secondary">{result.value}</Badge>}
+                    </div>
+                    {result.summary ? (
+                      <p className="text-sm leading-6 text-slate-700">{result.summary}</p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No parsed report summary is available.</p>
+                    )}
                     {result.url && (
                       <a
                         href={result.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-teal-600 hover:underline"
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:text-teal-900 hover:underline"
                       >
-                        View report
+                        Open full report <ExternalLinkIcon className="h-3.5 w-3.5" />
                       </a>
                     )}
                   </div>
-                </div>
-              </div>
+                </AccordionContent>
+              </AccordionItem>
             ))}
-          </div>
+          </Accordion>
         )}
       </CardContent>
     </Card>

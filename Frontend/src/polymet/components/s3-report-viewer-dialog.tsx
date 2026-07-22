@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,9 +23,13 @@ import {
   SaveIcon,
   HistoryIcon,
   FileDownIcon,
-  SparklesIcon,
 } from "lucide-react";
+import {
+  LabReportComparisonView,
+  type LabComparisonData,
+} from "@/polymet/components/lab-report-comparison-view";
 import { useAuth } from "@/context/auth-context";
+import { get } from "@/lib/api-client";
 
 interface ParsedLabTestRow {
   name?: string;
@@ -109,7 +113,94 @@ export function S3ReportViewerDialog({
   const [activeTab, setActiveTab] = useState("results");
   const [doctorComment, setDoctorComment] = useState("");
   const [savedComments, setSavedComments] = useState<DoctorComment[]>([]);
-  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonData, setComparisonData] = useState<LabComparisonData | null>(null);
+  const [selectedPriorReportId, setSelectedPriorReportId] = useState<string | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const reportId = report?._id;
+  const patientId = patient?._id;
+
+  // Fresh presigned URL on each open (list URLs expire; inline mode for iframe)
+  useEffect(() => {
+    if (!open || !reportId) {
+      setPdfUrl(null);
+      setPdfError(null);
+      setPdfLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const loadPdfUrl = async () => {
+      setPdfLoading(true);
+      setPdfError(null);
+      try {
+        const response = await get<{ presignedUrl?: string }>(
+          `/api/s3-reports/${encodeURIComponent(reportId)}/presigned-url?inline=1`,
+        );
+        if (cancelled) return;
+        if (response.success && response.data?.presignedUrl) {
+          setPdfUrl(response.data.presignedUrl);
+        } else {
+          setPdfUrl(report?.presignedUrl ?? null);
+          if (!report?.presignedUrl) {
+            setPdfError("Unable to load report file.");
+          }
+        }
+      } catch {
+        if (!cancelled) {
+          setPdfUrl(report?.presignedUrl ?? null);
+          setPdfError(report?.presignedUrl ? null : "Unable to load report file.");
+        }
+      } finally {
+        if (!cancelled) setPdfLoading(false);
+      }
+    };
+    void loadPdfUrl();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, reportId, report?.presignedUrl]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "comparison" || !reportId || !patientId) return;
+    let cancelled = false;
+    const loadComparison = async () => {
+      setComparisonLoading(true);
+      try {
+        const params = new URLSearchParams({ reportId });
+        if (selectedPriorReportId) {
+          params.set("priorReportId", selectedPriorReportId);
+        }
+        const response = await get<LabComparisonData>(
+          `/api/s3-reports/patient/${encodeURIComponent(patientId)}/compare?${params.toString()}`,
+        );
+        if (!cancelled && response.success && response.data) {
+          setComparisonData(response.data);
+          if (!selectedPriorReportId && response.data.selectedPriorReportId) {
+            setSelectedPriorReportId(response.data.selectedPriorReportId);
+          }
+        }
+      } catch {
+        if (!cancelled) setComparisonData({ comparisons: [], previousReportDate: null });
+      } finally {
+        if (!cancelled) setComparisonLoading(false);
+      }
+    };
+    void loadComparison();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, activeTab, reportId, patientId, selectedPriorReportId]);
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedPriorReportId(null);
+      setComparisonData(null);
+      setActiveTab("results");
+    }
+  }, [open, reportId]);
 
   if (!report) return null;
 
@@ -133,35 +224,30 @@ export function S3ReportViewerDialog({
     }
   };
 
-  const handleGeneratePDF = () => {
-    setIsGeneratingPDF(true);
-    // Simulate PDF generation
-    setTimeout(() => {
-      setIsGeneratingPDF(false);
-      // In a real app, this would trigger actual PDF generation
-      alert("PDF generated successfully! Download will start shortly.");
-    }, 2000);
-  };
-
-  const handleDownload = () => {
-    if (report.presignedUrl) {
-      window.open(report.presignedUrl, '_blank');
+  const handleViewPdf = () => {
+    const url = pdfUrl || report.presignedUrl;
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 
-  const isPDF = report.documentName.toLowerCase().endsWith('.pdf');
-  const reportDate = new Date(report.createdAt).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
+  const handleDownload = () => {
+    handleViewPdf();
+  };
+
+  const isPDF = report.documentName.toLowerCase().endsWith(".pdf");
+  const reportDate = new Date(report.createdAt).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
   const parsed = report.parsedLabReport;
   const hasParsedTests = Boolean(parsed?.tests && parsed.tests.length > 0);
   const sourceLabel = report.metadata?.uploadedByUserId ? "Manual upload" : "Email upload";
-
+  const displayPdfUrl = pdfUrl || report.presignedUrl;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col">
+      <DialogContent className="max-w-5xl h-[90vh] p-0 flex flex-col z-[200]">
         <DialogHeader className="p-6 pb-4 flex-shrink-0">
           <div className="flex items-start justify-between">
             <div className="flex items-start gap-4">
@@ -201,7 +287,7 @@ export function S3ReportViewerDialog({
                 size="sm"
                 className="gap-2"
                 onClick={handleDownload}
-                disabled={!report.presignedUrl}
+                disabled={!displayPdfUrl && !pdfLoading}
               >
                 <DownloadIcon className="w-4 h-4" />
                 Download
@@ -209,21 +295,12 @@ export function S3ReportViewerDialog({
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white border-0 hover:from-teal-600 hover:to-emerald-600"
-                onClick={handleGeneratePDF}
-                disabled={isGeneratingPDF}
+                className="gap-2"
+                onClick={handleViewPdf}
+                disabled={!displayPdfUrl && !pdfLoading}
               >
-                {isGeneratingPDF ? (
-                  <>
-                    <SparklesIcon className="w-4 h-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <FileDownIcon className="w-4 h-4" />
-                    Generate PDF
-                  </>
-                )}
+                <FileDownIcon className="w-4 h-4" />
+                View PDF
               </Button>
             </div>
           </div>
@@ -397,18 +474,22 @@ export function S3ReportViewerDialog({
                     </div>
                   )}
 
-                  {report.presignedUrl ? (
+                  {pdfLoading ? (
+                    <div className="text-center py-12 border border-dashed rounded-lg text-muted-foreground">
+                      Loading report PDF…
+                    </div>
+                  ) : displayPdfUrl ? (
                     <div className="w-full border rounded-lg overflow-hidden bg-muted/20">
                       {isPDF ? (
                         <iframe
-                          src={report.presignedUrl}
+                          src={displayPdfUrl}
                           className="w-full h-[600px]"
                           title={report.documentName}
                         />
                       ) : (
                         <div className="flex items-center justify-center p-8">
                           <img
-                            src={report.presignedUrl}
+                            src={displayPdfUrl}
                             alt={report.documentName}
                             className="max-w-full max-h-[600px] object-contain"
                           />
@@ -418,9 +499,14 @@ export function S3ReportViewerDialog({
                   ) : (
                     <div className="text-center py-12 border border-dashed rounded-lg">
                       <AlertCircleIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">
-                        Unable to load report. Please try again later.
+                      <p className="text-muted-foreground mb-3">
+                        {pdfError || "Unable to load report preview."}
                       </p>
+                      {hasParsedTests && (
+                        <p className="text-sm text-muted-foreground">
+                          Parsed test results are shown above. Use View PDF if the preview fails.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -439,15 +525,13 @@ export function S3ReportViewerDialog({
 
               {/* Comparison Tab */}
               <TabsContent value="comparison" className="p-6 space-y-6 mt-0">
-                <div className="text-center py-12">
-                  <HistoryIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Compare Results</h3>
-                  <p className="text-muted-foreground">
-                    {hasParsedTests
-                      ? "Trend comparison across visits is not implemented yet. Use Test Results for the parsed table and PDF."
-                      : "Comparison requires structured lab data. After AI parsing completes, open this report again."}
-                  </p>
-                </div>
+                <LabReportComparisonView
+                  data={comparisonData}
+                  loading={comparisonLoading}
+                  hasParsedTests={hasParsedTests}
+                  selectedPriorReportId={selectedPriorReportId}
+                  onSelectPriorReport={setSelectedPriorReportId}
+                />
               </TabsContent>
 
               {/* Comments Tab */}

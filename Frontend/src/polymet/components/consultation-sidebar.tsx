@@ -185,103 +185,11 @@ export function ConsultationSidebar({
 
   return (
     <div className={`space-y-6 ${className}`}>
-      {/* Quick Medical Info */}
-      <Card className="border-border shadow-md">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Quick Info</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Allergies */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
-              Allergies
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {(allergies.length ? allergies : ["None"]).map((item, index) => (
-                <Badge
-                  key={`${item}-${index}`}
-                  variant="outline"
-                  className="text-xs bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800"
-                >
-                  {item}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Current Medications */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
-              Current Medications
-            </p>
-            <div className="space-y-1.5">
-              {(medications.length ? medications : ["No medications recorded"]).map(
-                (med, idx) => {
-                  let label: string;
-
-                  if (typeof med === "string") {
-                    label = med;
-                  } else if (med && typeof med === "object") {
-                    const parts: string[] = [];
-                    if (med.name) parts.push(med.name);
-                    if (med.dosage) parts.push(med.dosage);
-                    if (med.frequency) parts.push(`x${med.frequency}`);
-                    if (med.duration) parts.push(med.duration);
-                    if (!parts.length && med.instructions) {
-                      parts.push(med.instructions);
-                    }
-                    label = parts.join(" • ") || "Medication";
-                  } else {
-                    label = "Medication";
-                  }
-
-                  const keyBase =
-                    typeof med === "string" ? med : med?.name || "medication";
-
-                  return (
-                    <div
-                      key={`${keyBase}-${idx}`}
-                      className="text-xs text-foreground"
-                    >
-                      • {label}
-                    </div>
-                  );
-                }
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Current Condition */}
-          <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
-              Current Condition
-            </p>
-            <div className="text-sm text-foreground font-semibold">
-              {condition}
-            </div>
-            {carePlanSummary && (
-              <p className="text-xs text-muted-foreground mt-1.5">{carePlanSummary}</p>
-            )}
-            {followUpPlan && (
-              <p className="text-xs text-muted-foreground mt-1.5">
-                <span className="font-semibold text-foreground">Follow-up:</span>{" "}
-                {followUpPlan}
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Prescription and Tests Section */}
-      <Card className="border-border shadow-md">
+      {/* Consultation Actions — primary actions first */}
+      <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm">Consultation Actions</CardTitle>
-            {/* Common Upload Button for Prescription and Tests */}
             {appointmentId && onPrescriptionFileUpload && (
                 <div className="flex flex-col items-end gap-1">
                   <Button
@@ -300,7 +208,7 @@ export function ConsultationSidebar({
                     ) : (
                       <>
                         <UploadIcon className="w-3 h-3 mr-1.5" />
-                        Upload Prescription
+                        Upload Document
                       </>
                     )}
                   </Button>
@@ -313,10 +221,8 @@ export function ConsultationSidebar({
             )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Buttons Side by Side */}
-          <div className="grid grid-cols-2 gap-3">
-            {/* Write Prescription — opens digital prescription app in a new window when wired */}
+        <CardContent className="space-y-3">
+          <div className="grid gap-2">
             <button
               type="button"
               onClick={() => {
@@ -326,32 +232,27 @@ export function ConsultationSidebar({
                 }
                 setPrescriptionOpen(!prescriptionOpen);
               }}
-              className={`relative flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
+              className={`relative flex items-center gap-3 p-3 text-left rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
                 prescriptionOpen && !onOpenDigitalPrescription
                   ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-300 dark:border-purple-700"
                   : "bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800"
               }`}
             >
-              <PillIcon className="w-6 h-6 text-purple-600 dark:text-purple-400 mb-2" />
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">
-                Write Prescription
-              </span>
+              <PillIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <span><span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Write Prescription / Tests</span><span className="text-xs text-muted-foreground">Medications, tests & imaging</span></span>
             </button>
 
-            {/* Prescribe Tests Button */}
             <button
               type="button"
               onClick={() => setTestsOpen(!testsOpen)}
-              className={`relative flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
+              className={`relative flex items-center gap-3 p-3 text-left rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
                 testsOpen
                   ? "bg-amber-100 dark:bg-amber-900/30 border-2 border-amber-300 dark:border-amber-700"
                   : "bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800"
               }`}
             >
-              <FlaskConicalIcon className="w-6 h-6 text-amber-600 dark:text-amber-400 mb-2" />
-              <span className="text-xs font-medium text-gray-700 dark:text-gray-300 text-center">
-                Prescribe Tests
-              </span>
+              <FlaskConicalIcon className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+              <span><span className="block text-sm font-medium text-gray-700 dark:text-gray-300">Prescribe Tests</span><span className="text-xs text-muted-foreground">Investigations and imaging</span></span>
             </button>
           </div>
 
@@ -421,7 +322,6 @@ export function ConsultationSidebar({
             </Button>
           )}
 
-          {/* Prescription Text Box */}
           {prescriptionOpen && (
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-muted-foreground">
@@ -436,7 +336,6 @@ export function ConsultationSidebar({
             </div>
           )}
 
-          {/* Tests Text Box - only show prescribed tests */}
           {testsOpen && onPrescribedTestChange && (
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-muted-foreground">
@@ -450,6 +349,51 @@ export function ConsultationSidebar({
               />
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Quick Medical Info */}
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm">Quick Info</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+              Allergies
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {allergies.length ? allergies.map((item, index) => (
+                <Badge
+                  key={`${item}-${index}`}
+                  variant="outline"
+                  className="text-xs bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800"
+                >
+                  {item}
+                </Badge>
+              )) : <p className="text-xs text-muted-foreground">No allergy recorded.</p>}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+              Current Condition
+            </p>
+            <div className="text-sm text-foreground font-semibold">
+              {condition || "No current condition documented."}
+            </div>
+            {carePlanSummary && (
+              <p className="text-xs text-muted-foreground mt-1.5">{carePlanSummary}</p>
+            )}
+            {followUpPlan && (
+              <p className="text-xs text-muted-foreground mt-1.5">
+                <span className="font-semibold text-foreground">Follow-up:</span>{" "}
+                {followUpPlan}
+              </p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

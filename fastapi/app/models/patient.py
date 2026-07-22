@@ -51,9 +51,9 @@ class MedicalHistoryEntry(BaseModel):
 
 class PatientInsights(BaseModel):
     """AI-driven patient insights used by dashboards."""
-    riskAssessment: Optional[str] = "Success rate in similar cases: 94%"
-    riskLevel: str = "medium"
-    successRate: Optional[str] = "94%"
+    riskAssessment: Optional[str] = None
+    riskLevel: Optional[str] = None
+    successRate: Optional[str] = None
     keyFindings: List[str] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
     lastUpdatedAt: Optional[str] = None
@@ -167,6 +167,7 @@ class PatientResponse(BaseModel):
     carePlanSummary: Optional[str] = None
     followUpPlan: Optional[str] = None
     insights: Optional[PatientInsights] = None
+    insightsMeta: Optional[Dict[str, Union[str, int, None]]] = None
     agreed_to_data_storage: bool
     consent_whatsapp: bool = False
     consent_email: bool = False
@@ -248,8 +249,17 @@ async def patient_helper(patient: dict) -> dict:
         allergy_value = []
 
     raw_insights = patient.get("insights") or {}
-    insights = deepcopy(DEFAULT_PATIENT_INSIGHTS)
-    insights.update({k: v for k, v in raw_insights.items() if v is not None})
+    # Insights are clinical data. Do not fill an absent result with plausible
+    # defaults: the consultation dashboard must be able to render an honest
+    # empty/pending state when no insight has been generated.
+    insights = {
+        "riskAssessment": raw_insights.get("riskAssessment"),
+        "riskLevel": raw_insights.get("riskLevel"),
+        "successRate": raw_insights.get("successRate"),
+        "keyFindings": [],
+        "recommendations": [],
+        "lastUpdatedAt": raw_insights.get("lastUpdatedAt"),
+    }
 
     key_findings = raw_insights.get("keyFindings")
     if isinstance(key_findings, list):
@@ -294,6 +304,10 @@ async def patient_helper(patient: dict) -> dict:
         "carePlanSummary": patient.get("carePlanSummary", ""),
         "followUpPlan": patient.get("followUpPlan", ""),
         "insights": insights,
+        "insightsMeta": patient.get("insightsMeta") or {
+            "status": "empty",
+            "lastGeneratedAt": None,
+        },
         "presentInClinic": patient.get("presentInClinic", False),
         "emergencyContact": patient.get("emergencyContact"),
         "emergencyContactPhone": patient.get("emergencyContactPhone"),

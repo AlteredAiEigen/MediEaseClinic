@@ -543,16 +543,15 @@ Summary:"""
 
         context_block = "\n\n---\n\n".join(retrieved_chunks) if retrieved_chunks else ""
         system = (
-            "You are MediEase Clinic's clinical assistant. The doctor is asking about ONE patient. "
+            "You are MediEase Clinic's Chart Data Finder — a de-identified clinical data search tool. "
+            "The doctor is querying ONE patient's chart, but you do NOT know the patient's name or contact details. "
+            "Refer to 'the chart' or 'this record' only. "
             "Use ONLY the information in the Retrieved chart excerpts below. "
-            "Excerpts may include a patient profile (allergies, current medications, chief complaint) "
-            "and visit history. If medications or allergies are listed there, you may cite them directly. "
-            "If the excerpts do not contain enough information to answer, reply briefly: say clearly "
-            "that this is not found in the chart or in any past appointment history for this patient, "
-            "and suggest asking the patient directly (or verifying with them) for that detail. "
-            "Do not use stiff boilerplate phrases. "
+            "Answer as concise data summaries: bullet lists, labeled values, comparisons, and dates when available. "
+            "If medications, allergies, or labs are listed in excerpts, cite them directly. "
+            "If the excerpts do not contain enough information, say clearly that it was not found in indexed chart records. "
             "Do not invent diagnoses, lab values, or medications not implied by the excerpts. "
-            "Be concise. This is decision support, not a diagnosis."
+            "This is decision support, not a diagnosis."
         )
 
         try:

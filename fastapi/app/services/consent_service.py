@@ -32,7 +32,7 @@ class ConsentService:
     
     def _get_email_verification_html(self, patient_name: str, verification_url: str) -> str:
         """Generate HTML email template for email verification."""
-        logo_url = f"{settings.frontend_base_url}/favicon.svg"
+        logo_url = f"{settings.frontend_base_url}/landing-assets/mediease-logo.png"
         
         return f"""
 <!DOCTYPE html>
@@ -167,7 +167,7 @@ class ConsentService:
         consent_url: str
     ) -> str:
         """Generate HTML email template for appointment consent."""
-        logo_url = f"{settings.frontend_base_url}/favicon.svg"
+        logo_url = f"{settings.frontend_base_url}/landing-assets/mediease-logo.png"
         
         return f"""
 <!DOCTYPE html>

@@ -6,8 +6,55 @@ type DigitalRxMedicine = {
   dosageAfternoon: number;
   dosageNight: number;
   timingFreqDuration: string;
-  quantity: number;
+  quantity: string;
 };
+
+export type MedicineFieldErrors = {
+  composition?: string;
+  quantity?: string;
+  dosage?: string;
+};
+
+export function parseMedicineQuantity(quantity: string): number {
+  if (!quantity.trim()) return 0;
+  const parsed = parseInt(quantity, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function validateMedicineRow(m: DigitalRxMedicine): MedicineFieldErrors {
+  const errors: MedicineFieldErrors = {};
+  if (!m.name.trim()) return errors;
+
+  if (!m.composition.trim()) {
+    errors.composition = "Composition is required";
+  }
+
+  if (parseMedicineQuantity(m.quantity) <= 0) {
+    errors.quantity = "Quantity is required";
+  }
+
+  const hasDosagePattern =
+    m.dosageMorning > 0 || m.dosageAfternoon > 0 || m.dosageNight > 0;
+  if (!hasDosagePattern && !m.timingFreqDuration.trim()) {
+    errors.dosage = "Enter dosage (M-A-N) or timing / frequency";
+  }
+
+  return errors;
+}
+
+export function validatePrescriptionMedicines(
+  medicines: DigitalRxMedicine[],
+): Record<number, MedicineFieldErrors> {
+  const fieldErrors: Record<number, MedicineFieldErrors> = {};
+  medicines.forEach((medicine, index) => {
+    if (!medicine.name.trim()) return;
+    const rowErrors = validateMedicineRow(medicine);
+    if (Object.keys(rowErrors).length > 0) {
+      fieldErrors[index] = rowErrors;
+    }
+  });
+  return fieldErrors;
+}
 
 export type DigitalRxSavePayload = {
   patientMongoId: string;
@@ -47,8 +94,8 @@ export function mapDigitalRxMedicine(m: DigitalRxMedicine) {
     duration,
     instructions: timing,
     medicineType: m.type,
-    composition: m.composition || undefined,
-    quantity: m.quantity > 0 ? m.quantity : undefined,
+    composition: m.composition.trim(),
+    quantity: parseMedicineQuantity(m.quantity) > 0 ? parseMedicineQuantity(m.quantity) : undefined,
   };
 }
 
@@ -143,6 +190,6 @@ export function unmapMedicationToMedicineEntry(
     dosageAfternoon,
     dosageNight,
     timingFreqDuration,
-    quantity: med.quantity ?? 60,
+    quantity: med.quantity != null && med.quantity > 0 ? String(med.quantity) : "",
   };
 }

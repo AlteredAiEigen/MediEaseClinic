@@ -13,6 +13,7 @@ from app.services.ai_audit_service import log_ai_event
 from app.services.ai_service import ai_service
 from app.services.patient_ai_chat_service import patient_ai_chat_service
 from app.services.patient_rag_service import patient_rag_service
+from app.utils.pii_sanitizer import redact_patient_identifiers
 from app.utils.response import success_response
 
 logger = logging.getLogger(__name__)
@@ -88,27 +89,50 @@ async def chat_with_assistant(
             from app.database import Database
 
             db = Database.get_database()
+            patient_doc = await db.patients.find_one({"_id": ObjectId(request.patient_id)})
             nchunks = await db.patient_rag_chunks.count_documents({"patientId": request.patient_id})
             if nchunks == 0:
                 await patient_rag_service.sync_patient_chunks(request.patient_id)
         except Exception as exc:
             logger.warning("RAG auto-sync skipped: %s", exc)
+            patient_doc = None
 
-        chunks = await patient_rag_service.search(request.patient_id, text, top_k=12)
-        chunk_texts = [c for c, _ in chunks if c]
+        source_hits = await patient_rag_service.search_with_sources(
+            request.patient_id, text, top_k=12
+        )
+        chunk_texts = [h["text"] for h in source_hits if h.get("text")]
 
         extra = ""
         if request.context:
-            extra = f"\n\nSession context (doctor-entered):\n{request.context}"
+            sanitized_context = redact_patient_identifiers(request.context, patient_doc)
+            extra = f"\n\nSession context (doctor-entered, de-identified):\n{sanitized_context}"
 
-        try:
-            answer = await ai_service.chat_consultation_rag(
-                user_message=text + extra,
-                retrieved_chunks=chunk_texts,
-                prior_messages=prior,
+        sanitized_query = redact_patient_identifiers(text, patient_doc)
+
+        if not chunk_texts:
+            answer = (
+                "No matching records in the de-identified chart index for this query. "
+                "Try rephrasing, or verify the data was uploaded or indexed after check-in."
             )
-        except HTTPException:
-            raise
+        else:
+            try:
+                answer = await ai_service.chat_consultation_rag(
+                    user_message=sanitized_query + extra,
+                    retrieved_chunks=chunk_texts,
+                    prior_messages=prior,
+                )
+            except HTTPException:
+                raise
+
+        sources = [
+            {
+                "sourceType": hit.get("sourceType"),
+                "sourceLabel": hit.get("sourceLabel"),
+                "excerpt": hit.get("excerpt"),
+            }
+            for hit in source_hits[:6]
+            if hit.get("excerpt")
+        ]
 
         await patient_ai_chat_service.append_pair(conv_id, text, answer)
 
@@ -121,7 +145,7 @@ async def chat_with_assistant(
             conversation_id=conv_id,
             prompt_excerpt=text[:4000],
             response_excerpt=answer[:8000],
-            metadata={"chunkCount": len(chunk_texts)},
+            metadata={"chunkCount": len(chunk_texts), "sourceCount": len(sources)},
         )
 
         return success_response(
@@ -129,6 +153,7 @@ async def chat_with_assistant(
             data={
                 "response": answer,
                 "conversationId": conv_id,
+                "sources": sources,
             },
         )
 
