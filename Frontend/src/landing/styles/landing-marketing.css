@@ -1,0 +1,135 @@
+/* ============================================================
+   MediEase Marketing Landing — isolated CSS
+   Scoped under .landing-marketing so it never bleeds into
+   the clinic dashboard (shadcn tokens are on :root).
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap");
+
+/* ── Design tokens ── */
+.landing-marketing {
+  --bone:       oklch(0.985 0.012 230);
+  --cream:      oklch(0.96  0.03  80);
+  --ink:        oklch(0.18  0.05  250);
+  --clay:       oklch(0.72  0.17  40);
+  --apricot:    oklch(0.82  0.14  55);
+  --blush:      oklch(0.84  0.12  15);
+  --teal-deep:  oklch(0.52  0.16  195);
+  --teal-soft:  oklch(0.82  0.11  195);
+  --mint:       oklch(0.90  0.09  165);
+  --sky:        oklch(0.86  0.09  240);
+  --moss:       oklch(0.62  0.13  160);
+  --violet:     oklch(0.62  0.19  285);
+  --plum:       oklch(0.45  0.17  305);
+  --butter:     #f5e58a;
+
+  /* Map shadcn semantic tokens to marketing palette */
+  --background: 210 40% 98%;
+  --foreground: 230 30% 18%;
+  --muted-foreground: 230 15% 42%;
+  --card: 210 30% 99%;
+  --border: 220 20% 90%;
+
+  background-color: var(--bone);
+  color: var(--ink);
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── font-display utility ── */
+.landing-marketing .font-display,
+.landing-marketing [class*="font-display"] {
+  font-family: "Instrument Serif", ui-serif, Georgia, serif;
+}
+
+/* ── Color utilities scoped to marketing ── */
+.landing-marketing .text-teal-deep   { color: var(--teal-deep); }
+.landing-marketing .text-teal-soft   { color: var(--teal-soft); }
+.landing-marketing .text-bone        { color: var(--bone); }
+.landing-marketing .text-cream       { color: var(--cream); }
+.landing-marketing .text-ink         { color: var(--ink); }
+.landing-marketing .text-clay        { color: var(--clay); }
+.landing-marketing .text-apricot     { color: var(--apricot); }
+.landing-marketing .text-moss        { color: var(--moss); }
+.landing-marketing .text-mint        { color: var(--mint); }
+.landing-marketing .bg-teal-deep     { background-color: var(--teal-deep); }
+.landing-marketing .bg-bone          { background-color: var(--bone); }
+.landing-marketing .bg-cream         { background-color: var(--cream); }
+.landing-marketing .bg-ink           { background-color: var(--ink); }
+
+/* ── Keyframes ── */
+@keyframes lm-drift-a {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  50%       { transform: translate3d(3%,-2%,0) scale(1.06); }
+}
+@keyframes lm-drift-b {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  50%       { transform: translate3d(-4%,3%,0) scale(1.08); }
+}
+@keyframes lm-drift-c {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  50%       { transform: translate3d(2%,4%,0) scale(1.05); }
+}
+@keyframes lm-float-y {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-8px); }
+}
+@keyframes lm-pop-in {
+  0%   { opacity:0; transform:translateY(10px) scale(0.96); }
+  100% { opacity:1; transform:translateY(0)    scale(1);    }
+}
+@keyframes lm-pulse-dot {
+  0%, 100% { opacity:1; transform:scale(1); }
+  50%       { opacity:0.55; transform:scale(0.85); }
+}
+@keyframes lm-marquee-x {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+@keyframes lm-marquee-y {
+  0%   { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, -50%, 0); }
+}
+@keyframes lm-hero-scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(400%); opacity: 0; }
+}
+@keyframes lm-hero-float-a {
+  0%,100% { transform:translate3d(0,0,0); }
+  50%     { transform:translate3d(0,-10px,0); }
+}
+@keyframes lm-hero-float-b {
+  0%,100% { transform:translate3d(0,0,0); }
+  50%     { transform:translate3d(0,-14px,0); }
+}
+
+/* ── Animation utilities ── */
+.landing-marketing .blob-a          { animation: lm-drift-a 18s ease-in-out infinite; }
+.landing-marketing .blob-b          { animation: lm-drift-b 22s ease-in-out infinite; }
+.landing-marketing .blob-c          { animation: lm-drift-c 26s ease-in-out infinite; }
+.landing-marketing .float-y         { animation: lm-float-y 6s ease-in-out infinite; }
+.landing-marketing .pop-in          { animation: lm-pop-in 0.7s cubic-bezier(0.2,0.8,0.2,1) both; }
+.landing-marketing .pulse-dot       { animation: lm-pulse-dot 1.6s ease-in-out infinite; }
+.landing-marketing .marquee-x       { animation: lm-marquee-x 55s linear infinite; }
+.landing-marketing .marquee-y       { animation: lm-marquee-y 22s linear infinite; }
+.landing-marketing .marquee-paused  { animation-play-state: paused; }
+.landing-marketing .hero-float-a    { animation: lm-hero-float-a 6s ease-in-out infinite; }
+.landing-marketing .hero-float-b    { animation: lm-hero-float-b 8s ease-in-out infinite; }
+.landing-marketing .hero-scan       { animation: lm-hero-scan 3s ease-in-out infinite; }
+.landing-marketing .hero-pulse      { animation: lm-pulse-dot 1.4s ease-in-out infinite; }
+
+/* ── Grain overlay used in hero ── */
+.landing-marketing .hero-video-grain {
+  background-image: radial-gradient(rgba(255,255,255,.55) 1px, transparent 1px);
+  background-size: 4px 4px;
+  mix-blend-mode: overlay;
+}
+
+.landing-marketing .grain-bg {
+  background-image:
+    radial-gradient(circle at 20% 10%, color-mix(in oklab, var(--teal-soft) 22%, transparent), transparent 55%),
+    radial-gradient(circle at 85% 80%, color-mix(in oklab, var(--clay) 18%, transparent), transparent 50%);
+}

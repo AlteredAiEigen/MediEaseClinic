@@ -14,6 +14,7 @@ except ImportError:
     import logging
     logging.warning("twilio.twiml.messaging_response not available - TwiML responses will use fallback")
 
+from app.constants.whatsapp_templates import PRESCRIPTION_TEMPLATE_NAME
 from app.schemas.whatsapp import (
     WhatsAppMessageRequest,
     WhatsAppMessageResponse,
@@ -450,6 +451,8 @@ async def get_patient_whatsapp_messages(
                                     message_body = "Lab result reminder"
                                 elif scenario == "followup_appointment_reminder":
                                     message_body = "Follow-up appointment reminder"
+                                elif scenario == PRESCRIPTION_TEMPLATE_NAME:
+                                    message_body = "Prescription download link"
                                 else:
                                     message_body = f"Message for {scenario}"
                         
@@ -644,6 +647,23 @@ async def twilio_status_webhook(
                     update_data[f"whatsappLogs.{scenario}.details.error_code"] = ErrorCode
                 if ErrorMessage:
                     update_data[f"whatsappLogs.{scenario}.details.error_message"] = ErrorMessage
+
+                # Delivery failed — allow WhatsApp retry, but keep finalized lock if doctor already completed.
+                if MessageStatus in ("failed", "undelivered") and scenario == "prescription_utility_format":
+                    update_data["prescriptionWhatsappSent"] = False
+                    update_data["prescriptionWhatsappDeliveryFailed"] = True
+                    update_data["prescriptionWhatsappDeliveryError"] = (
+                        ErrorMessage or f"WhatsApp delivery failed (status={MessageStatus})"
+                    )
+                    # Do NOT clear prescriptionFinalized — doctor should still see locked sent Rx.
+                    logger.warning(
+                        "Prescription WhatsApp delivery failed for appointment %s "
+                        "(MessageSid=%s, ErrorCode=%s, ErrorMessage=%s). Cleared prescriptionWhatsappSent for retry.",
+                        appointment.get("appointmentId") or appointment.get("_id"),
+                        MessageSid,
+                        ErrorCode,
+                        ErrorMessage,
+                    )
                 
                 await db.appointments.update_one(
                     {"_id": appointment["_id"]},

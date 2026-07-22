@@ -30,25 +30,40 @@ async def check_templates():
             print("\n⚠️  NO TEMPLATES FOUND!")
             print("\nYou need to insert templates into the 'whatsapp_templates' collection.")
             print("\nRequired templates:")
-            print("  1. appointment_reminder")
+            print("  1. appointment_reminder_payloads")
             print("  2. post_visit_lab_request")
             print("  3. followup_appointment_reminder")
+            print("  4. prescription_utility_format (_id: prescription_utility_format_001)")
             print("\nEach template needs:")
+            print("  - _id: string, format {template_name}_001 (e.g. prescription_utility_format_001)")
             print("  - template_name: string")
             print("  - content_sid: string (from Twilio Content API)")
-            print("  - variables: array of variable definitions")
+            print("  - body: string (Twilio-approved template text with {{1}}, {{2}}, ...)")
+            print("  - variables: array with integer position, name, example")
+            print("  - header, footer, buttons, category, language, status, message_preview")
+            print("  - created_at, approved_at")
+            print("\nNormalize all template _id values:")
+            print("  venv/bin/python scripts/normalize_whatsapp_templates.py")
+            print("\nSeed prescription template:")
+            print("  venv/bin/python scripts/seed_whatsapp_templates.py")
             print("\nExample template structure:")
             print("""
 {
-  "template_name": "appointment_reminder",
-  "content_sid": "HX...",  // Get this from Twilio Content API
+  "_id": "prescription_utility_format_001",
+  "template_name": "prescription_utility_format",
+  "content_sid": "HX...",
+  "category": "UTILITY",
+  "language": "en_UK",
+  "status": "Approved",
+  "body": "Greetings,... {{1}} ... {{2}} ...",
+  "footer": "MediEase",
   "variables": [
-    {"position": "1", "name": "patient_name"},
-    {"position": "2", "name": "clinic_name"},
-    {"position": "3", "name": "doctor_name"},
-    {"position": "4", "name": "appointment_datetime"},
-    {"position": "5", "name": "header_clinic_name"}
-  ]
+    {"position": 1, "name": "patient_name", "example": "Raj Sharma"},
+    {"position": 2, "name": "prescription_download_url", "example": "https://..."}
+  ],
+  "buttons": [],
+  "created_at": "2026-07-20 03:57:00",
+  "approved_at": "2026-07-20 20:30:00"
 }
             """)
         else:
@@ -58,7 +73,12 @@ async def check_templates():
                 print(f"Template #{i}")
                 print(f"{'=' * 60}")
                 print(f"Template Name: {t.get('template_name', 'N/A')}")
+                print(f"Document ID:   {t.get('_id', 'N/A')} ({type(t.get('_id')).__name__})")
                 print(f"Content SID:   {t.get('content_sid') or t.get('contentSid', 'NOT SET')}")
+                body = t.get("body")
+                if body:
+                    preview = body.replace("\n", " / ")[:120]
+                    print(f"Body:          {preview}{'...' if len(body) > 120 else ''}")
                 
                 vars_list = t.get('variables', [])
                 print(f"Variables:     {len(vars_list)} variable(s)")

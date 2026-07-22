@@ -600,12 +600,14 @@ class AppointmentService:
             if patient:
                 patient_mongo_id = patient["_id"]
 
-        # Create entry in s3_prescriptions collection (matching s3_reports structure)
+        # Scanned paper prescription → s3_prescriptions only (not s3_reports).
+        # Lab reports must use POST /api/s3-reports/patient/{id}/upload instead.
         s3_prescription_entry = {
             "patientId": patient_id,
             "patientMongoId": patient_mongo_id,
             "appointmentId": appointment_id,
             "documentName": filename,  # Changed from fileName to documentName
+            "documentType": "prescription",
             "s3Key": upload_result.get("s3_key"),
             "s3Url": upload_result.get("file_url"),
             "fileType": content_type,
@@ -617,7 +619,10 @@ class AppointmentService:
             "emailSentToPatient": False,
             "emailSentAt": None,
             "lastAccessedAt": None,
-            "metadata": {},
+            "metadata": {
+                "source": "scanned",
+                "documentType": "prescription",
+            },
             "clinicId": clinic_id,
             "createdAt": timestamp,
             "updatedAt": timestamp,

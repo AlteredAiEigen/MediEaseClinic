@@ -2,9 +2,11 @@ interface MediEaseLogoProps {
   size?: "sm" | "md" | "lg" | "xl";
   showText?: boolean;
   className?: string;
-  /** Use "dark" for dark backgrounds (header, footer) - makes text white/cyan */
+  /** "dark" = white text (for dark backgrounds), "default" = dark ink text */
   variant?: "default" | "dark";
 }
+
+const PLUM_INK = "#2a0a18";
 
 export function MediEaseLogo({
   size = "md",
@@ -12,45 +14,27 @@ export function MediEaseLogo({
   className = "",
   variant = "default",
 }: MediEaseLogoProps) {
-  const sizeClasses = {
-    sm: "w-12 h-12",
-    md: "w-20 h-20",
-    lg: "w-28 h-28",
-    xl: "w-36 h-36",
-  };
-
-  const textSizeClasses = {
-    sm: "text-2xl",
-    md: "text-3xl",
-    lg: "text-4xl",
-    xl: "text-5xl",
-  };
-
+  const imgSize = { sm: "h-8 w-8", md: "h-10 w-10", lg: "h-12 w-12", xl: "h-14 w-14" }[size];
+  const textSize = { sm: "text-lg", md: "text-xl", lg: "text-2xl", xl: "text-3xl" }[size];
   const isDark = variant === "dark";
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex items-center gap-2.5 ${className}`}>
       <img
-        src="/mediease-logo.svg"
-        alt="MediEase Logo"
-        className={`${sizeClasses[size]} rounded-xl`}
+        src="/landing-assets/mediease-logo.png"
+        alt="MediEase"
+        className={`${imgSize} rounded-xl object-contain`}
       />
-
       {showText && (
-        <div className="flex flex-col">
-          <span
-            className={`${textSizeClasses[size]} font-bold ${
-              isDark
-                ? "text-white"
-                : "bg-gradient-to-r from-[#00C4B3] to-[#10b981] bg-clip-text text-transparent"
-            }`}
-          >
-            MediEase
-          </span>
-          <span className={`text-sm -mt-1 ${isDark ? "text-cyan-400" : "text-muted-foreground"}`}>
-            Clinic
-          </span>
-        </div>
+        <span
+          className={`font-bold tracking-tight ${textSize}`}
+          style={{
+            fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
+            color: isDark ? "#ffffff" : PLUM_INK,
+          }}
+        >
+          MediEase
+        </span>
       )}
     </div>
   );

@@ -262,6 +262,13 @@ interface Appointment {
   createdAt?: string;
   created_at?: string;
   prescription?: string;
+  prescriptionMedications?: Array<{
+    name: string;
+    dosage?: string;
+    frequency?: string;
+    duration?: string;
+    instructions?: string;
+  }>;
   prescriptionFileUrl?: string;
   prescriptionFileName?: string;
   prescriptionFileKey?: string;
@@ -1344,6 +1351,7 @@ export function PatientOverview() {
                     createdAt: apt.createdAt || apt.created_at,
                     created_at: apt.created_at || apt.createdAt,
                     prescription: apt.prescription,
+                    prescriptionMedications: apt.prescriptionMedications,
                     prescriptionFileUrl: apt.prescriptionFileUrl,
                     prescriptionFileName: apt.prescriptionFileName,
                     prescriptionFileKey: apt.prescriptionFileKey,

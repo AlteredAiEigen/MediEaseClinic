@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   MicIcon,
   MicOffIcon,
@@ -27,6 +27,7 @@ import {
 import { PatientVisitHistory } from "@/polymet/components/patient-visit-history";
 import { ConsultationSidebar } from "@/polymet/components/consultation-sidebar";
 import { LabResultsCard } from "@/polymet/components/lab-results-card";
+import { cn } from "@/lib/utils";
 import { get, post, put, patch, del } from "@/lib/api-client";
 import { todayLocalYYYYMMDD } from "@/lib/date";
 import { MedicalHistoryRecord } from "@/lib/api/patients";
@@ -37,6 +38,10 @@ import {
 } from "@/polymet/utils/pending-consultation-uploads";
 import { useAuth } from "@/context/auth-context";
 import { toast } from "@/components/ui/use-toast";
+import {
+  WritePrescriptionPanel,
+  type WritePrescriptionPrefill,
+} from "@/polymet/components/prescription/write-prescription-panel";
 
 interface Patient {
   _id: string;
@@ -140,6 +145,22 @@ export function ConsultationSession() {
   const [prescriptionFileName, setPrescriptionFileName] = useState<string | null>(null); // Track uploaded file name
   const [isUploadingPrescription, setIsUploadingPrescription] = useState(false);
   const [isDeletingPrescription, setIsDeletingPrescription] = useState(false);
+  const [digitalPrescriptionOpen, setDigitalPrescriptionOpen] = useState(false);
+  const [selectedDigitalPrescriptionId, setSelectedDigitalPrescriptionId] = useState<
+    string | null
+  >(null);
+  const [digitalPrescriptionList, setDigitalPrescriptionList] = useState<
+    Array<{
+      _id: string;
+      diagnosis?: string;
+      isActive?: boolean;
+      medicationCount?: number;
+      updatedAt?: string;
+      prescribedAt?: string;
+      createdAt?: string;
+      statusLabel?: string;
+    }>
+  >([]);
 
   // AI Chat (patient-grounded RAG + conversation persistence)
   const [aiChatOpen, setAiChatOpen] = useState(false);
@@ -256,6 +277,184 @@ export function ConsultationSession() {
     }),
     [resolvedPatientObjectId, patient?._id, patient?.patientId, queueEntryId]
   );
+
+  const displayPatient = useMemo(() => {
+    if (!patient) {
+      return {
+        fullName: "Patient",
+        patientId: "Unknown",
+        age: "",
+        gender: "",
+        bloodGroup: "",
+        phone: "",
+        email: "",
+        condition: "Under Observation",
+        lastVisit: "",
+        carePlanSummary: "",
+        followUpPlan: "",
+        allergies: [] as string[],
+        medications: [],
+      };
+    }
+    return {
+      fullName:
+        patient.fullName?.trim() ||
+        [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() ||
+        "Patient",
+      patientId:
+        patient.patientId ||
+        patient._id ||
+        consultationIdentifiers.friendlyId ||
+        consultationIdentifiers.mongoId ||
+        "Unknown",
+      age: patient.age || "",
+      gender: patient.gender || "",
+      bloodGroup: patient.insights?.bloodGroup || patient.bloodGroup || "",
+      phone: patient.phone || "",
+      email: patient.email || "",
+      condition: patient.condition || patient.insights?.riskAssessment || "Under Observation",
+      lastVisit: patient.lastVisit || patient.insights?.lastUpdatedAt || "",
+      carePlanSummary: patient.carePlanSummary || patient.insights?.recommendations?.join("; ") || "",
+      followUpPlan: patient.followUpPlan || patient.insights?.followUpInstructions || "",
+      allergies:
+        Array.isArray(patient.allergies)
+          ? patient.allergies
+          : typeof patient.allergies === "string" && patient.allergies.trim()
+            ? patient.allergies.split(",").map((entry) => entry.trim())
+            : [],
+      medications: (() => {
+        const p = patient as any;
+        const raw =
+          Array.isArray(p.currentMedications)
+            ? p.currentMedications
+            : Array.isArray(p.currentMedication)
+              ? p.currentMedication
+              : Array.isArray(p.medications)
+                ? p.medications
+                : typeof p.currentMedication === "string" && p.currentMedication.trim()
+                  ? p.currentMedication.split(",").map((e: string) => e.trim()).filter(Boolean)
+                  : [];
+        return raw.map((entry: unknown) => {
+          if (typeof entry === "string") return entry;
+          if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+            const o = entry as Record<string, unknown>;
+            const name =
+              (o.name as string) ??
+              (o.medicationName as string) ??
+              (o.medicine as string) ??
+              (o.drug as string) ??
+              "Medication";
+            const dosage = o.dosage as string | undefined;
+            const frequency = o.frequency as string | undefined;
+            const duration = o.duration as string | undefined;
+            if (!dosage && !frequency && !duration) return name;
+            return { name, dosage, frequency, duration };
+          }
+          return "Medication";
+        });
+      })(),
+    };
+  }, [patient, consultationIdentifiers]);
+
+  const prescriptionPrefill = useMemo<WritePrescriptionPrefill | null>(() => {
+    if (!patient) return null;
+    return {
+      patientMongoId: resolvedPatientObjectId || patient._id,
+      patientName: displayPatient.fullName,
+      patientAge: displayPatient.age ? String(displayPatient.age) : undefined,
+      patientGender: displayPatient.gender || undefined,
+      patientPhone: displayPatient.phone || undefined,
+      bp: latestVitals?.bloodPressure || undefined,
+      pulse: latestVitals?.heartRate || undefined,
+      spo2: latestVitals?.oxygenSaturation || undefined,
+      diagnosis: diagnosis || undefined,
+      prescribedTests: prescribedTest || undefined,
+      nextAppointment: followUp || undefined,
+    };
+  }, [
+    patient,
+    resolvedPatientObjectId,
+    displayPatient.fullName,
+    displayPatient.age,
+    displayPatient.gender,
+    displayPatient.phone,
+    latestVitals,
+    diagnosis,
+    prescribedTest,
+    followUp,
+  ]);
+
+  const refreshDigitalPrescriptionList = useCallback(async () => {
+    if (!appointmentId) {
+      setDigitalPrescriptionList([]);
+      return;
+    }
+    try {
+      const [listResponse, appointmentResponse] = await Promise.all([
+        get<{
+          prescriptions?: Array<{
+            _id: string;
+            diagnosis?: string;
+            isActive?: boolean;
+            medications?: Array<{ name?: string }>;
+            updatedAt?: string;
+            prescribedAt?: string;
+            createdAt?: string;
+          }>;
+        }>(
+          `/api/prescriptions/consultation/list?appointmentId=${encodeURIComponent(appointmentId)}&includeInactive=true`,
+        ),
+        get<{
+          appointment?: {
+            prescriptionFinalized?: boolean;
+            prescriptionWhatsappSent?: boolean;
+          };
+        }>(`/api/appointments/${appointmentId}`),
+      ]);
+      if (!listResponse.success) {
+        setDigitalPrescriptionList([]);
+        return;
+      }
+      const finalized = Boolean(
+        appointmentResponse.data?.appointment?.prescriptionFinalized ||
+          appointmentResponse.data?.appointment?.prescriptionWhatsappSent,
+      );
+      const rows = listResponse.data?.prescriptions || [];
+      setDigitalPrescriptionList(
+        rows.map((rx) => {
+          const medCount = (rx.medications || []).filter((m) => m.name?.trim()).length;
+          let statusLabel = "Draft";
+          if (rx.isActive === false) statusLabel = "Sent / archived";
+          else if (finalized) statusLabel = "Completed";
+          return {
+            _id: rx._id,
+            diagnosis: rx.diagnosis,
+            isActive: rx.isActive,
+            medicationCount: medCount,
+            updatedAt: rx.updatedAt,
+            prescribedAt: rx.prescribedAt,
+            createdAt: rx.createdAt,
+            statusLabel,
+          };
+        }),
+      );
+    } catch (err) {
+      console.warn("Failed to load consultation prescriptions:", err);
+    }
+  }, [appointmentId]);
+
+  const handleOpenDigitalPrescription = useCallback(
+    (prescriptionId?: string) => {
+      if (!patient) return;
+      setSelectedDigitalPrescriptionId(prescriptionId || null);
+      setDigitalPrescriptionOpen(true);
+    },
+    [patient],
+  );
+
+  useEffect(() => {
+    void refreshDigitalPrescriptionList();
+  }, [refreshDigitalPrescriptionList, digitalPrescriptionOpen]);
 
   useEffect(() => {
     setAiConversationId(null);
@@ -1050,7 +1249,7 @@ export function ConsultationSession() {
     if (!targetQueueId) return;
 
     try {
-      // Build structured AI recommendations payload from AI analysis card
+      // Build structured AI recommendations; API expects aiRecommendations as a string (JSON).
       const aiRecommendationsPayload = aiAnalysis
         ? {
             riskAssessment: {
@@ -1063,6 +1262,19 @@ export function ConsultationSession() {
           }
         : aiRecommendations;
 
+      let aiRecommendationsStr: string | null = null;
+      if (aiRecommendationsPayload != null) {
+        if (typeof aiRecommendationsPayload === "string") {
+          aiRecommendationsStr = aiRecommendationsPayload;
+        } else {
+          try {
+            aiRecommendationsStr = JSON.stringify(aiRecommendationsPayload);
+          } catch {
+            aiRecommendationsStr = null;
+          }
+        }
+      }
+
       await put(`/api/queue/${targetQueueId}/consultation`, {
         prescription: prescription || null,
         prescribedTest: prescribedTest || null,
@@ -1070,7 +1282,7 @@ export function ConsultationSession() {
         treatmentPlan: treatment || null,
         followUpInstructions: followUp || null,
         detailedNotes: notes || null,
-        aiRecommendations: aiRecommendationsPayload || null,
+        aiRecommendations: aiRecommendationsStr,
       });
       console.log("Consultation details autosaved");
     } catch (err) {
@@ -1194,7 +1406,7 @@ export function ConsultationSession() {
 
     return () => clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prescription, prescribedTest, diagnosis, treatment, followUp, notes, aiRecommendations, queueEntryId, queueIdParam]);
+  }, [prescription, prescribedTest, diagnosis, treatment, followUp, notes, aiRecommendations, aiAnalysis, queueEntryId, queueIdParam]);
 
   // Transcription is now synchronous, so no polling needed
   const checkTranscriptionStatus = async (recordingId?: string) => {
@@ -1583,62 +1795,6 @@ export function ConsultationSession() {
       </div>
     );
   }
-
-  const displayPatient = {
-    fullName:
-      patient.fullName?.trim() ||
-      [patient.firstName, patient.lastName].filter(Boolean).join(" ").trim() ||
-      "Patient",
-    patientId: patient.patientId || patient._id || consultationIdentifiers.friendlyId || consultationIdentifiers.mongoId || "Unknown",
-    age: patient.age || "",
-    gender: patient.gender || "",
-    bloodGroup: patient.insights?.bloodGroup || patient.bloodGroup || "",
-    phone: patient.phone || "",
-    email: patient.email || "",
-    condition: patient.condition || patient.insights?.riskAssessment || "Under Observation",
-    lastVisit: patient.lastVisit || patient.insights?.lastUpdatedAt || "",
-    carePlanSummary: patient.carePlanSummary || patient.insights?.recommendations?.join("; ") || "",
-    followUpPlan: patient.followUpPlan || patient.insights?.followUpInstructions || "",
-    allergies:
-      Array.isArray(patient.allergies)
-        ? patient.allergies
-        : typeof patient.allergies === "string" && patient.allergies.trim()
-        ? patient.allergies.split(",").map((entry) => entry.trim())
-        : [],
-    // Active medications: from patient record (currentMedications). patient_medical_history
-    // stores medicalHistory/familyHistory/previousSurgeries; medications live on the patient.
-    medications: (() => {
-      const p = patient as any;
-      const raw =
-        Array.isArray(p.currentMedications)
-          ? p.currentMedications
-          : Array.isArray(p.currentMedication)
-          ? p.currentMedication
-          : Array.isArray(p.medications)
-          ? p.medications
-          : typeof p.currentMedication === "string" && p.currentMedication.trim()
-          ? p.currentMedication.split(",").map((e: string) => e.trim()).filter(Boolean)
-          : [];
-      return raw.map((entry: unknown) => {
-        if (typeof entry === "string") return entry;
-        if (entry && typeof entry === "object" && !Array.isArray(entry)) {
-          const o = entry as Record<string, unknown>;
-          const name =
-            (o.name as string) ??
-            (o.medicationName as string) ??
-            (o.medicine as string) ??
-            (o.drug as string) ??
-            "Medication";
-          const dosage = o.dosage as string | undefined;
-          const frequency = o.frequency as string | undefined;
-          const duration = o.duration as string | undefined;
-          if (!dosage && !frequency && !duration) return name;
-          return { name, dosage, frequency, duration };
-        }
-        return "Medication";
-      });
-    })(),
-  };
 
   return (
     <div className="space-y-6 pb-6">
@@ -2132,6 +2288,8 @@ export function ConsultationSession() {
           prescriptionFileName={prescriptionFileName}
           onDeletePrescriptionFile={handleDeletePrescriptionFile}
           isDeletingPrescription={isDeletingPrescription}
+          onOpenDigitalPrescription={handleOpenDigitalPrescription}
+          digitalPrescriptions={digitalPrescriptionList}
         />
       </div>
 
@@ -2353,6 +2511,55 @@ export function ConsultationSession() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <WritePrescriptionPanel
+        open={digitalPrescriptionOpen}
+        onOpenChange={(open) => {
+          setDigitalPrescriptionOpen(open);
+          if (!open) setSelectedDigitalPrescriptionId(null);
+        }}
+        prefill={prescriptionPrefill}
+        doctorId={String(user?._id || user?.id || "")}
+        appointmentId={appointmentId}
+        queueId={queueEntryId || queueIdParam}
+        initialPrescriptionId={selectedDigitalPrescriptionId}
+        onSaved={async ({
+          diagnosis: savedDiagnosis,
+          prescribedTests,
+          nextAppointment,
+          prescriptionSummary,
+        }) => {
+          if (savedDiagnosis) setDiagnosis(savedDiagnosis);
+          if (prescribedTests) setPrescribedTest(prescribedTests);
+          if (nextAppointment) setFollowUp(nextAppointment);
+          if (prescriptionSummary) setPrescription(prescriptionSummary);
+          void refreshDigitalPrescriptionList();
+
+          const patientMongoId = resolvedPatientObjectId || patient?._id;
+          if (patientMongoId) {
+            try {
+              const response = await get<{ patient: Patient }>(`/api/patients/${patientMongoId}`);
+              if (response.success && response.data?.patient) {
+                setPatient(response.data.patient);
+              }
+            } catch (err) {
+              console.warn("Failed to refresh patient after prescription save:", err);
+            }
+          }
+        }}
+        onPdfGenerated={({ documentName }) => {
+          setPrescriptionFileName(documentName || "digital_rx.pdf");
+          void refreshDigitalPrescriptionList();
+        }}
+        onDeleted={() => {
+          setPrescriptionFileName(null);
+          setDiagnosis("");
+          setPrescribedTest("");
+          setFollowUp("");
+          setPrescription("");
+          void refreshDigitalPrescriptionList();
+        }}
+      />
     </div>
   );
 }

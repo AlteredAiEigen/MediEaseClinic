@@ -20,6 +20,7 @@ import {
 import { get } from "@/lib/api-client";
 import { formatSmartRelativeTime } from "@/lib/date";
 import { getPendingConsultationUploadsByDoctor } from "@/polymet/utils/pending-consultation-uploads";
+import { ConsultationRecordingPlayer } from "@/polymet/components/consultation-recording-player";
 
 interface AppointmentDetails {
   _id?: string;
@@ -90,6 +91,7 @@ interface Recording {
     insights?: { lastUpdatedAt?: string };
     insightsMeta?: { lastGeneratedAt?: string; status?: string };
   };
+  /** Present when API embeds appointment (list endpoint batch-loads to avoid N+1). */
   appointment?: AppointmentDetails;
 }
 
@@ -185,23 +187,18 @@ export function ConsultationHistoryDialog({
       setTotal(totalRecords);
       setPage(targetPage);
 
-      // Enrich recordings with patient and appointment information
+      // Enrich only when API did not embed patient/appointment (legacy). List API batch-loads both.
       const enrichedRecordings = await Promise.all(
         recordingsPayload.map(async (recording: Recording) => {
-          // Check if patient data is already included in the recording (from backend)
           if (!recording.patient && (recording as any).patient) {
             recording.patient = (recording as any).patient;
           }
-          
-          // Only fetch patient if not already present
+
           if (!recording.patient && recording.patientId) {
             try {
-              // Check if patientId is a MongoDB ObjectId (24 hex characters)
               const isObjectId = /^[0-9a-fA-F]{24}$/.test(recording.patientId);
-              
               let patientFetched = false;
-              
-              // Try fetching by MongoDB ObjectId first
+
               if (isObjectId) {
                 try {
                   const patientResponse = await get(`/api/patients/${recording.patientId}`);
@@ -210,12 +207,13 @@ export function ConsultationHistoryDialog({
                     patientFetched = true;
                   }
                 } catch (err) {
-                  // If ObjectId fetch fails, try patient-id endpoint as fallback
-                  console.warn(`Could not fetch patient by ObjectId ${recording.patientId}, trying patient-id:`, err);
+                  console.warn(
+                    `Could not fetch patient by ObjectId ${recording.patientId}, trying patient-id:`,
+                    err
+                  );
                 }
               }
-              
-              // If not fetched yet, try patient-id endpoint (for patientId like P211)
+
               if (!patientFetched) {
                 try {
                   const patientByIdResponse = await get(`/api/patients/patient-id/${recording.patientId}`);
@@ -227,8 +225,7 @@ export function ConsultationHistoryDialog({
                   console.warn(`Could not fetch patient by patientId ${recording.patientId}:`, err);
                 }
               }
-              
-              // If still no patient data and it's an ObjectId, try one more time with patient-id endpoint
+
               if (!patientFetched && isObjectId) {
                 try {
                   const patientByIdResponse = await get(`/api/patients/patient-id/${recording.patientId}`);
@@ -236,15 +233,17 @@ export function ConsultationHistoryDialog({
                     recording.patient = patientByIdResponse.data.patient;
                   }
                 } catch (err) {
-                  console.warn(`Could not fetch patient by patientId (fallback) ${recording.patientId}:`, err);
+                  console.warn(
+                    `Could not fetch patient by patientId (fallback) ${recording.patientId}:`,
+                    err
+                  );
                 }
               }
             } catch (err) {
               console.warn(`Error fetching patient details for ${recording.patientId}:`, err);
             }
           }
-          
-          // If still no patient data but we have patientName from backend, create a minimal patient object
+
           if (!recording.patient && (recording as any).patientName) {
             recording.patient = {
               _id: recording.patientId,
@@ -253,10 +252,11 @@ export function ConsultationHistoryDialog({
             };
           }
 
-          if (recording.appointmentId) {
+          if (recording.appointmentId && !recording.appointment) {
             try {
               const appointmentResponse = await get(`/api/appointments/${recording.appointmentId}`);
-              const appointmentPayload = appointmentResponse.data?.appointment ?? appointmentResponse.data;
+              const appointmentPayload =
+                appointmentResponse.data?.appointment ?? appointmentResponse.data;
               if (appointmentResponse.success && appointmentPayload) {
                 recording.appointment = appointmentPayload as AppointmentDetails;
               }
@@ -638,6 +638,12 @@ export function ConsultationHistoryDialog({
                               </div>
                             </div>
 
+                            <ConsultationRecordingPlayer
+                              recordingMongoId={recording._id}
+                              expectedDuration={recording.duration}
+                              compact
+                            />
+
                             <div className="flex flex-col gap-2">
                               <Button
                                 variant="outline"
@@ -918,6 +924,20 @@ export function ConsultationHistoryDialog({
                           </div>
                         )}
                     </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Original recording</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ConsultationRecordingPlayer
+                      recordingMongoId={selectedRecording._id}
+                      recordingLabel="Play, pause, and skip through the consultation audio"
+                      expectedDuration={selectedRecording.duration}
+                      lazy={false}
+                    />
                   </CardContent>
                 </Card>
 

@@ -19,6 +19,9 @@ from app.services.clinical_context_builder import chunk_text, iter_cumulative_pa
 
 logger = logging.getLogger(__name__)
 
+# Cap chunks loaded per search to limit RAM on small instances (~4GB).
+MAX_RAG_CHUNKS_PER_SEARCH = 150
+
 
 def _keyword_score(text: str, query: str) -> float:
     """Simple token overlap score in [0,1]."""
@@ -112,8 +115,11 @@ class PatientRAGService:
         db = Database.get_database()
         coll = db[self.COLLECTION]
 
-        cur = coll.find({"patientId": patient_id})
-        rows = await cur.to_list(length=800)
+        cur = coll.find(
+            {"patientId": patient_id},
+            {"text": 1, "embedding": 1},
+        ).limit(MAX_RAG_CHUNKS_PER_SEARCH)
+        rows = await cur.to_list(length=MAX_RAG_CHUNKS_PER_SEARCH)
         if not rows:
             return []
 

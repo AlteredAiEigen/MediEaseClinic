@@ -33,7 +33,9 @@ async def upload_patient_s3_report(
 ):
     """
     Upload a lab report PDF (or image converted client-side to PDF) for a patient.
-    Stores file in S3, inserts s3_reports, and schedules AI parsing + RAG sync.
+
+    Writes ONLY to the `s3_reports` collection (never `s3_prescriptions`).
+    Prescription PDFs are created separately via generate-prescription-pdf / WhatsApp send.
     """
     if not ObjectId.is_valid(patient_id):
         raise HTTPException(
@@ -105,8 +107,15 @@ async def upload_patient_s3_report(
         "parseStatus": "pending",
     }
 
+    # Lab reports belong only in s3_reports — never mirror into s3_prescriptions.
     ins = await db["s3_reports"].insert_one(doc)
     rid = str(ins.inserted_id)
+    logger.info(
+        "Lab report uploaded to s3_reports only (id=%s, patient=%s, key=%s)",
+        rid,
+        friendly_pid,
+        upload_result["s3_key"],
+    )
     schedule_lab_parse_background(background_tasks, rid, content, force=force)
 
     saved = await db["s3_reports"].find_one({"_id": ins.inserted_id})

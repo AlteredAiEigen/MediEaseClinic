@@ -280,15 +280,20 @@ async def check_out_patient(
                     )
                     s3_key = upload_result["s3_key"]
                     
-                    # Create s3_prescription document
+                    # Create s3_prescription document (scanned Rx only — not lab reports)
                     s3_prescription_doc = {
                         "appointmentId": appointment_id,
                         "s3Key": s3_key,
-                        "fileName": file_name,
+                        "documentName": file_name,
+                        "documentType": "prescription",
                         "fileType": content_type,
                         "uploadedBy": str(current_user["_id"]),
                         "uploadedAt": datetime.utcnow(),
                         "notes": notes,
+                        "metadata": {
+                            "source": "scanned",
+                            "documentType": "prescription",
+                        },
                         "createdAt": datetime.utcnow(),
                         "updatedAt": datetime.utcnow()
                     }

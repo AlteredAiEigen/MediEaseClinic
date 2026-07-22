@@ -35,6 +35,8 @@ class S3Service:
         content_type: str,
         folder: str = "uploads",
         bucket_override: Optional[str] = None,
+        *,
+        preserve_filename: bool = False,
     ) -> dict:
         """
         Upload file to S3 with server-side encryption.
@@ -44,14 +46,21 @@ class S3Service:
             file_name: Original file name
             content_type: MIME type
             folder: S3 folder path
+            preserve_filename: If True, use folder/file_name as the exact key
+                (no YYYYMMDD_HHMMSS_ prefix). Use when the caller already
+                embeds uniqueness in the path/name (e.g. prescriptions).
         
         Returns:
             dict with s3_key and file_url
         """
         try:
-            # Generate unique S3 key
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            s3_key = f"{folder}/{timestamp}_{file_name}"
+            safe_name = (file_name or "file").lstrip("/")
+            if preserve_filename:
+                s3_key = f"{folder.rstrip('/')}/{safe_name}"
+            else:
+                # Generate unique S3 key
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                s3_key = f"{folder}/{timestamp}_{safe_name}"
             bucket_name = bucket_override or self.bucket_name
             
             # Upload with server-side encryption (SSE-S3)
@@ -63,7 +72,7 @@ class S3Service:
                 ServerSideEncryption='AES256',  # SSE-S3 encryption
                 Metadata={
                     'uploaded-at': datetime.now().isoformat(),
-                    'original-filename': file_name
+                    'original-filename': safe_name
                 }
             )
             
@@ -87,6 +96,8 @@ class S3Service:
         s3_key: str,
         expiration: int = None,
         bucket_override: Optional[str] = None,
+        response_content_disposition: Optional[str] = None,
+        response_content_type: Optional[str] = None,
     ) -> str:
         """
         Generate presigned URL for temporary file access.
@@ -95,6 +106,8 @@ class S3Service:
             s3_key: S3 object key
             expiration: URL expiration time in seconds (default from settings)
             bucket_override: Bucket if different from default (e.g. transcripts bucket)
+            response_content_disposition: Optional Content-Disposition override (e.g. attachment)
+            response_content_type: Optional Content-Type override
         
         Returns:
             Presigned URL
@@ -104,13 +117,19 @@ class S3Service:
         
         bucket_name = bucket_override or self.bucket_name
         try:
+            params: dict = {
+                "Bucket": bucket_name,
+                "Key": s3_key,
+            }
+            if response_content_disposition:
+                params["ResponseContentDisposition"] = response_content_disposition
+            if response_content_type:
+                params["ResponseContentType"] = response_content_type
+
             presigned_url = self.s3_client.generate_presigned_url(
-                'get_object',
-                Params={
-                    'Bucket': bucket_name,
-                    'Key': s3_key
-                },
-                ExpiresIn=expiration
+                "get_object",
+                Params=params,
+                ExpiresIn=expiration,
             )
             
             logger.info(f"Generated presigned URL for: {s3_key}")
@@ -119,6 +138,21 @@ class S3Service:
         except ClientError as e:
             logger.error(f"Failed to generate presigned URL: {e}")
             raise Exception(f"Failed to generate presigned URL: {str(e)}")
+
+    async def generate_prescription_download_url(
+        self,
+        s3_key: str,
+        filename: str = "prescription.pdf",
+        expiration: Optional[int] = None,
+    ) -> str:
+        """Presigned URL that prompts download of a prescription PDF."""
+        safe_name = filename.replace('"', "").strip() or "prescription.pdf"
+        return await self.generate_presigned_url(
+            s3_key,
+            expiration=expiration or settings.aws_s3_prescription_presigned_url_expiration,
+            response_content_disposition=f'attachment; filename="{safe_name}"',
+            response_content_type="application/pdf",
+        )
     
     async def delete_file(self, s3_key: str) -> bool:
         """

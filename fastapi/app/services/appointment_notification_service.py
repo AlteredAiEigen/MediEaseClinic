@@ -12,7 +12,14 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.config import settings
+from app.constants.whatsapp_templates import (
+    APPOINTMENT_REMINDER_TEMPLATE_NAME,
+    FOLLOWUP_REMINDER_TEMPLATE_NAME,
+    POST_VISIT_LAB_TEMPLATE_NAME,
+    PRESCRIPTION_TEMPLATE_NAME,
+)
 from app.services.whatsapp_template_service import WhatsAppTemplateService
+from app.services.whatsapp_utils import format_whatsapp_number
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +81,7 @@ class AppointmentNotificationService:
 
     def _build_message_body(self, scenario: str, content_values: Dict[str, Any], appointment: dict) -> str:
         """Build the full message body from template variables for logging purposes."""
-        if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
+        if scenario == "appointment_reminder" or scenario == APPOINTMENT_REMINDER_TEMPLATE_NAME:
             # Build full appointment reminder message matching the template structure
             clinic_name = content_values.get("clinic_name", "MediEase Clinic")
             patient_name = content_values.get("patient_name", appointment.get("patientName", "Patient"))
@@ -92,31 +99,18 @@ class AppointmentNotificationService:
                 message += "."
             message += f"\n\nThank you, {clinic_name} Team"
             return message
-        elif scenario == "post_visit_lab_request":
+        elif scenario == POST_VISIT_LAB_TEMPLATE_NAME:
             return "Lab result reminder"
-        elif scenario == "followup_appointment_reminder":
+        elif scenario == FOLLOWUP_REMINDER_TEMPLATE_NAME:
             return "Follow-up appointment reminder"
+        elif scenario == PRESCRIPTION_TEMPLATE_NAME:
+            return "Prescription download link"
         else:
             return f"Message for {scenario}"
 
     @staticmethod
     def _format_whatsapp_number(raw_phone: str) -> Optional[str]:
-        if not raw_phone:
-            return None
-        phone = raw_phone.strip()
-        if not phone:
-            return None
-        if phone.startswith("whatsapp:"):
-            # Remove spaces from existing whatsapp: prefix
-            phone = phone.replace(" ", "")
-            return phone
-        if not phone.startswith("+"):
-            # Assume local number; cannot send via WhatsApp without country code.
-            logger.warning("Phone %s missing country code; skipping WhatsApp message.", phone)
-            return None
-        # Remove all spaces, dashes, and parentheses from phone number
-        phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        return f"whatsapp:{phone}"
+        return format_whatsapp_number(raw_phone)
         
 
     async def _get_provider(self, clinic_id: Optional[str]) -> Optional[dict]:
@@ -181,12 +175,14 @@ class AppointmentNotificationService:
             message_body = details.get("body", "")
             if not message_body:
                 # Fallback: use scenario name if body not available
-                if scenario == "appointment_reminder" or scenario == "appointment_reminder_payloads":
+                if scenario == "appointment_reminder" or scenario == APPOINTMENT_REMINDER_TEMPLATE_NAME:
                     message_body = f"Appointment reminder for {appointment.get('date')} {appointment.get('time')}"
-                elif scenario == "post_visit_lab_request":
+                elif scenario == POST_VISIT_LAB_TEMPLATE_NAME:
                     message_body = "Lab result reminder"
-                elif scenario == "followup_appointment_reminder":
+                elif scenario == FOLLOWUP_REMINDER_TEMPLATE_NAME:
                     message_body = "Follow-up appointment reminder"
+                elif scenario == PRESCRIPTION_TEMPLATE_NAME:
+                    message_body = "Prescription download link"
                 else:
                     message_body = f"Message for {scenario}"
             
@@ -346,7 +342,7 @@ class AppointmentNotificationService:
                 logger.warning(f"  ✗ No valid phone number for {appointment_id}")
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "appointment_reminder_payloads",
+                    APPOINTMENT_REMINDER_TEMPLATE_NAME,
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
@@ -375,7 +371,7 @@ class AppointmentNotificationService:
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="appointment_reminder_payloads",  # Use new template with appointment ID
+                scenario=APPOINTMENT_REMINDER_TEMPLATE_NAME,
                 to=recipient,
                 content_values=variables,
                 flag_field="appointmentReminderSent",
@@ -454,7 +450,7 @@ class AppointmentNotificationService:
                 failed_count += 1
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "post_visit_lab_request",
+                    POST_VISIT_LAB_TEMPLATE_NAME,
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
@@ -475,7 +471,7 @@ class AppointmentNotificationService:
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="post_visit_lab_request",
+                scenario=POST_VISIT_LAB_TEMPLATE_NAME,
                 to=recipient,
                 content_values=variables,
                 flag_field="labResultReminderSent",
@@ -583,7 +579,7 @@ class AppointmentNotificationService:
                 failed_count += 1
                 await self._log_whatsapp_attempt(
                     appointment,
-                    "followup_appointment_reminder",
+                    FOLLOWUP_REMINDER_TEMPLATE_NAME,
                     False,
                     {"error_message": "missing or invalid patient WhatsApp number"},
                 )
@@ -599,7 +595,7 @@ class AppointmentNotificationService:
             }
             await self._send_template(
                 appointment=appointment,
-                scenario="followup_appointment_reminder",
+                scenario=FOLLOWUP_REMINDER_TEMPLATE_NAME,
                 to=recipient,
                 content_values=variables,
                 flag_field="followupWhatsappSent",

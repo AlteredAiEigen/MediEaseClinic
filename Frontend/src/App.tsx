@@ -1,20 +1,23 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 import { RequireAuth } from "@/components/require-auth";
 
-// Lazy load all page components for better performance
-const HealthcareLanding = lazy(() => import("@/polymet/pages/healthcare-landing").then(module => ({ default: module.HealthcareLanding })));
-const MedieaseLayout = lazy(() => import("@/polymet/layouts/mediease-layout").then(module => ({ default: module.MedieaseLayout })));
-const MedieaseHowItWorks = lazy(() => import("@/polymet/pages/mediease-how-it-works").then(module => ({ default: module.MedieaseHowItWorks })));
-const MedieasePricing = lazy(() => import("@/polymet/pages/mediease-pricing").then(module => ({ default: module.MedieasePricing })));
-const MedieaseAbout = lazy(() => import("@/polymet/pages/mediease-about").then(module => ({ default: module.MedieaseAbout })));
-const MedieaseContact = lazy(() => import("@/polymet/pages/mediease-contact").then(module => ({ default: module.MedieaseContact })));
+// ── Landing marketing pages (new design) ──────────────────────────────
+const MarketingShell = lazy(() => import("@/landing/layout/MarketingShell").then(m => ({ default: m.MarketingShell })));
+const LandingPage = lazy(() => import("@/landing/pages/LandingPage").then(m => ({ default: m.LandingPage })));
+const LandingHowItWorks = lazy(() => import("@/landing/pages/HowItWorksPage").then(m => ({ default: m.HowItWorksPage })));
+const LandingPricing = lazy(() => import("@/landing/pages/PricingPage").then(m => ({ default: m.PricingPage })));
+const LandingContact = lazy(() => import("@/landing/pages/ContactPage").then(m => ({ default: m.ContactPage })));
+const LandingSafety = lazy(() => import("@/landing/pages/SafetyPage").then(m => ({ default: m.SafetyPage })));
+const LandingPrivacy = lazy(() => import("@/landing/pages/PrivacyPage").then(m => ({ default: m.PrivacyPage })));
+const LandingTerms = lazy(() => import("@/landing/pages/TermsPage").then(m => ({ default: m.TermsPage })));
+const LandingLogin = lazy(() => import("@/landing/pages/LoginPage").then(m => ({ default: m.LoginPage })));
+const LandingSignup = lazy(() => import("@/landing/pages/SignupPage").then(m => ({ default: m.SignupPage })));
+
+// ── Internal clinic pages ───────────────────────────────────────────────
 const FeaturesPage = lazy(() => import("@/polymet/pages/features-page").then(module => ({ default: module.FeaturesPage })));
-const SolutionsPage = lazy(() => import("@/polymet/pages/solutions-page").then(module => ({ default: module.SolutionsPage })));
 const SecurityPage = lazy(() => import("@/polymet/pages/security-page").then(module => ({ default: module.SecurityPage })));
 const RoadmapPage = lazy(() => import("@/polymet/pages/roadmap-page").then(module => ({ default: module.RoadmapPage })));
-const ContactPage = lazy(() => import("@/polymet/pages/contact-page").then(module => ({ default: module.ContactPage })));
-const AboutUsPage = lazy(() => import("@/polymet/pages/about-us-page").then(module => ({ default: module.AboutUsPage })));
 const RoleSelection = lazy(() => import("@/polymet/pages/role-selection").then(module => ({ default: module.RoleSelection })));
 const AuthPage = lazy(() => import("@/polymet/pages/auth-page").then(module => ({ default: module.AuthPage })));
 const AdminDashboard = lazy(() => import("@/polymet/pages/admin-dashboard").then(module => ({ default: module.AdminDashboard })));
@@ -42,14 +45,22 @@ const ConsultationSession = lazy(() => import("@/polymet/pages/consultation-sess
 const HealthcareLayout = lazy(() => import("@/polymet/layouts/healthcare-layout").then(module => ({ default: module.HealthcareLayout })));
 const LoaderShowcasePage = lazy(() => import("@/polymet/pages/loader-showcase-page").then(module => ({ default: module.LoaderShowcasePage })));
 const ResetPasswordPage = lazy(() => import("@/polymet/pages/reset-password").then(module => ({ default: module.ResetPasswordPage })));
-const TermsOfServicePage = lazy(() => import("@/polymet/pages/terms-of-service-page").then(module => ({ default: module.TermsOfServicePage })));
-const PrivacyPolicyPage = lazy(() => import("@/polymet/pages/privacy-policy-page").then(module => ({ default: module.PrivacyPolicyPage })));
 
 // Import MediEase loader
 import { MediEaseLoader } from "@/components/mediease-loader";
 
 // Loading component for Suspense fallback
-const LoadingFallback = () => <MediEaseLoader message="Loading page..." fullScreen />;
+const LoadingFallback = () => <MediEaseLoader message="Loading page..." fullScreen size="lg" />;
+
+function ScrollToTop() {
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (!hash) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, [pathname, hash]);
+  return null;
+}
 
 const prefetchModules = () => {
   const modules = [
@@ -99,19 +110,25 @@ export default function MediEaseClinicPrototype() {
 
   return (
     <Router>
+      <ScrollToTop />
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
-          {/* Public Routes - New Mediease design */}
-          <Route path="/" element={<HealthcareLanding />} />
+          {/* ── New marketing site (wrapped in MarketingShell) ── */}
+          <Route element={<MarketingShell />}>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/how-it-works" element={<LandingHowItWorks />} />
+            <Route path="/pricing" element={<LandingPricing />} />
+            <Route path="/contact" element={<LandingContact />} />
+            <Route path="/safety" element={<LandingSafety />} />
+            <Route path="/privacy-policy" element={<LandingPrivacy />} />
+            <Route path="/terms-of-service" element={<LandingTerms />} />
+          </Route>
 
-          <Route path="/how-it-works" element={<MedieaseLayout><MedieaseHowItWorks /></MedieaseLayout>} />
+          {/* Login / Signup — full-screen, no shared shell */}
+          <Route path="/login" element={<LandingLogin />} />
+          <Route path="/signup" element={<LandingSignup />} />
 
-          <Route path="/pricing" element={<MedieaseLayout><MedieasePricing /></MedieaseLayout>} />
-
-          <Route path="/about-us" element={<MedieaseLayout><MedieaseAbout /></MedieaseLayout>} />
-
-          <Route path="/contact" element={<MedieaseLayout><MedieaseContact /></MedieaseLayout>} />
-
+          {/* Legacy / other public routes */}
           <Route path="/features" element={<FeaturesPage />} />
 
           <Route path="/security" element={<SecurityPage />} />
@@ -124,9 +141,8 @@ export default function MediEaseClinicPrototype() {
 
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 
-          <Route path="/terms-of-service" element={<TermsOfServicePage />} />
-
-          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          {/* Redirect /about-us and /about to home */}
+          <Route path="/about-us" element={<LandingPage />} />
 
           <Route path="/loader" element={<LoaderShowcasePage />} />
 

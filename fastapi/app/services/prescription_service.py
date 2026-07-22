@@ -15,6 +15,34 @@ from app.models.prescription import PrescriptionCreate, PrescriptionUpdate, pres
 logger = logging.getLogger(__name__)
 
 
+def _parse_prescribed_tests_from_notes(notes: Optional[str]) -> str:
+    for line in (notes or "").split("\n"):
+        trimmed = line.strip()
+        if trimmed.lower().startswith("tests:"):
+            return trimmed[6:].strip()
+    return ""
+
+
+def _build_prescription_summary(medications) -> str:
+    lines = []
+    for med in medications:
+        lines.append(f"{med.name} — {med.dosage} — {med.frequency} — {med.duration}")
+    return "\n".join(lines)
+
+
+def _medications_to_appointment_format(medications) -> List[dict]:
+    return [
+        {
+            "name": med.name,
+            "dosage": med.dosage,
+            "frequency": med.frequency,
+            "duration": med.duration,
+            "instructions": med.instructions or "",
+        }
+        for med in medications
+    ]
+
+
 class PrescriptionService:
     """Service for handling prescription operations."""
     
@@ -23,6 +51,8 @@ class PrescriptionService:
         self.prescriptions_collection = db.prescriptions
         self.patients_collection = db.patients
         self.users_collection = db.users
+        self.appointments_collection = db.appointments
+        self.queue_collection = db.queue
     
     async def generate_prescription_id(self) -> str:
         """Generate unique prescription ID."""
@@ -141,8 +171,123 @@ class PrescriptionService:
         except Exception as e:
             # Log error but don't fail prescription creation if medication update fails
             logger.warning(f"Failed to update patient medications for prescription: {e}")
-        
+
+        try:
+            from app.services.prescription_catalog_service import PrescriptionCatalogService
+
+            catalog_service = PrescriptionCatalogService(self.db)
+            await catalog_service.upsert_many_from_prescription(
+                [med.model_dump() for med in prescription_data.medications],
+                created_by=prescription_data.doctorId,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update prescription catalog cache: {e}")
+
+        await self._sync_consultation_after_prescription(
+            prescription_data,
+            str(result.inserted_id),
+            prescription_id,
+        )
+
         return await prescription_helper(created_prescription)
+    
+    async def _sync_consultation_after_prescription(
+        self,
+        prescription_data,
+        prescription_mongo_id: str,
+        prescription_id: str,
+    ) -> None:
+        """Mirror prescription fields onto linked appointment and queue entries."""
+        prescribed_medications = _medications_to_appointment_format(prescription_data.medications)
+        prescription_summary = _build_prescription_summary(prescription_data.medications)
+        prescribed_test = _parse_prescribed_tests_from_notes(prescription_data.notes)
+        diagnosis = (prescription_data.diagnosis or "").strip()
+
+        appointment_id = getattr(prescription_data, "appointmentId", None)
+        queue_id = getattr(prescription_data, "queueId", None)
+
+        if appointment_id and ObjectId.is_valid(appointment_id):
+            try:
+                appointment_update = {
+                    "prescribedMedications": prescribed_medications,
+                    "prescription": prescription_summary,
+                    "lastPrescriptionId": prescription_id,
+                    "prescriptionId": prescription_mongo_id,
+                    "updatedAt": datetime.utcnow(),
+                }
+                if diagnosis:
+                    appointment_update["diagnosis"] = diagnosis
+                if prescribed_test:
+                    appointment_update["prescribedTest"] = prescribed_test
+
+                await self.appointments_collection.update_one(
+                    {"_id": ObjectId(appointment_id)},
+                    {"$set": appointment_update},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update appointment for prescription: {e}")
+
+        if queue_id and ObjectId.is_valid(queue_id):
+            try:
+                queue_update = {
+                    "prescription": prescription_summary,
+                    "updated_at": datetime.utcnow(),
+                }
+                if diagnosis:
+                    queue_update["diagnosis"] = diagnosis
+                if prescribed_test:
+                    queue_update["prescribedTest"] = prescribed_test
+
+                await self.queue_collection.update_one(
+                    {"_id": ObjectId(queue_id)},
+                    {"$set": queue_update},
+                )
+            except Exception as e:
+                logger.warning(f"Failed to update queue for prescription: {e}")
+
+    async def get_latest_consultation_prescription(
+        self,
+        appointment_id: Optional[str] = None,
+        queue_id: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Return the most recent active prescription for a consultation appointment or queue entry."""
+        if appointment_id:
+            query: dict = {"appointmentId": appointment_id, "isActive": {"$ne": False}}
+        elif queue_id:
+            query = {"queueId": queue_id, "isActive": {"$ne": False}}
+        else:
+            return None
+
+        prescription = await self.prescriptions_collection.find_one(
+            query,
+            sort=[("updatedAt", -1), ("prescribedAt", -1), ("createdAt", -1)],
+        )
+        if not prescription:
+            return None
+        return await prescription_helper(prescription)
+
+    async def list_consultation_prescriptions(
+        self,
+        appointment_id: Optional[str] = None,
+        queue_id: Optional[str] = None,
+        include_inactive: bool = True,
+    ) -> List[dict]:
+        """List prescriptions for a consultation (newest first)."""
+        if appointment_id:
+            query: dict = {"appointmentId": appointment_id}
+        elif queue_id:
+            query = {"queueId": queue_id}
+        else:
+            return []
+
+        if not include_inactive:
+            query["isActive"] = {"$ne": False}
+
+        cursor = self.prescriptions_collection.find(query).sort(
+            [("updatedAt", -1), ("prescribedAt", -1), ("createdAt", -1)]
+        )
+        rows = await cursor.to_list(length=50)
+        return [await prescription_helper(row) for row in rows]
     
     async def get_prescription(self, prescription_id: str) -> Optional[dict]:
         """Get prescription by ID."""
@@ -189,7 +334,7 @@ class PrescriptionService:
         return formatted, total
     
     async def update_prescription(self, prescription_id: str, update_data: PrescriptionUpdate) -> Optional[dict]:
-        """Update prescription."""
+        """Update prescription. Blocked after WhatsApp send for the linked appointment."""
         if not ObjectId.is_valid(prescription_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -202,6 +347,23 @@ class PrescriptionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Prescription not found"
             )
+
+        appointment_id = existing.get("appointmentId")
+        if appointment_id and ObjectId.is_valid(str(appointment_id)):
+            appointment = await self.appointments_collection.find_one(
+                {"_id": ObjectId(str(appointment_id))}
+            )
+            if appointment and (
+                appointment.get("prescriptionWhatsappSent")
+                or appointment.get("prescriptionFinalized")
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "This prescription was already completed. "
+                        "Create a new prescription if you need to change medicines or tests."
+                    ),
+                )
         
         update_dict = update_data.model_dump(exclude_unset=True)
         
@@ -212,6 +374,8 @@ class PrescriptionService:
             )
         
         update_dict["updatedAt"] = datetime.utcnow()
+        # Ensure updates keep the draft active (fixes soft-delete + reopen PUT mismatch)
+        update_dict["isActive"] = True
         
         await self.prescriptions_collection.update_one(
             {"_id": ObjectId(prescription_id)},
@@ -219,26 +383,142 @@ class PrescriptionService:
         )
         
         updated = await self.prescriptions_collection.find_one({"_id": ObjectId(prescription_id)})
+
+        if update_data.medications is not None:
+            from app.models.prescription import PrescriptionCreate
+
+            sync_payload = PrescriptionCreate(
+                patientId=str(existing["patientId"]),
+                doctorId=str(existing["doctorId"]),
+                appointmentId=existing.get("appointmentId"),
+                queueId=existing.get("queueId"),
+                medications=update_data.medications,
+                diagnosis=update_data.diagnosis if update_data.diagnosis is not None else existing.get("diagnosis", ""),
+                notes=update_data.notes if update_data.notes is not None else existing.get("notes", ""),
+            )
+            await self._sync_consultation_after_prescription(
+                sync_payload,
+                prescription_id,
+                existing.get("prescriptionId", prescription_id),
+            )
+
         return await prescription_helper(updated)
     
+    async def get_latest_for_appointment(self, appointment_id: str) -> Optional[dict]:
+        """Get the most recent active prescription linked to an appointment."""
+        if not appointment_id:
+            return None
+
+        prescription = await self.prescriptions_collection.find_one(
+            {"appointmentId": appointment_id, "isActive": {"$ne": False}},
+            sort=[("updatedAt", -1), ("createdAt", -1)],
+        )
+        if not prescription:
+            return None
+        return await prescription_helper(prescription)
+    
+    async def start_new_prescription_after_send(self, appointment_id: str) -> dict:
+        """
+        After a WhatsApp send, allow the doctor to start a fresh prescription:
+        deactivate prior Rx rows and clear the appointment send lock.
+        """
+        if not ObjectId.is_valid(appointment_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid appointment ID",
+            )
+
+        appointment = await self.appointments_collection.find_one(
+            {"_id": ObjectId(appointment_id)}
+        )
+        if not appointment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Appointment not found",
+            )
+
+        await self.prescriptions_collection.update_many(
+            {"appointmentId": appointment_id, "isActive": {"$ne": False}},
+            {"$set": {"isActive": False, "updatedAt": datetime.utcnow()}},
+        )
+
+        await self.appointments_collection.update_one(
+            {"_id": ObjectId(appointment_id)},
+            {
+                "$set": {
+                    "prescriptionWhatsappSent": False,
+                    "prescriptionWhatsappSentAt": None,
+                    "prescriptionFinalized": False,
+                    "prescriptionFinalizedAt": None,
+                    "prescriptionFinalizedVia": None,
+                    "prescriptionWhatsappDeliveryFailed": False,
+                    "prescriptionWhatsappDeliveryError": None,
+                    "diagnosis": "",
+                    "prescribedTest": "",
+                    "followUpInstructions": "",
+                    "prescription": "",
+                    "updatedAt": datetime.utcnow(),
+                }
+            },
+        )
+
+        return {
+            "appointmentId": appointment_id,
+            "prescriptionWhatsappSent": False,
+            "prescriptionFinalized": False,
+            "cleared": True,
+        }
+
     async def delete_prescription(self, prescription_id: str) -> bool:
-        """Soft delete prescription."""
+        """Hard-delete prescription so no row remains in the prescriptions table."""
         if not ObjectId.is_valid(prescription_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Prescription not found"
             )
-        
-        result = await self.prescriptions_collection.update_one(
-            {"_id": ObjectId(prescription_id)},
-            {"$set": {"isActive": False, "updatedAt": datetime.utcnow()}}
+
+        existing = await self.prescriptions_collection.find_one(
+            {"_id": ObjectId(prescription_id)}
         )
-        
-        if result.matched_count == 0:
+        if not existing:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Prescription not found"
             )
-        
+
+        result = await self.prescriptions_collection.delete_one(
+            {"_id": ObjectId(prescription_id)}
+        )
+
+        if result.deleted_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Prescription not found"
+            )
+
+        appointment_id = existing.get("appointmentId")
+        if appointment_id and ObjectId.is_valid(str(appointment_id)):
+            remaining = await self.prescriptions_collection.count_documents(
+                {"appointmentId": str(appointment_id), "isActive": {"$ne": False}}
+            )
+            clear_fields = {
+                "updatedAt": datetime.utcnow(),
+            }
+            if remaining == 0:
+                clear_fields.update(
+                    {
+                        "prescriptionWhatsappSent": False,
+                        "prescriptionWhatsappSentAt": None,
+                        "diagnosis": "",
+                        "prescribedTest": "",
+                        "followUpInstructions": "",
+                        "prescription": "",
+                    }
+                )
+            await self.appointments_collection.update_one(
+                {"_id": ObjectId(str(appointment_id))},
+                {"$set": clear_fields},
+            )
+
         return True
 

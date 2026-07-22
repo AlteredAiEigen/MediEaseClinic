@@ -120,6 +120,9 @@ def healthcare_provider_helper(provider: dict) -> dict:
         "country": provider.get("country", "India"),
         "website": provider.get("website"),
         "registrationNumber": provider.get("registrationNumber"),
+        # Optional branding (used by prescription PDF letterhead)
+        "logoUrl": provider.get("logoUrl") or provider.get("logo_url") or provider.get("logo"),
+        "logoS3Key": provider.get("logoS3Key") or provider.get("logoKey") or provider.get("logo_s3_key"),
         "createdAt": provider.get("createdAt"),
         "updatedAt": provider.get("updatedAt"),
     }

@@ -67,6 +67,19 @@ interface ConsultationSidebarProps {
   prescriptionFileName?: string | null;
   onDeletePrescriptionFile?: () => void;
   isDeletingPrescription?: boolean;
+  /** Opens the digital prescription writer panel. Optionally for a specific Rx. */
+  onOpenDigitalPrescription?: (prescriptionId?: string) => void;
+  /** Draft / sent prescriptions for this consultation visit. */
+  digitalPrescriptions?: Array<{
+    _id: string;
+    diagnosis?: string;
+    isActive?: boolean;
+    medicationCount?: number;
+    updatedAt?: string;
+    prescribedAt?: string;
+    createdAt?: string;
+    statusLabel?: string;
+  }>;
   className?: string;
 }
 
@@ -99,6 +112,8 @@ export function ConsultationSidebar({
   prescriptionFileName = null,
   onDeletePrescriptionFile,
   isDeletingPrescription = false,
+  onOpenDigitalPrescription,
+  digitalPrescriptions = [],
   className = "",
 }: ConsultationSidebarProps) {
   const [prescriptionOpen, setPrescriptionOpen] = useState(false);
@@ -301,12 +316,18 @@ export function ConsultationSidebar({
         <CardContent className="space-y-4">
           {/* Buttons Side by Side */}
           <div className="grid grid-cols-2 gap-3">
-            {/* Write Prescription Button */}
+            {/* Write Prescription — opens digital prescription app in a new window when wired */}
             <button
               type="button"
-              onClick={() => setPrescriptionOpen(!prescriptionOpen)}
+              onClick={() => {
+                if (onOpenDigitalPrescription) {
+                  onOpenDigitalPrescription();
+                  return;
+                }
+                setPrescriptionOpen(!prescriptionOpen);
+              }}
               className={`relative flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md ${
-                prescriptionOpen
+                prescriptionOpen && !onOpenDigitalPrescription
                   ? "bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-300 dark:border-purple-700"
                   : "bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800"
               }`}
@@ -333,6 +354,72 @@ export function ConsultationSidebar({
               </span>
             </button>
           </div>
+
+          {digitalPrescriptions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Prescriptions ({digitalPrescriptions.length})
+              </p>
+              <div className="space-y-1.5">
+                {digitalPrescriptions.map((rx, index) => {
+                  const when = rx.updatedAt || rx.prescribedAt || rx.createdAt;
+                  const labelDate = when
+                    ? new Date(when).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : `Prescription ${index + 1}`;
+                  const status =
+                    rx.statusLabel ||
+                    (rx.isActive === false ? "Sent / archived" : "Draft");
+                  return (
+                    <button
+                      key={rx._id}
+                      type="button"
+                      onClick={() => onOpenDigitalPrescription?.(rx._id)}
+                      className="w-full text-left rounded-md border border-border px-3 py-2 hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-foreground truncate">
+                          {labelDate}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] shrink-0 ${
+                            status.toLowerCase().includes("draft")
+                              ? "border-sky-300 text-sky-700"
+                              : "border-amber-300 text-amber-800"
+                          }`}
+                        >
+                          {status}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                        {(rx.medicationCount ?? 0) > 0
+                          ? `${rx.medicationCount} medicine${(rx.medicationCount ?? 0) === 1 ? "" : "s"}`
+                          : "No medicines"}
+                        {rx.diagnosis ? ` · ${rx.diagnosis}` : ""}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {onOpenDigitalPrescription && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto py-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setPrescriptionOpen((o) => !o)}
+            >
+              {prescriptionOpen ? "Hide" : "Add"} chart prescription notes (free text)
+            </Button>
+          )}
 
           {/* Prescription Text Box */}
           {prescriptionOpen && (

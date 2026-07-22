@@ -13,6 +13,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SearchIcon, PlusIcon, XIcon, PillIcon, AlertCircleIcon, Loader2 } from "lucide-react";
 import { post, get } from "@/lib/api-client";
 import { useAuth } from "@/context/auth-context";
+import { PrescriptionItemAutocomplete } from "@/polymet/components/prescription-item-autocomplete";
+import type { PrescriptionCatalogItem } from "@/lib/prescription-catalog";
 
 interface Patient {
   _id: string;
@@ -405,12 +407,18 @@ export function WritePrescriptionDialog({
                 </div>
 
                 <div className="space-y-2 p-3 rounded-lg border border-dashed border-border">
-                  <Input
-                    placeholder="Medication name"
+                  <PrescriptionItemAutocomplete
                     value={currentMed.name}
-                    onChange={(e) =>
-                      setCurrentMed({ ...currentMed, name: e.target.value })
-                    }
+                    onChange={(name) => setCurrentMed({ ...currentMed, name })}
+                    onSelect={(item: PrescriptionCatalogItem) => {
+                      setCurrentMed({
+                        name: item.name,
+                        dosage: item.dosage || currentMed.dosage,
+                        frequency: item.frequency || currentMed.frequency,
+                        duration: item.duration || currentMed.duration,
+                      });
+                    }}
+                    placeholder="Medication, injection, or test…"
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && currentMed.name && currentMed.dosage) {
                         e.preventDefault();
@@ -418,6 +426,9 @@ export function WritePrescriptionDialog({
                       }
                     }}
                   />
+                  <p className="text-[10px] text-muted-foreground">
+                    Start typing for suggestions — medicines, injections &amp; tests
+                  </p>
 
                   <div className="grid grid-cols-2 gap-2">
                     <Input

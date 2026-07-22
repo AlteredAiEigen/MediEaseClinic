@@ -35,6 +35,7 @@ DEFAULT_VALUES = {
     "header_clinic_name": "MediEase Clinic",
     "appointment_date": datetime.now().strftime("%B %d, %Y"),
     "appointment_time": "5:00 PM",
+    "prescription_download_url": "https://example.com/prescription.pdf",
 }
 
 

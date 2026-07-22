@@ -32,9 +32,12 @@ class Medication(BaseModel):
     """Medication details."""
     name: str = Field(..., min_length=1)
     dosage: str = Field(..., min_length=1)
-    frequency: str = Field(..., min_length=1)
-    duration: str = Field(..., min_length=1)
+    frequency: str = Field("", description="Optional; blank when not specified")
+    duration: str = Field("", description="Optional; blank when not specified")
     instructions: Optional[str] = ""
+    medicineType: Optional[str] = None
+    composition: Optional[str] = None
+    quantity: Optional[int] = None
 
 
 class PrescriptionTest(BaseModel):
@@ -57,12 +60,18 @@ class PrescriptionBase(BaseModel):
     patientId: str
     doctorId: str
     appointmentId: Optional[str] = None
-    queueId: Optional[str] = None
     medications: List[Medication] = Field(..., min_items=1)
     diagnosis: Optional[str] = ""
     notes: Optional[str] = ""
+    language: Optional[str] = Field(
+        "en",
+        description="Prescription UI language used for PDF labels: en | hi",
+    )
     imageUrl: Optional[str] = ""
     imagePublicId: Optional[str] = ""
+    pdfS3Key: Optional[str] = None
+    pdfUrl: Optional[str] = None
+    pdfGeneratedAt: Optional[datetime] = None
     validUntil: Optional[datetime] = None
     isActive: bool = True
 
@@ -97,7 +106,6 @@ class PrescriptionResponse(BaseModel):
     patientId: str
     doctorId: str
     appointmentId: Optional[str] = None
-    queueId: Optional[str] = None
     patientName: Optional[str] = None
     doctorName: Optional[str] = None
     medications: List[Medication]
@@ -105,6 +113,9 @@ class PrescriptionResponse(BaseModel):
     notes: Optional[str] = None
     imageUrl: Optional[str] = None
     imagePublicId: Optional[str] = None
+    pdfS3Key: Optional[str] = None
+    pdfUrl: Optional[str] = None
+    pdfGeneratedAt: Optional[datetime] = None
     validUntil: Optional[datetime] = None
     isActive: bool
     prescribedAt: datetime
@@ -121,6 +132,7 @@ class PrescriptionUpdate(BaseModel):
     medications: Optional[List[Medication]] = Field(None, min_items=1)
     diagnosis: Optional[str] = None
     notes: Optional[str] = None
+    language: Optional[str] = None
     imageUrl: Optional[str] = None
     imagePublicId: Optional[str] = None
     validUntil: Optional[datetime] = None
@@ -138,14 +150,17 @@ async def prescription_helper(prescription: dict) -> dict:
         "patientId": str(prescription["patientId"]),
         "doctorId": str(prescription["doctorId"]),
         "appointmentId": str(prescription["appointmentId"]) if prescription.get("appointmentId") else None,
-        "queueId": str(prescription["queueId"]) if prescription.get("queueId") else None,
         "patientName": prescription.get("patientName"),
         "doctorName": prescription.get("doctorName"),
         "medications": prescription.get("medications", []),
         "diagnosis": prescription.get("diagnosis", ""),
         "notes": prescription.get("notes", ""),
+        "language": prescription.get("language") or "en",
         "imageUrl": prescription.get("imageUrl", ""),
         "imagePublicId": prescription.get("imagePublicId", ""),
+        "pdfS3Key": prescription.get("pdfS3Key"),
+        "pdfUrl": prescription.get("pdfUrl"),
+        "pdfGeneratedAt": prescription.get("pdfGeneratedAt"),
         "validUntil": prescription.get("validUntil"),
         "isActive": prescription.get("isActive", True),
         "prescribedAt": prescription.get("prescribedAt"),

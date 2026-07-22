@@ -27,8 +27,8 @@ class Database:
             logger.info("Connecting to MongoDB Atlas...")
             cls.client = AsyncIOMotorClient(
                 settings.mongodb_url,
-                maxPoolSize=10,
-                minPoolSize=1,
+                maxPoolSize=5,
+                minPoolSize=0,
                 serverSelectionTimeoutMS=5000,
             )
             cls.database = cls.client[settings.database_name]
@@ -91,6 +91,15 @@ class Database:
             await cls.database.prescriptions.create_index("prescriptionId", unique=True)
             await cls.database.prescriptions.create_index("patientId")
             await cls.database.prescriptions.create_index("doctorId")
+
+            # Prescription catalog (medicines, injections, tests cache)
+            await cls.database.prescription_catalog.create_index(
+                [("nameLower", 1), ("type", 1)],
+                unique=True,
+            )
+            await cls.database.prescription_catalog.create_index("type")
+            await cls.database.prescription_catalog.create_index([("useCount", -1)])
+            await cls.database.prescription_catalog.create_index("nameLower")
             
             # Recordings collection indexes
             await cls.database.recordings.create_index("recordingId", unique=True)

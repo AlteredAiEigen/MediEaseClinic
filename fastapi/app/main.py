@@ -169,6 +169,7 @@ from app.routers import (
     patient_vitals,
     appointments,
     prescriptions,
+    prescription_catalog,
     recordings,
     clinical_notes,
     queue,
@@ -197,6 +198,11 @@ app.include_router(patients.router, prefix="/api/patients", tags=["Patients"])
 app.include_router(patient_vitals.router, prefix="/api/patient-vitals", tags=["Patient Vitals"])
 app.include_router(appointments.router, prefix="/api/appointments", tags=["Appointments"])
 app.include_router(prescriptions.router, prefix="/api/prescriptions", tags=["Prescriptions"])
+app.include_router(
+    prescription_catalog.router,
+    prefix="/api/prescription-catalog",
+    tags=["Prescription Catalog"],
+)
 app.include_router(recordings.router, prefix="/api/recordings", tags=["Recordings"])
 app.include_router(clinical_notes.router, prefix="/api/clinical-notes", tags=["Clinical Notes"])
 app.include_router(queue.router, prefix="/api/queue", tags=["Queue"])

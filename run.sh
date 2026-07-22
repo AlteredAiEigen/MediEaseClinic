@@ -59,6 +59,11 @@ echo "🔄 MediEase Clinic - Restart Services"
 echo "=================================================="
 echo -e "${NC}"
 
+# Ensure swap exists before build/start (avoids OOM on ~4GB instances)
+if [[ -x "$(dirname "$0")/scripts/ensure-swap.sh" ]]; then
+  bash "$(dirname "$0")/scripts/ensure-swap.sh" || print_warning "Could not enable swap (continuing)"
+fi
+
 # Kill existing MediEase processes
 print_step "Killing existing MediEase processes..."
 
@@ -137,8 +142,9 @@ echo ""
 print_step "Building frontend for production..."
 cd ../Frontend
 
-# Build the frontend
+# Build the frontend (cap Node heap on small instances)
 print_step "Running production build..."
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1536}"
 npm run build
 
 print_success "Frontend built successfully"

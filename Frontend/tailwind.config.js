@@ -14,6 +14,12 @@ export default {
     },
     "extend": {
         "fontFamily": {
+            "display": [
+                "Instrument Serif",
+                "ui-serif",
+                "Georgia",
+                "serif"
+            ],
             "sans": [
                 "var(--font-sans)",
                 "ui-sans-serif",

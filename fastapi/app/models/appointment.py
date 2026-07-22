@@ -66,6 +66,8 @@ class AppointmentBase(BaseModel):
     appointmentReminderSent: bool = False
     labResultReminderSent: bool = False
     followupWhatsappSent: bool = False
+    prescriptionWhatsappSent: bool = False
+    prescriptionWhatsappSentAt: Optional[datetime] = None
     whatsappLogs: Dict[str, Any] = Field(default_factory=dict)
     # HIPAA Consent fields
     consentStatus: Optional[str] = Field(None, description="Consent status: pending, accepted, rejected")
@@ -145,6 +147,8 @@ class AppointmentResponse(BaseModel):
     appointmentReminderSent: bool = False
     labResultReminderSent: bool = False
     followupWhatsappSent: bool = False
+    prescriptionWhatsappSent: bool = False
+    prescriptionWhatsappSentAt: Optional[datetime] = None
     whatsappLogs: Dict[str, Any] = Field(default_factory=dict)
     prescriptionFileUrl: Optional[str] = None
     prescriptionFileKey: Optional[str] = None
@@ -205,6 +209,8 @@ class AppointmentUpdate(BaseModel):
     appointmentReminderSent: Optional[bool] = None
     labResultReminderSent: Optional[bool] = None
     followupWhatsappSent: Optional[bool] = None
+    prescriptionWhatsappSent: Optional[bool] = None
+    prescriptionWhatsappSentAt: Optional[datetime] = None
     whatsappLogs: Optional[Dict[str, Any]] = None
 
 
@@ -228,6 +234,24 @@ async def appointment_helper(appointment: dict, db=None) -> dict:
                 if s3_prescription and s3_prescription.get("structuredDetails"):
                     structured_details = s3_prescription.get("structuredDetails", {})
                     prescription_medications = structured_details.get("medicines", [])
+
+                if not prescription_medications:
+                    rx_doc = await db.prescriptions.find_one(
+                        {"appointmentId": appointment_id},
+                        sort=[("prescribedAt", -1), ("createdAt", -1)],
+                    )
+                    if rx_doc and rx_doc.get("medications"):
+                        prescription_medications = [
+                            {
+                                "name": med.get("name", ""),
+                                "dosage": med.get("dosage", ""),
+                                "frequency": med.get("frequency", ""),
+                                "duration": med.get("duration", ""),
+                                "instructions": med.get("instructions", ""),
+                            }
+                            for med in rx_doc["medications"]
+                            if isinstance(med, dict)
+                        ]
         except Exception as e:
             import logging
             logging.warning(f"Failed to fetch prescription medications for appointment: {e}")
@@ -275,6 +299,17 @@ async def appointment_helper(appointment: dict, db=None) -> dict:
         "appointmentReminderSent": appointment.get("appointmentReminderSent", False),
         "labResultReminderSent": appointment.get("labResultReminderSent", False),
         "followupWhatsappSent": appointment.get("followupWhatsappSent", False),
+        "prescriptionWhatsappSent": appointment.get("prescriptionWhatsappSent", False),
+        "prescriptionWhatsappSentAt": appointment.get("prescriptionWhatsappSentAt"),
+        "prescriptionFinalized": appointment.get("prescriptionFinalized", False),
+        "prescriptionFinalizedAt": appointment.get("prescriptionFinalizedAt"),
+        "prescriptionFinalizedVia": appointment.get("prescriptionFinalizedVia"),
+        "prescriptionWhatsappDeliveryFailed": appointment.get(
+            "prescriptionWhatsappDeliveryFailed", False
+        ),
+        "prescriptionWhatsappDeliveryError": appointment.get(
+            "prescriptionWhatsappDeliveryError"
+        ),
         "whatsappLogs": appointment.get("whatsappLogs", {}),
         "prescriptionFileUrl": appointment.get("prescriptionFileUrl"),
         "prescriptionFileKey": appointment.get("prescriptionFileKey"),
@@ -284,6 +319,7 @@ async def appointment_helper(appointment: dict, db=None) -> dict:
         "prescriptionUploadedBy": appointment.get("prescriptionUploadedBy"),
         "prescriptionUploadedByName": appointment.get("prescriptionUploadedByName"),
         # Consultation details (added during consultation)
+        "prescription": appointment.get("prescription"),
         "prescribedTest": appointment.get("prescribedTest"),
         "diagnosis": appointment.get("diagnosis"),
         "treatmentPlan": appointment.get("treatmentPlan"),

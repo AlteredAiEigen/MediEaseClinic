@@ -26,11 +26,9 @@ export function RequireAuth({ children, role }: RequireAuthProps) {
   }
 
   if (!user) {
-    const targetRole =
-      Array.isArray(role) ? role[0] ?? "doctor" : role ?? "doctor";
     return (
       <Navigate
-        to={`/auth?role=${targetRole}`}
+        to="/login"
         state={{ from: location }}
         replace
       />

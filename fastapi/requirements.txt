@@ -54,6 +54,8 @@ twilio==9.2.3
 # AI Services
 openai==1.54.0
 pymupdf==1.24.14
+reportlab==4.2.5
+svglib==1.5.1
 google-generativeai==0.8.3
 
 # Audio Processing

@@ -1,6 +1,6 @@
 """
 WhatsApp Content API helper with dynamic template lookup.
-Uses whatsapp_templates collection (fields: template_name, content_sid, variables[{position,key}]).
+Uses whatsapp_templates collection (fields: template_name, content_sid, body, variables[{position,key}]).
 """
 
 import json
@@ -148,25 +148,48 @@ class WhatsAppTemplateService:
         if not template:
             return {"success": False, "error_message": f"Template not found for scenario '{scenario}'", "error_code": "TEMPLATE_MISSING"}
 
+        return await self._send_with_template(
+            template=template,
+            to=to,
+            values=values,
+            patient_id=patient_id,
+            appointment_id=appointment_id,
+        )
+
+    async def _send_with_template(
+        self,
+        *,
+        template: Dict[str, Any],
+        to: str,
+        values: Dict[str, Any],
+        patient_id: Optional[str] = None,
+        appointment_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Send using an already-loaded whatsapp_templates document."""
+        template_name = template.get("template_name", "")
         content_sid = template.get("content_sid") or template.get("contentSid")
         if not content_sid:
-            return {"success": False, "error_message": "Template content_sid missing", "error_code": "TEMPLATE_MISSING_SID"}
+            return {
+                "success": False,
+                "error_message": "Template content_sid missing in whatsapp_templates",
+                "error_code": "TEMPLATE_MISSING_SID",
+                "template_name": template_name,
+            }
 
         content_vars = self._build_content_variables(template, values)
 
-        logger.info(f"Template variables structure: {template.get('variables', [])}")
-        logger.info(f"Content variables to send: {content_vars}")
-        logger.info(f"Content variables JSON: {json.dumps(content_vars)}")
+        logger.info("Template variables structure: %s", template.get("variables", []))
+        logger.info("Content variables to send: %s", content_vars)
+        logger.info("Content variables JSON: %s", json.dumps(content_vars))
 
         try:
             logger.info(
-                "Sending WhatsApp content message scenario=%s to=%s appointment=%s patient=%s content_variables=%s content_sid=%s",
-                scenario,
+                "Sending WhatsApp content message template_name=%s to=%s appointment=%s patient=%s content_sid=%s",
+                template_name,
                 to,
                 appointment_id,
                 patient_id,
-                content_vars,
-                content_sid
+                content_sid,
             )
             msg = self.client.messages.create(
                 from_=self.from_number,
@@ -175,27 +198,29 @@ class WhatsAppTemplateService:
                 content_variables=json.dumps(content_vars),
                 status_callback=f"{settings.frontend_base_url}/api/whatsapp/webhooks/status",
             )
-            
-            # Fetch the actual message body from Twilio API
+
             message_body = ""
             try:
-                # Fetch the message to get the rendered body
                 fetched_msg = self.client.messages(msg.sid).fetch()
-                message_body = fetched_msg.body if hasattr(fetched_msg, 'body') and fetched_msg.body else ""
-                logger.info(f"Fetched message body from Twilio: {message_body[:100]}..." if len(message_body) > 100 else f"Fetched message body from Twilio: {message_body}")
+                message_body = fetched_msg.body if hasattr(fetched_msg, "body") and fetched_msg.body else ""
+                logger.info(
+                    "Fetched message body from Twilio: %s",
+                    message_body[:100] + "..." if len(message_body) > 100 else message_body,
+                )
             except Exception as fetch_error:
-                logger.warning(f"Could not fetch message body from Twilio: {fetch_error}")
-                # Message body will be empty, but we'll still have message_sid
-            
+                logger.warning("Could not fetch message body from Twilio: %s", fetch_error)
+
             return {
                 "success": True,
                 "message_sid": msg.sid,
                 "status": msg.status,
                 "to": msg.to,
                 "from_number": msg.from_,
-                "body": message_body,  # Actual message body from Twilio
+                "body": message_body,
                 "timestamp": datetime.utcnow(),
                 "content_vars": content_vars,
+                "template_name": template_name,
+                "content_sid": content_sid,
             }
         except TwilioRestException as exc:
             logger.error("Twilio Content API error: %s", exc)
@@ -203,11 +228,60 @@ class WhatsAppTemplateService:
                 "success": False,
                 "error_message": exc.msg if hasattr(exc, "msg") else str(exc),
                 "error_code": str(getattr(exc, "code", "TWILIO_ERROR")),
+                "template_name": template_name,
             }
         except TwilioException as exc:
             logger.error("Twilio exception: %s", exc)
-            return {"success": False, "error_message": str(exc), "error_code": "TWILIO_ERROR"}
+            return {
+                "success": False,
+                "error_message": str(exc),
+                "error_code": "TWILIO_ERROR",
+                "template_name": template_name,
+            }
         except Exception as exc:
             logger.exception("Unexpected error sending WhatsApp content message")
-            return {"success": False, "error_message": str(exc), "error_code": "INTERNAL_ERROR"}
+            return {
+                "success": False,
+                "error_message": str(exc),
+                "error_code": "INTERNAL_ERROR",
+                "template_name": template_name,
+            }
+
+    async def send_by_template_name(
+        self,
+        *,
+        template_name: str,
+        to: str,
+        values: Dict[str, Any],
+        patient_id: Optional[str] = None,
+        appointment_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Load template from whatsapp_templates by template_name and send.
+        Preferred entry point for feature services (prescription, reminders, etc.).
+        """
+        if not self.is_configured():
+            return {
+                "success": False,
+                "error_message": "Twilio Content API not configured",
+                "error_code": "CONFIG",
+                "template_name": template_name,
+            }
+
+        template = await self.fetch_template(template_name)
+        if not template:
+            return {
+                "success": False,
+                "error_message": f"Template '{template_name}' not found in whatsapp_templates",
+                "error_code": "TEMPLATE_MISSING",
+                "template_name": template_name,
+            }
+
+        return await self._send_with_template(
+            template=template,
+            to=to,
+            values=values,
+            patient_id=patient_id,
+            appointment_id=appointment_id,
+        )
 

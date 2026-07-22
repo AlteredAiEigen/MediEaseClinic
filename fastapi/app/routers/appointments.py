@@ -735,6 +735,174 @@ async def update_appointment_status(
         )
 
 
+@router.post("/{appointment_id}/prescription/start-new")
+async def start_new_prescription_after_whatsapp(
+    appointment_id: str,
+    current_user: dict = Depends(require_roles(["doctor", "admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    After a prescription was sent on WhatsApp, start a blank new prescription:
+    deactivate previous Rx rows and clear the WhatsApp-sent lock on the appointment.
+    """
+    if not ObjectId.is_valid(appointment_id):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid appointment ID",
+        )
+    try:
+        from app.services.prescription_service import PrescriptionService
+
+        service = PrescriptionService(db)
+        result = await service.start_new_prescription_after_send(appointment_id)
+        await _invalidate_appointments_cache()
+        return success_response(
+            message="Previous prescription closed. You can write a new one.",
+            data=result,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to start new prescription for %s: %s", appointment_id, e, exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start new prescription: {str(e)}",
+        )
+
+
+@router.post("/{appointment_id}/prescription/finalize")
+async def finalize_prescription(
+    appointment_id: str,
+    current_user: dict = Depends(require_roles(["doctor", "admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Mark the visit prescription as done/non-editable (e.g. after Print when WhatsApp failed).
+    """
+    if not ObjectId.is_valid(appointment_id):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid appointment ID",
+        )
+    try:
+        from app.services.prescription_whatsapp_service import get_prescription_whatsapp_service
+
+        service = get_prescription_whatsapp_service(db)
+        result = await service.finalize_prescription_for_print(appointment_id)
+        if not result.get("success"):
+            raise HTTPException(
+                status_code=http_status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error_message") or "Failed to finalize prescription",
+            )
+        await _invalidate_appointments_cache()
+        return success_response(
+            message="Prescription marked as completed (print).",
+            data=result,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to finalize prescription for %s: %s", appointment_id, e, exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to finalize prescription: {str(e)}",
+        )
+
+
+@router.post("/{appointment_id}/generate-prescription-pdf")
+async def generate_prescription_pdf(
+    appointment_id: str,
+    send_whatsapp: bool = Query(False, alias="sendWhatsApp"),
+    language: str = Query("en", description="PDF language from Prescription tab: en | hi"),
+    current_user: dict = Depends(require_roles(["doctor", "admin"])),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Generate a digital prescription PDF from the Prescription tab (medicines, diagnosis,
+    tests, follow-up), store it in S3 / s3_prescriptions, and optionally send WhatsApp.
+
+    Flow when sendWhatsApp=true:
+      1. Require saved prescriptions row with medicines
+      2. Generate PDF with those values
+      3. Upload to S3 and upsert s3_prescriptions
+      4. Create 7-day presigned download URL
+      5. Send Twilio template prescription_utility_format to the patient
+    """
+    if not ObjectId.is_valid(appointment_id):
+        raise HTTPException(
+            status_code=http_status.HTTP_400_BAD_REQUEST,
+            detail="Invalid appointment ID",
+        )
+
+    try:
+        from app.services.digital_prescription_service import get_digital_prescription_service
+        from app.services.prescription_whatsapp_service import get_prescription_whatsapp_service
+
+        pdf_service = get_digital_prescription_service(db)
+        result = await pdf_service.generate_and_store(
+            appointment_id,
+            str(current_user["_id"]),
+            require_structured_prescription=bool(send_whatsapp),
+            language=language,
+        )
+
+        whatsapp_result = None
+        if send_whatsapp:
+            whatsapp_service = get_prescription_whatsapp_service(db)
+            uploader_name = f"{current_user.get('firstName', '')} {current_user.get('lastName', '')}".strip()
+            whatsapp_result = await whatsapp_service.send_prescription_whatsapp(
+                appointment_id,
+                uploaded_by=str(current_user["_id"]),
+                uploaded_by_name=uploader_name or current_user.get("email"),
+                # Do not force re-send after a successful delivery; doctor must create a new Rx.
+                force=False,
+            )
+            # Prefer the fresh download URL from PDF generation in the response
+            if whatsapp_result is not None and result.get("downloadUrl"):
+                whatsapp_result = {
+                    **whatsapp_result,
+                    "downloadUrl": whatsapp_result.get("downloadUrl") or result.get("downloadUrl"),
+                }
+
+        await _invalidate_appointments_cache()
+
+        message = "Prescription PDF generated and stored in S3"
+        if send_whatsapp and whatsapp_result and whatsapp_result.get("success") and not whatsapp_result.get("skipped"):
+            message = "Prescription PDF generated and sent to patient via WhatsApp"
+        elif send_whatsapp and whatsapp_result and whatsapp_result.get("skipped") and whatsapp_result.get("reason") == "already_sent":
+            message = "Prescription was already sent on WhatsApp for this visit"
+        elif send_whatsapp and whatsapp_result and not whatsapp_result.get("success"):
+            message = (
+                whatsapp_result.get("error_message")
+                or "Prescription PDF was saved, but WhatsApp delivery failed"
+            )
+
+        return success_response(
+            message=message,
+            data={
+                **result,
+                "whatsapp": whatsapp_result,
+                "whatsappFailed": bool(
+                    send_whatsapp
+                    and whatsapp_result
+                    and not whatsapp_result.get("success")
+                    and not (
+                        whatsapp_result.get("skipped")
+                        and whatsapp_result.get("reason") == "already_sent"
+                    )
+                ),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Prescription PDF generation failed for %s: %s", appointment_id, e, exc_info=True)
+        raise HTTPException(
+            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Prescription PDF generation failed: {str(e)}",
+        )
+
+
 @router.post("/{appointment_id}/prescription-upload")
 async def upload_prescription(
     appointment_id: str,
@@ -1086,42 +1254,126 @@ async def complete_consultation(
             )
         
         appointment_service = AppointmentService(db)
-        
-        # Check if prescription file already exists (uploaded by doctor during consultation)
         appointment_obj_id = ObjectId(appointment_id)
-        existing_appointment = await db.appointments.find_one({"_id": appointment_obj_id})
-        prescription_exists = existing_appointment and (
-            existing_appointment.get("prescriptionFileUrl") or 
-            existing_appointment.get("prescriptionFileKey")
-        )
-        
-        # Set status based on whether prescription file exists
-        # If prescription uploaded → "completed", else → "checkout-pending" (receptionist needs to upload)
-        consultation_status = "completed" if prescription_exists else "checkout-pending"
-        
-        # Log for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"Complete consultation for appointment {appointment_id}: prescription_exists={prescription_exists}, setting status to {consultation_status}")
-        
-        # Save consultation details to appointment immediately
+
+        # Save consultation details first; final status is set after PDF generation attempt
         update_data = AppointmentUpdateRequest(
-            status=consultation_status,
+            status="checkout-pending",
             prescribedTest=prescribed_test,
             diagnosis=diagnosis,
             treatmentPlan=treatment_plan,
             followUpInstructions=follow_up_instructions,
             detailedNotes=detailed_notes,
             aiRecommendations=ai_recommendations,
-            prescription=prescription
+            prescription=prescription,
         )
-        
+
         appointment = await appointment_service.update_appointment(
             appointment_id,
-            update_data
+            update_data,
         )
 
         await _invalidate_appointments_cache()
+
+        pdf_result = None
+        whatsapp_result = None
+        try:
+            from app.services.digital_prescription_service import get_digital_prescription_service
+
+            # Only auto-generate PDF when Prescription-tab data exists (not lab reports / free-text alone)
+            structured_rx = await db.prescriptions.find_one(
+                {"appointmentId": appointment_id, "isActive": {"$ne": False}},
+                sort=[("updatedAt", -1), ("createdAt", -1)],
+            )
+            has_medicines = bool(structured_rx and (structured_rx.get("medications") or []))
+
+            if has_medicines:
+                pdf_service = get_digital_prescription_service(db)
+                pdf_result = await pdf_service.generate_and_store(
+                    appointment_id,
+                    str(current_user["_id"]),
+                    require_structured_prescription=True,
+                )
+                logger.info(
+                    "Generated prescription PDF during consultation completion for %s: %s",
+                    appointment_id,
+                    pdf_result.get("s3Key"),
+                )
+            else:
+                logger.info(
+                    "Skipping prescription PDF on complete-consultation for %s — no Prescription-tab medicines saved",
+                    appointment_id,
+                )
+        except HTTPException as exc:
+            if exc.status_code not in (
+                http_status.HTTP_404_NOT_FOUND,
+                http_status.HTTP_400_BAD_REQUEST,
+            ):
+                logger.warning(
+                    "Prescription PDF generation failed during consultation completion for %s: %s",
+                    appointment_id,
+                    exc.detail,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Prescription PDF generation failed during consultation completion for %s: %s",
+                appointment_id,
+                exc,
+            )
+
+        try:
+            from app.services.prescription_whatsapp_service import get_prescription_whatsapp_service
+
+            uploader_name = f"{current_user.get('firstName', '')} {current_user.get('lastName', '')}".strip()
+            whatsapp_service = get_prescription_whatsapp_service(db)
+            whatsapp_result = await whatsapp_service.send_if_not_already_sent(
+                appointment_id,
+                uploaded_by=str(current_user["_id"]),
+                uploaded_by_name=uploader_name or current_user.get("email"),
+            )
+            if whatsapp_result.get("success") and not whatsapp_result.get("skipped"):
+                logger.info(
+                    "Prescription WhatsApp sent during consultation completion for %s",
+                    appointment_id,
+                )
+            elif whatsapp_result.get("skipped"):
+                logger.info(
+                    "Prescription WhatsApp skipped during consultation completion for %s: %s",
+                    appointment_id,
+                    whatsapp_result.get("reason"),
+                )
+            elif whatsapp_result:
+                logger.warning(
+                    "Prescription WhatsApp failed during consultation completion for %s: %s",
+                    appointment_id,
+                    whatsapp_result.get("reason") or whatsapp_result.get("error_message"),
+                )
+        except Exception as exc:
+            logger.warning(
+                "Prescription WhatsApp attempt failed during consultation completion for %s: %s",
+                appointment_id,
+                exc,
+            )
+
+        refreshed_appointment = await db.appointments.find_one({"_id": appointment_obj_id})
+        prescription_exists = refreshed_appointment and (
+            refreshed_appointment.get("prescriptionFileUrl")
+            or refreshed_appointment.get("prescriptionFileKey")
+        )
+        consultation_status = "completed" if prescription_exists else "checkout-pending"
+        logger.info(
+            "Complete consultation for appointment %s: prescription_exists=%s, setting status to %s",
+            appointment_id,
+            prescription_exists,
+            consultation_status,
+        )
+
+        if refreshed_appointment and refreshed_appointment.get("status") != consultation_status:
+            appointment = await appointment_service.update_appointment(
+                appointment_id,
+                AppointmentUpdateRequest(status=consultation_status),
+            )
+            await _invalidate_appointments_cache()
         
         # Note: Queue status is now automatically synced in update_appointment method
         # This ensures queue status stays in sync with appointment status
@@ -1199,7 +1451,11 @@ async def complete_consultation(
         
         return success_response(
             message="Consultation completed successfully",
-            data={"appointment": appointment}
+            data={
+                "appointment": appointment,
+                "prescriptionPdf": pdf_result,
+                "prescriptionWhatsapp": whatsapp_result,
+            },
         )
     
     except HTTPException as e:

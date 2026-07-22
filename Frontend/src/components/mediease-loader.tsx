@@ -61,7 +61,7 @@ export function MediEaseLoader({
           
           {/* Logo with breathing effect – new MediEase logo */}
           <img
-            src="/mediease-logo.svg"
+            src="/landing-assets/mediease-logo.png"
             alt="MediEase"
             className={`${sizeClasses[size]} rounded-2xl relative z-10 transition-opacity duration-100`}
             style={{ opacity }}

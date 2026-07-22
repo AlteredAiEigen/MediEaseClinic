@@ -19,6 +19,7 @@ export interface User {
   role: UserRole;
   phone?: string;
   profileImage?: string | null;
+  clinicName?: string | null;
   speciality?: string | null;
   licenseNumber?: string | null;
   isActive?: boolean;

@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     s3_bucket_name: str
     s3_transcripts_bucket: str = ""  # Optional separate bucket for transcripts
     aws_s3_presigned_url_expiration: int = 900
+    aws_s3_prescription_presigned_url_expiration: int = 604800  # 7 days for patient download links
     
     # AWS Transcribe Configuration
     aws_transcribe_region: str = ""  # Optional, defaults to aws_region if not set

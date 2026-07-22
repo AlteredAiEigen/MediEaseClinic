@@ -104,6 +104,60 @@ async def list_prescriptions(
         )
 
 
+@router.get("/consultation/latest")
+async def get_latest_consultation_prescription(
+    appointment_id: Optional[str] = Query(None, alias="appointmentId"),
+    queue_id: Optional[str] = Query(None, alias="queueId"),
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """Get the most recent active prescription saved for this consultation."""
+    if not appointment_id and not queue_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="appointmentId or queueId is required",
+        )
+
+    prescription_service = PrescriptionService(db)
+    prescription = await prescription_service.get_latest_consultation_prescription(
+        appointment_id=appointment_id,
+        queue_id=queue_id,
+    )
+
+    return success_response(
+        message="Prescription retrieved successfully" if prescription else "No prescription found for this consultation",
+        data={"prescription": prescription},
+    )
+
+
+@router.get("/consultation/list")
+async def list_consultation_prescriptions(
+    appointment_id: Optional[str] = Query(None, alias="appointmentId"),
+    queue_id: Optional[str] = Query(None, alias="queueId"),
+    include_inactive: bool = Query(True, alias="includeInactive"),
+    current_user: dict = Depends(require_any_role),
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """List all prescriptions for this consultation (for selector when multiple exist)."""
+    if not appointment_id and not queue_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="appointmentId or queueId is required",
+        )
+
+    prescription_service = PrescriptionService(db)
+    prescriptions = await prescription_service.list_consultation_prescriptions(
+        appointment_id=appointment_id,
+        queue_id=queue_id,
+        include_inactive=include_inactive,
+    )
+
+    return success_response(
+        message="Prescriptions retrieved successfully",
+        data={"prescriptions": prescriptions, "count": len(prescriptions)},
+    )
+
+
 @router.get("/{prescription_id}")
 async def get_prescription(
     prescription_id: str,
@@ -158,7 +212,7 @@ async def delete_prescription(
     current_user: dict = Depends(require_doctor_or_admin),
     db: AsyncIOMotorDatabase = Depends(get_db)
 ):
-    """Soft delete prescription."""
+    """Hard-delete prescription so no row remains before WhatsApp send."""
     try:
         prescription_service = PrescriptionService(db)
         await prescription_service.delete_prescription(prescription_id)

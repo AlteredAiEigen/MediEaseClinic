@@ -165,8 +165,7 @@ export function HealthcareLayout({
 
   const handleLogout = () => {
     logout();
-    const redirectRole = user?.role ?? "doctor";
-    navigate(`/auth?role=${redirectRole}`, { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (

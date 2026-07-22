@@ -2,6 +2,7 @@
 Recording service for managing consultation audio recordings with transcription.
 """
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from copy import deepcopy
@@ -10,12 +11,23 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
 
 from app.models.recording import RecordingUpdate, recording_helper
-from app.models.patient import DEFAULT_PATIENT_INSIGHTS
+from app.models.patient import DEFAULT_PATIENT_INSIGHTS, patient_helper
+from app.models.appointment import appointment_helper
 from app.services.aws_service import aws_service
 from app.services.patient_medical_history_service import PatientMedicalHistoryService
 from app.models.patient_medical_history import PatientMedicalHistoryCreate
 from app.config import settings
 from app.services.transcribe_service import transcribe_service
+
+
+def _to_object_id(value) -> Optional[ObjectId]:
+    if value is None:
+        return None
+    if isinstance(value, ObjectId):
+        return value
+    if isinstance(value, str) and ObjectId.is_valid(value):
+        return ObjectId(value)
+    return None
 
 
 class RecordingService:
@@ -846,34 +858,78 @@ class RecordingService:
         
         cursor = self.recordings_collection.find(query).sort("createdAt", -1).skip(skip).limit(limit)
         recordings = await cursor.to_list(length=limit)
-        
-        formatted = []
+
+        # Batch-load patients and appointments (avoids N+1 queries and huge client-side fan-out)
+        patient_oids: List[ObjectId] = []
+        appointment_oids: List[ObjectId] = []
         for recording in recordings:
+            poid = _to_object_id(recording.get("patientId"))
+            if poid:
+                patient_oids.append(poid)
+            aoid = _to_object_id(recording.get("appointmentId"))
+            if aoid:
+                appointment_oids.append(aoid)
+
+        patients_map: Dict[str, dict] = {}
+        if patient_oids:
+            unique_pids = list(dict.fromkeys(patient_oids))
+            patient_docs = await self.patients_collection.find(
+                {"_id": {"$in": unique_pids}}
+            ).to_list(length=len(unique_pids))
+            patients_map = {str(p["_id"]): p for p in patient_docs}
+
+        appointments_map: Dict[str, dict] = {}
+        if appointment_oids:
+            unique_aids = list(dict.fromkeys(appointment_oids))
+            appt_docs = await self.appointments_collection.find(
+                {"_id": {"$in": unique_aids}}
+            ).to_list(length=len(unique_aids))
+            appointments_map = {str(a["_id"]): a for a in appt_docs}
+
+        async def format_list_item(recording: dict) -> dict:
             formatted_recording = await recording_helper(recording)
-            
-            # Populate basic patient information if not already present
-            if not formatted_recording.get("patientName") and recording.get("patientId"):
-                try:
-                    patient = await self.patients_collection.find_one({"_id": ObjectId(recording["patientId"])})
-                    if patient:
-                        formatted_recording["patientName"] = f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip()
-                        # Add basic patient info for frontend
-                        formatted_recording["patient"] = {
-                            "_id": str(patient["_id"]),
-                            "patientId": patient.get("patientId", str(patient["_id"])),
-                            "fullName": formatted_recording["patientName"],
-                            "firstName": patient.get("firstName", ""),
-                            "lastName": patient.get("lastName", ""),
-                            "age": patient.get("age"),
-                            "gender": patient.get("gender"),
-                        }
-                except Exception as e:
-                    # If patient fetch fails, continue without patient info
-                    pass
-            
-            formatted.append(formatted_recording)
-        
-        return formatted, total
+
+            poid = _to_object_id(recording.get("patientId"))
+            if poid:
+                patient = patients_map.get(str(poid))
+                if patient:
+                    try:
+                        formatted_recording["patient"] = await patient_helper(patient)
+                        name = (formatted_recording["patient"] or {}).get("fullName", "").strip()
+                        if name and not formatted_recording.get("patientName"):
+                            formatted_recording["patientName"] = name
+                    except Exception:
+                        pass
+
+            if not formatted_recording.get("patientName") and poid:
+                patient = patients_map.get(str(poid))
+                if patient:
+                    formatted_recording["patientName"] = (
+                        f"{patient.get('firstName', '')} {patient.get('lastName', '')}".strip()
+                    )
+
+            if not formatted_recording.get("patient") and formatted_recording.get("patientName"):
+                formatted_recording["patient"] = {
+                    "_id": formatted_recording["patientId"],
+                    "patientId": formatted_recording["patientId"],
+                    "fullName": formatted_recording["patientName"],
+                }
+
+            aoid = _to_object_id(recording.get("appointmentId"))
+            if aoid:
+                appt = appointments_map.get(str(aoid))
+                if appt:
+                    try:
+                        # Skip s3_prescriptions lookup per row (db=None) — list view is hot path
+                        formatted_recording["appointment"] = await appointment_helper(appt, db=None)
+                    except Exception:
+                        pass
+
+            return formatted_recording
+
+        formatted = await asyncio.gather(*[format_list_item(r) for r in recordings])
+
+        return list(formatted), total
     
     async def update_recording(self, recording_id: str, update_data: RecordingUpdate) -> Optional[dict]:
         """Update recording."""
