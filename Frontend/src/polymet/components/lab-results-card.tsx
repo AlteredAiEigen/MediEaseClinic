@@ -22,13 +22,11 @@ import {
 
 interface LabResult {
   name: string;
-  value: string;
   date: string;
   status: "normal" | "high" | "low";
   url?: string;
   summary?: string;
   abnormalCount?: number;
-  testCount?: number;
 }
 
 interface LabResultsCardProps {
@@ -110,10 +108,6 @@ export function LabResultsCard({ results = [], className = "" }: LabResultsCardP
                 </AccordionTrigger>
                 <AccordionContent className="border-t bg-slate-50/60 px-4 pt-3">
                   <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      {result.testCount != null && <Badge variant="secondary">{result.testCount} parsed tests</Badge>}
-                      {result.value && <Badge variant="secondary">{result.value}</Badge>}
-                    </div>
                     {result.summary ? (
                       <p className="text-sm leading-6 text-slate-700">{result.summary}</p>
                     ) : (

@@ -102,10 +102,11 @@ interface Recording {
 
 interface LabResultDisplay {
   name: string;
-  value: string;
   date: string;
   status: "normal" | "high" | "low";
   url?: string;
+  summary?: string;
+  abnormalCount?: number;
 }
 
 interface VisitHistoryItem {
@@ -113,9 +114,13 @@ interface VisitHistoryItem {
   date: string;
   time: string;
   title: string;
-  description: string;
   doctor: string;
-  relativeTime: string;
+  chiefComplaint?: string;
+  treatment?: string;
+  followUp?: string;
+  appointmentId?: string;
+  hasPrescription?: boolean;
+  sortTimestamp: number;
 }
 
 export function ConsultationSession() {
@@ -878,13 +883,11 @@ export function ConsultationSession() {
                 const dateStr = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : "—";
                 return {
                   name: genericType ? inferredType : parsed.reportType,
-                  value: tests.length ? `${tests.length} parsed tests` : "Report available",
                   date: dateStr,
                   status: abnormalCount > 0 ? "high" as const : "normal" as const,
                   url: r.presignedUrl,
                   summary: parsed.summaryText || parsed.interpretation || "",
                   abnormalCount,
-                  testCount: tests.length || undefined,
                 };
               })
             : [];
@@ -896,9 +899,11 @@ export function ConsultationSession() {
         setLabResults([]);
       }
 
-      // Recent visit history from appointments (best-effort)
+      // Only completed appointments belong in consultation visit history.
       try {
-        const apptResponse = await get(`/api/appointments?limit=5&patient_id=${encodeURIComponent(mongoPatientId)}`);
+        const apptResponse = await get(
+          `/api/appointments?limit=5&status=completed&patient_id=${encodeURIComponent(mongoPatientId)}`,
+        );
         if (apptResponse.success) {
           const list =
             (apptResponse.data as any)?.appointments ??
@@ -916,12 +921,32 @@ export function ConsultationSession() {
                   id: a._id || a.appointmentId || Math.random().toString(36).slice(2),
                   date: dateStr,
                   time: timeStr,
-                  title: a.title || a.type || "Appointment",
-                  description: a.reason || a.notes || a.status || "",
+                  title: a.type || a.title || "Appointment",
+                  chiefComplaint:
+                    a.structuredNotes?.chiefComplaint ||
+                    a.consultationSummary?.chiefComplaint ||
+                    a.chiefComplaint ||
+                    "",
+                  treatment:
+                    a.structuredNotes?.plan ||
+                    a.consultationSummary?.plan ||
+                    a.treatmentPlan ||
+                    "",
+                  followUp:
+                    a.structuredNotes?.followUpInstructions ||
+                    a.consultationSummary?.followUpInstructions ||
+                    a.followUpInstructions ||
+                    a.nextAppointment ||
+                    "",
                   doctor: a.doctorName || a.doctor?.name || "Doctor",
-                  relativeTime: "",
+                  appointmentId: a._id || a.appointmentId,
+                  hasPrescription: Boolean(
+                    a.prescriptionFileKey ||
+                    a.prescriptionFileUrl,
+                  ),
+                  sortTimestamp: d && !Number.isNaN(d.getTime()) ? d.getTime() : 0,
                 };
-              })
+              }).sort((a, b) => b.sortTimestamp - a.sortTimestamp)
             : [];
           setVisitHistory(mapped.slice(0, 5));
         } else {
