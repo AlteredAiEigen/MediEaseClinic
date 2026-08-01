@@ -357,11 +357,11 @@ export function ConsultationSidebar({
       {/* Quick Medical Info */}
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Quick Info</CardTitle>
+          <CardTitle className="text-base text-slate-950 dark:text-slate-50">Quick Info</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+            <p className="mb-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
               Allergies
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -380,22 +380,38 @@ export function ConsultationSidebar({
           <Separator />
 
           <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+            <p className="mb-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
               Current Condition
             </p>
-            <div className="text-sm text-foreground font-semibold">
+            <div className="text-sm font-normal text-slate-500 dark:text-slate-400">
               {condition || "No current condition documented."}
             </div>
-            {carePlanSummary && (
-              <p className="text-xs text-muted-foreground mt-1.5">{carePlanSummary}</p>
-            )}
-            {followUpPlan && (
-              <p className="text-xs text-muted-foreground mt-1.5">
-                <span className="font-semibold text-foreground">Follow-up:</span>{" "}
-                {followUpPlan}
-              </p>
-            )}
           </div>
+
+          {(carePlanSummary || followUpPlan) && (
+            <>
+              <Separator />
+              <div>
+                <p className="mb-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  Past Appointment Information
+                </p>
+                <div className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  {carePlanSummary && (
+                    <p>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">Treatment:</span>{" "}
+                      {carePlanSummary}
+                    </p>
+                  )}
+                  {followUpPlan && (
+                    <p>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">Follow-up:</span>{" "}
+                      {followUpPlan}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
