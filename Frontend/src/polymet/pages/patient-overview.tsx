@@ -489,6 +489,7 @@ export function PatientOverview() {
   const [s3Reports, setS3Reports] = useState<S3Report[]>([]);
   const [clinicalNotes, setClinicalNotes] = useState<ClinicalNote[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [prescribedMedications, setPrescribedMedications] = useState<EditableMedicationEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasAnyData, setHasAnyData] = useState(false);
@@ -594,7 +595,6 @@ export function PatientOverview() {
   const [s3ReportViewerOpen, setS3ReportViewerOpen] = useState(false);
   const [selectedS3Report, setSelectedS3Report] = useState<S3Report | null>(null);
   const labUploadInputRef = useRef<HTMLInputElement>(null);
-  const medicationHistoryRef = useRef<HTMLDivElement>(null);
   const [labUploadLoading, setLabUploadLoading] = useState(false);
   const [medicationSearch, setMedicationSearch] = useState("");
   const [insuranceRecords, setInsuranceRecords] = useState<PatientInsuranceRecord[]>([]);
@@ -1493,7 +1493,9 @@ export function PatientOverview() {
 
   // Extract prescriptions from appointments and merge with medications
   useEffect(() => {
-    if (!appointments.length || !patientId) return;
+    // Medication history is loaded from prescription records below. Do not parse
+    // appointment/transcription text into medicines.
+    return;
 
     const consultationMedications: EditableMedicationEntry[] = [];
 
@@ -1584,6 +1586,65 @@ export function PatientOverview() {
       });
     }
   }, [appointments, patientId]);
+
+  useEffect(() => {
+    const prescriptionPatientId = patient?._id || patientId;
+    if (!prescriptionPatientId) {
+      setPrescribedMedications([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadPrescriptionMedications = async () => {
+      try {
+        const response = await get<any>(
+          `/api/prescriptions?patient_id=${encodeURIComponent(prescriptionPatientId)}&limit=100&is_active=true`,
+        );
+        if (!response.success || cancelled) {
+          if (!cancelled) setPrescribedMedications([]);
+          return;
+        }
+
+        const prescriptions = extractList<any>(response.data);
+        const medicines = prescriptions.flatMap((prescription: any) => {
+          const prescribedAt =
+            prescription.prescribedAt ||
+            prescription.createdAt ||
+            prescription.updatedAt ||
+            "";
+          const startDate = prescribedAt ? String(prescribedAt).split("T")[0] : "";
+          const prescriptionKey =
+            prescription._id || prescription.id || prescription.prescriptionId || "prescription";
+
+          return Array.isArray(prescription.medications)
+            ? prescription.medications
+                .filter((medicine: any) => medicine?.name)
+                .map((medicine: any, index: number) => ({
+                  _localId: `prescription-${prescriptionKey}-${index}`,
+                  name: String(medicine.name),
+                  dosage: String(medicine.dosage || ""),
+                  frequency: String(medicine.frequency || ""),
+                  duration: String(medicine.duration || ""),
+                  instructions: String(medicine.instructions || prescription.notes || ""),
+                  startDate,
+                  endDate: "",
+                  isNew: false,
+                }))
+            : [];
+        });
+
+        if (!cancelled) setPrescribedMedications(medicines);
+      } catch (error) {
+        console.warn("Failed to load prescription medications:", error);
+        if (!cancelled) setPrescribedMedications([]);
+      }
+    };
+
+    void loadPrescriptionMedications();
+    return () => {
+      cancelled = true;
+    };
+  }, [patient?._id, patientId]);
 
   useEffect(() => {
     if (!insuranceRecords.length) {
@@ -2592,10 +2653,7 @@ export function PatientOverview() {
     height: isOverviewEditing ? editForm.vitals.height : mergedVitals.height,
   };
 
-  const savedMedications = editForm.currentMedications.filter((med) => !med.isNew);
-  
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const savedMedications = prescribedMedications;
 
   const medicationHistory = useMemo(() => {
     const groups = new Map<
@@ -2642,13 +2700,9 @@ export function PatientOverview() {
   }, [savedMedications]);
 
   const filteredMedicationHistory = useMemo(() => {
-    const query = medicationSearch.trim().toLocaleLowerCase();
+    const query = medicationSearch.trim().toLowerCase();
     if (!query) return medicationHistory;
-    return medicationHistory.filter(({ name, latest, entries }) =>
-      [name, latest.dosage, latest.frequency, latest.instructions, ...entries.map((entry) => entry.duration)]
-        .filter(Boolean)
-        .some((value) => value!.toLocaleLowerCase().includes(query)),
-    );
+    return medicationHistory.filter(({ name }) => name.toLowerCase().includes(query));
   }, [medicationHistory, medicationSearch]);
 
   const medicationPrescriptionCount = useMemo(
@@ -2661,11 +2715,6 @@ export function PatientOverview() {
       ).size,
     [savedMedications],
   );
-
-  const focusMedicationHistory = () => {
-    setMedicationSearch("");
-    medicationHistoryRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   const groupedLabReports = useMemo(() => {
     if (!labReports.length) return [];
@@ -4921,8 +4970,7 @@ export function PatientOverview() {
                     : "Every medication recorded for this patient, including past prescriptions."}
                 </p>
               </div>
-              {canEditPatientProfile && !isGlobalEditMode && (
-                isMedicationsEditing ? (
+              {canEditPatientProfile && !isGlobalEditMode && isMedicationsEditing && (
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="outline"
@@ -4948,17 +4996,6 @@ export function PatientOverview() {
                       )}
                     </Button>
                   </div>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-[#00C4B3]/30 text-[#00C4B3]"
-                    onClick={() => beginSectionEditing("medications")}
-                  >
-                    <FileTextIcon className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                )
               )}
             </CardHeader>
             <CardContent className="space-y-6">
@@ -5137,42 +5174,18 @@ export function PatientOverview() {
                 </>
               ) : (
                 <>
-                  <div className="flex flex-col gap-4 rounded-xl border border-[#00C4B3]/15 bg-[#F7FFFE] p-4 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#00C4B3]/10 text-[#00C4B3]">
-                          <PillIcon className="h-4 w-4" />
-                        </span>
-                        <h3 className="font-semibold text-foreground">Patient medication history</h3>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Review medicines prescribed across all recorded visits.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="border-[#00C4B3]/30 text-[#008f84] hover:bg-[#00C4B3]/10"
-                      onClick={focusMedicationHistory}
-                    >
-                      <FileTextIcon className="mr-2 h-4 w-4" />
-                      Open prescriptions
-                    </Button>
-                  </div>
-
                   <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
-                      <p className="text-2xl font-semibold tabular-nums">{medicationHistory.length}</p>
-                      <p className="mt-1 text-xs font-medium text-muted-foreground">Unique medicines</p>
+                    <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-cyan-50 p-4 shadow-sm dark:border-teal-900 dark:from-teal-950/40 dark:to-cyan-950/30">
+                      <p className="text-2xl font-semibold tabular-nums text-teal-700 dark:text-teal-300">{medicationHistory.length}</p>
+                      <p className="mt-1 text-xs font-medium text-teal-700/80 dark:text-teal-300/80">Unique medicines</p>
                     </div>
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
-                      <p className="text-2xl font-semibold tabular-nums">{medicationPrescriptionCount}</p>
-                      <p className="mt-1 text-xs font-medium text-muted-foreground">Total prescriptions</p>
+                    <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-4 shadow-sm dark:border-violet-900 dark:from-violet-950/40 dark:to-purple-950/30">
+                      <p className="text-2xl font-semibold tabular-nums text-violet-700 dark:text-violet-300">{medicationPrescriptionCount}</p>
+                      <p className="mt-1 text-xs font-medium text-violet-700/80 dark:text-violet-300/80">Total prescriptions</p>
                     </div>
-                    <div className="rounded-xl border bg-card p-4 shadow-sm">
-                      <p className="text-2xl font-semibold tabular-nums">{savedMedications.length}</p>
-                      <p className="mt-1 text-xs font-medium text-muted-foreground">Medication line items</p>
+                    <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-900 dark:from-amber-950/40 dark:to-orange-950/30">
+                      <p className="text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-300">{savedMedications.length}</p>
+                      <p className="mt-1 text-xs font-medium text-amber-700/80 dark:text-amber-300/80">Medication line items</p>
                     </div>
                   </div>
 
@@ -5181,13 +5194,13 @@ export function PatientOverview() {
                     <Input
                       value={medicationSearch}
                       onChange={(event) => setMedicationSearch(event.target.value)}
-                      placeholder='Search medication history, e.g. "Metformin"'
+                      placeholder='Search all medicines, e.g. "Metformin"'
                       className="pl-9"
-                      aria-label="Search medication history"
+                      aria-label="Search all medicines"
                     />
                   </div>
 
-                  <div ref={medicationHistoryRef} className="space-y-2">
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between px-1">
                       <p className="text-sm font-semibold text-foreground">All medicines</p>
                       <p className="text-xs text-muted-foreground">
@@ -5223,11 +5236,6 @@ export function PatientOverview() {
                         const doseVariants = new Set(
                           entries.map((entry) => `${entry.dosage || ""}|${entry.frequency || ""}`),
                         ).size;
-                        const isActive = entries.some((entry) => {
-                          if (!entry.endDate) return true;
-                          return new Date(entry.endDate).getTime() >= today.getTime();
-                        });
-
                         return (
                           <div
                             key={key}
@@ -5239,9 +5247,6 @@ export function PatientOverview() {
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold text-foreground">{name}</p>
-                                <Badge variant="secondary" className="text-[10px]">
-                                  {entries.length} {entries.length === 1 ? "prescribed" : "prescriptions"}
-                                </Badge>
                                 {doseVariants > 1 && (
                                   <Badge variant="outline" className="text-[10px]">
                                     {doseVariants} dose variants
@@ -5257,7 +5262,6 @@ export function PatientOverview() {
                             <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground md:text-right">
                               <Clock3Icon className="h-3.5 w-3.5" />
                               <div>
-                                <p className="font-medium text-foreground">{isActive ? "Active" : "Past"}</p>
                                 <p>Last: {latestDate}</p>
                               </div>
                             </div>

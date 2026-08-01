@@ -2156,7 +2156,7 @@ export function ConsultationSession() {
 
       {/* Patient details bottom-sheet (keeps consultation mounted so recording continues) */}
       <Dialog open={patientDetailsOpen} onOpenChange={setPatientDetailsOpen}>
-        <DialogContent className="p-0 w-[100vw] sm:w-[95vw] max-w-6xl h-[92vh] fixed bottom-0 top-auto left-1/2 -translate-x-1/2 translate-y-0 rounded-t-2xl rounded-b-none overflow-hidden data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom">
+        <DialogContent hideCloseButton className="p-0 w-[100vw] sm:w-[95vw] max-w-6xl h-[92vh] fixed bottom-0 top-auto left-1/2 -translate-x-1/2 translate-y-0 rounded-t-2xl rounded-b-none overflow-hidden data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom">
           <DialogHeader className="px-4 py-3 border-b">
             <div className="flex items-center justify-between gap-3">
               <DialogTitle className="text-base">
@@ -2176,14 +2176,6 @@ export function ConsultationSession() {
                   onClick={() => setPatientDetailsOpen(false)}
                 >
                   Back to Consultation
-                </Button>
-                <Button
-                  size="icon"
-                  className="h-9 w-9 border border-[#00C4B3]/50 text-[#00C4B3] bg-[#00C4B3]/10 hover:bg-[#00C4B3]/20 hover:text-[#0f766e] shadow-sm focus-visible:ring-2 focus-visible:ring-[#00C4B3]/40"
-                  onClick={() => setPatientDetailsOpen(false)}
-                  aria-label="Close patient details"
-                >
-                  <XIcon className="h-4 w-4" />
                 </Button>
               </div>
             </div>
