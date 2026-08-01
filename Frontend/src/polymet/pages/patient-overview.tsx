@@ -5607,14 +5607,13 @@ export function PatientOverview() {
             <CardContent>
               {pastAppointments.length > 0 ? (
                 <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-4">
-                  <Accordion type="multiple" className="space-y-3">
+                  <div className="space-y-3">
                     {groupedPastAppointments.map((group) => (
-                      <AccordionItem
+                      <details
                         key={`past-month-${group.label}`}
-                        value={`past-month-${group.label}`}
                         className="rounded-xl border border-border px-3"
                       >
-                        <AccordionTrigger className="hover:no-underline py-3">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-3 [&::-webkit-details-marker]:hidden">
                           <div className="flex w-full items-center justify-between gap-2 pr-2">
                             <span className="text-sm font-semibold">{group.label}</span>
                             <Badge variant="outline" className="text-xs">
@@ -5622,8 +5621,8 @@ export function PatientOverview() {
                               {group.appointments.length === 1 ? "" : "s"}
                             </Badge>
                           </div>
-                        </AccordionTrigger>
-                        <AccordionContent className="space-y-3 pb-3">
+                        </summary>
+                        <div className="space-y-3 pb-3">
                           {group.appointments.map((appointment) => {
                     const appointmentKey = appointment._id || appointment.appointmentId;
                     const mergedClinicalNotes =
@@ -5633,40 +5632,15 @@ export function PatientOverview() {
                         ? clinicalNotesByAppointment.get(appointmentKey) || []
                         : [];
 
-                    const hasDetails =
-                      appointment.prescription ||
-                      appointment.prescriptionFileUrl ||
-                      appointment.tests ||
-                      appointment.prescribedTest ||
-                      appointment.diagnosis ||
-                      appointment.treatmentPlan ||
-                      appointment.followUpInstructions ||
-                      appointment.detailedNotes ||
-                      appointment.aiRecommendations ||
-                      appointment.structuredNotes ||
-                      appointment.consultationSummary ||
-                      (mergedClinicalNotes && mergedClinicalNotes.length > 0);
-                    
-                    const hasPatientUpdates = appointment.structuredNotes?.medications?.length > 0 ||
-                      appointment.structuredNotes?.allergies?.length > 0 ||
-                      appointment.structuredNotes?.chiefComplaint;
-                    const appointmentValue = `appointment-${appointment._id}`;
-                    
                     return (
-                    <Accordion 
-                      key={`past-${appointment._id}`} 
-                      type="single" 
-                      collapsible 
-                      className="w-full"
-                      defaultValue={undefined}
-                    >
-                      <AccordionItem value={appointmentValue} className="border border-purple-200 dark:border-purple-800 rounded-xl bg-purple-50/20 dark:bg-purple-950/10">
+                    <div key={`past-${appointment._id}`} className="w-full">
+                      <div className="rounded-xl border border-purple-200 bg-purple-50/20 dark:border-purple-800 dark:bg-purple-950/10">
                         <div className="px-4 py-3">
-                          <AccordionTrigger className="hover:no-underline [&>svg]:hidden">
+                          <div>
                             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between w-full mr-4">
                               <div className="text-left flex-1">
                                 <p className="text-sm font-semibold text-foreground mb-1">
-                                  {appointment.reason || appointment.type || "Consultation"}
+                                  {appointment.type || "Consultation"}
                                 </p>
                                 <div className="space-y-0.5">
                                   <p className="text-xs text-muted-foreground">
@@ -5681,86 +5655,86 @@ export function PatientOverview() {
                                     </p>
                                   )}
                                 </div>
-                                
-                                {/* Highlights - visible even when collapsed */}
-                                {hasDetails && (
-                                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                                    {appointment.diagnosis && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
-                                        <FileTextIcon className="w-3 h-3 text-red-600 dark:text-red-400" />
-                                        <span className="text-xs font-medium text-red-700 dark:text-red-400">Diagnosis</span>
-                                      </div>
-                                    )}
-                                    {(appointment.prescription || appointment.prescriptionFileUrl) && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800">
-                                        <PillIcon className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                                        <span className="text-xs font-medium text-purple-700 dark:text-purple-400">
-                                          {appointment.prescriptionFileUrl ? "Prescription File" : "Prescription"}
-                                        </span>
-                                      </div>
-                                    )}
-                                    {(appointment.tests || appointment.prescribedTest) && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                                        <FlaskConicalIcon className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                                        <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Tests</span>
-                                      </div>
-                                    )}
-                                    {appointment.treatmentPlan && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800">
-                                        <FileTextIcon className="w-3 h-3 text-green-600 dark:text-green-400" />
-                                        <span className="text-xs font-medium text-green-700 dark:text-green-400">Treatment</span>
-                                      </div>
-                                    )}
-                                    {appointment.aiRecommendations && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800">
-                                        <SparklesIcon className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-                                        <span className="text-xs font-medium text-indigo-700 dark:text-indigo-400">AI Analysis</span>
-                                      </div>
-                                    )}
-                                    {mergedClinicalNotes && mergedClinicalNotes.length > 0 && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
-                                        <FileTextIcon className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                                        <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
-                                          {mergedClinicalNotes.length} Note
-                                          {mergedClinicalNotes.length > 1 ? "s" : ""}
-                                        </span>
-                                      </div>
-                                    )}
-                                    {appointment.structuredNotes && (
-                                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#00C4B3]/10 border border-[#00C4B3]/30">
-                                        <SparklesIcon className="w-3 h-3 text-[#00C4B3]" />
-                                        <span className="text-xs font-medium text-[#00C4B3]">AI Summary</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
                               </div>
                               <div className="flex flex-wrap items-center gap-2">
-                                <Badge variant="outline" className="bg-muted text-xs text-muted-foreground capitalize">
-                                  {appointment.status}
-                                </Badge>
-                                {appointment.reason && appointment.reason !== (appointment.type || "Consultation") && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {appointment.reason}
-                                  </Badge>
-                                )}
-                                {hasDetails && (
-                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800">
-                                    Details Available
-                                  </Badge>
-                                )}
-                                {hasPatientUpdates && (
-                                  <Badge variant="outline" className="text-xs bg-[#00C4B3]/10 text-[#00C4B3] border-[#00C4B3]/30">
-                                    <SparklesIcon className="w-3 h-3 mr-1" />
-                                    Profile Updated
-                                  </Badge>
+                                {(appointment.prescriptionFileUrl || appointment.prescriptionFileKey) && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 border-purple-200 bg-purple-50 text-xs text-purple-700 hover:bg-purple-100"
+                                    onClick={async () => {
+                                      const appointmentId = appointment._id || appointment.appointmentId;
+                                      if (!appointmentId) {
+                                        toast({
+                                          title: "Could not open prescription",
+                                          description: "Appointment ID is missing.",
+                                          variant: "destructive",
+                                        });
+                                        return;
+                                      }
+
+                                      try {
+                                        const response = await get<{ presignedUrl?: string }>(
+                                          `/api/appointments/${appointmentId}/prescription/presigned-url`,
+                                        );
+                                        const url = response.data?.presignedUrl;
+                                        if (!response.success || !url) {
+                                          throw new Error(response.message || "Prescription file is unavailable.");
+                                        }
+                                        window.open(url, "_blank", "noopener,noreferrer");
+                                      } catch (error) {
+                                        toast({
+                                          title: "Could not open prescription",
+                                          description: error instanceof Error ? error.message : "Please try again.",
+                                          variant: "destructive",
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <PillIcon className="mr-1 h-3.5 w-3.5" />
+                                    Prescription File
+                                  </Button>
                                 )}
                               </div>
                             </div>
-                          </AccordionTrigger>
+                          </div>
                         </div>
-                        <AccordionContent className="px-4 pb-4">
+                        <div className="px-4 pb-4">
                           <div className="space-y-4">
+                            <div className="space-y-1 text-sm text-foreground">
+                              <p>
+                                <span className="font-medium">Chief Complaint:</span>{" "}
+                                {appointment.structuredNotes?.chiefComplaint ||
+                                  appointment.consultationSummary?.chiefComplaint ||
+                                  "Not recorded"}
+                              </p>
+                              {(appointment.diagnosis ||
+                                appointment.structuredNotes?.assessment ||
+                                appointment.consultationSummary?.assessment) && (
+                                <p>
+                                  <span className="font-medium">Diagnosis:</span>{" "}
+                                  {appointment.diagnosis ||
+                                    appointment.structuredNotes?.assessment ||
+                                    appointment.consultationSummary?.assessment}
+                                </p>
+                              )}
+                              <p>
+                                <span className="font-medium">Treatment:</span>{" "}
+                                {appointment.treatmentPlan ||
+                                  appointment.structuredNotes?.plan ||
+                                  appointment.consultationSummary?.plan ||
+                                  "Not recorded"}
+                              </p>
+                              <p>
+                                <span className="font-medium">Follow-up:</span>{" "}
+                                {appointment.followUpInstructions ||
+                                  appointment.structuredNotes?.followUpInstructions ||
+                                  "Not recorded"}
+                              </p>
+                            </div>
+                            {false && (
+                            <div>
                             {/* Diagnosis Section */}
                             {appointment.diagnosis ? (
                               <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20 p-3">
@@ -6075,16 +6049,18 @@ export function PatientOverview() {
                                 View Details
                               </Button>
                             </div>
+                            </div>
+                            )}
                           </div>
-                        </AccordionContent>
-                      </AccordionItem>
-                    </Accordion>
+                        </div>
+                      </div>
+                    </div>
                     );
                           })}
-                        </AccordionContent>
-                      </AccordionItem>
+                        </div>
+                      </details>
                     ))}
-                  </Accordion>
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-8 text-muted-foreground">
