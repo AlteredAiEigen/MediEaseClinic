@@ -508,6 +508,7 @@ async def get_patient_whatsapp_messages(
                 "message_sid": message_sid,
                 "direction": direction,
                 "body": msg.get("body", ""),
+                "link_url": msg.get("link_url"),
                 "status": msg.get("status", "unknown"),
                 "received_at": timestamp_iso,
                 "created_at": timestamp_iso,
@@ -685,7 +686,33 @@ async def twilio_status_webhook(
                 whatsapp_service = WhatsAppService()
                 msg_status = await whatsapp_service.get_message_status(MessageSid)
                 if msg_status.get("success") and msg_status.get("body"):
-                    message_body_update["body"] = msg_status.get("body")
+                    raw_body = msg_status.get("body")
+                    # Prefer not to overwrite clinic UI with raw S3/presigned URLs
+                    from app.services.whatsapp_utils import mask_download_url_as_prescription
+
+                    existing_link = (existing_msg or {}).get("link_url")
+                    message_type = (existing_msg or {}).get("message_type") or ""
+                    scenario = (existing_msg or {}).get("scenario") or ""
+                    if (
+                        message_type == "prescription"
+                        or "prescription" in scenario
+                        or "s3.amazonaws.com" in (raw_body or "")
+                        or "/prescriptions/share/" in (raw_body or "")
+                    ):
+                        message_body_update["body"] = mask_download_url_as_prescription(
+                            raw_body, existing_link
+                        )
+                        if not existing_link:
+                            # Capture first URL from Twilio body as link_url for click-through
+                            import re
+
+                            m = re.search(r"https?://[^\s<>\"']+", raw_body or "")
+                            if m:
+                                message_body_update["link_url"] = m.group(0).rstrip(
+                                    ".,;:!?) ]}\"'"
+                                )
+                    else:
+                        message_body_update["body"] = raw_body
                     logger.info(f"Fetched message body from Twilio for {MessageSid}: {msg_status.get('body')[:100]}...")
             except Exception as fetch_error:
                 logger.warning(f"Could not fetch message body from Twilio in status webhook: {fetch_error}")

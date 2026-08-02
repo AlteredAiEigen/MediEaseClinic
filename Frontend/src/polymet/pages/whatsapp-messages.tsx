@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,9 +21,97 @@ import {
   type WhatsAppPatient,
   type WhatsAppMessage,
 } from "@/lib/api/whatsapp";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from "date-fns";
 import { useQueueWebSocket } from "@/hooks/use-websocket";
+
+const URL_IN_TEXT_RE = /(https?:\/\/[^\s<>"']+)/g;
+
+function stripTrailingUrlPunctuation(url: string) {
+  return url.replace(/[.,;:!?)]+$/g, "");
+}
+
+function isPrescriptionDownloadUrl(url: string) {
+  const lower = url.toLowerCase();
+  return (
+    lower.includes("s3.amazonaws.com") ||
+    lower.includes("amazonaws.com") ||
+    lower.includes("/prescriptions/share/") ||
+    lower.includes("prescription")
+  );
+}
+
+function isPrescriptionMessage(message: WhatsAppMessage) {
+  const scenario = message.scenario || "";
+  const body = message.body || "";
+  return (
+    message.type === "prescription" ||
+    scenario.includes("prescription") ||
+    Boolean(message.link_url) ||
+    /s3\.amazonaws\.com|amazonaws\.com|\/prescriptions\/share\//i.test(body)
+  );
+}
+
+/** Display-only: hide long download URLs as "prescription" — looks like a link, not clickable. */
+function renderWhatsAppMessageBody(message: WhatsAppMessage) {
+  const body = message.body || "";
+  const prescriptionMsg = isPrescriptionMessage(message);
+  const linkLabelClass =
+    "font-semibold underline underline-offset-2 decoration-current/70 cursor-default select-none";
+
+  // New/stored bodies already use the word "prescription" with no raw URL
+  if (prescriptionMsg && /prescription/i.test(body) && !URL_IN_TEXT_RE.test(body)) {
+    URL_IN_TEXT_RE.lastIndex = 0;
+    const match = body.match(/prescription/i);
+    if (match && match.index != null) {
+      const idx = match.index;
+      const label = match[0];
+      return (
+        <>
+          {body.slice(0, idx)}
+          <span className={linkLabelClass} title="Link sent to patient (view only)">
+            {label}
+          </span>
+          {body.slice(idx + label.length)}
+        </>
+      );
+    }
+  }
+  URL_IN_TEXT_RE.lastIndex = 0;
+
+  if (!URL_IN_TEXT_RE.test(body)) {
+    URL_IN_TEXT_RE.lastIndex = 0;
+    return body;
+  }
+  URL_IN_TEXT_RE.lastIndex = 0;
+
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = URL_IN_TEXT_RE.exec(body)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(body.slice(lastIndex, match.index));
+    }
+    const raw = match[1];
+    const href = stripTrailingUrlPunctuation(raw);
+    const trailing = raw.slice(href.length);
+    const mask = prescriptionMsg || isPrescriptionDownloadUrl(href);
+    nodes.push(
+      <span
+        key={`url-${key++}`}
+        className={mask ? linkLabelClass : "break-all"}
+        title={mask ? "Link sent to patient (view only)" : undefined}
+      >
+        {mask ? "prescription" : href}
+      </span>
+    );
+    if (trailing) nodes.push(trailing);
+    lastIndex = match.index + raw.length;
+  }
+
+  if (lastIndex < body.length) nodes.push(body.slice(lastIndex));
+  return <>{nodes}</>;
+}
 
 export function WhatsAppMessages() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -40,7 +128,7 @@ export function WhatsAppMessages() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   
   // WebSocket for real-time message updates
-  const { lastMessage, isConnected } = useQueueWebSocket();
+  const { lastMessage } = useQueueWebSocket();
 
   const resolveWhatsAppPhone = (patient?: WhatsAppPatient | null) => {
     if (!patient) return null;
@@ -316,12 +404,12 @@ export function WhatsAppMessages() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Left Column - Patient Search & List */}
-        <div className="lg:col-span-1 space-y-4">
-          <Card className="border-border shadow-sm bg-gradient-to-br from-white to-blue-50/30 dark:from-card dark:to-blue-950/10">
-            <CardHeader className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-t-lg pb-3">
+    <div className="h-[calc(100vh-8rem)] min-h-[520px] flex flex-col">
+      <div className="grid lg:grid-cols-3 gap-6 flex-1 min-h-0">
+        {/* Left Column - Patient Search & List (fixed height, internal scroll) */}
+        <div className="lg:col-span-1 min-h-0 h-full">
+          <Card className="h-full flex flex-col border-border shadow-sm bg-gradient-to-br from-white to-blue-50/30 dark:from-card dark:to-blue-950/10 overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-t-lg pb-3 flex-shrink-0">
               <div className="flex items-center gap-2">
                 <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
                   <MessageSquareIcon className="w-4 h-4 text-white" />
@@ -331,8 +419,8 @@ export function WhatsAppMessages() {
                 </CardTitle>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 pt-4">
-              <div className="flex gap-2">
+            <CardContent className="flex-1 min-h-0 flex flex-col gap-4 pt-4 pb-4 overflow-hidden">
+              <div className="flex gap-2 flex-shrink-0">
                 <div className="flex-1 relative">
                   <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -357,11 +445,11 @@ export function WhatsAppMessages() {
               </div>
 
               {isLoadingConversations ? (
-                <div className="flex items-center justify-center py-8">
+                <div className="flex items-center justify-center py-8 flex-1">
                   <Loader2Icon className="h-6 w-6 animate-spin text-teal-500" />
                 </div>
               ) : searchResults.length > 0 ? (
-                <ScrollArea className="h-[600px]">
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1">
                   <div className="space-y-2">
                     {searchResults.map((patient) => (
                       <div
@@ -404,9 +492,9 @@ export function WhatsAppMessages() {
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
+                </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
+                <div className="text-center py-8 text-muted-foreground flex-1">
                   {searchQuery ? "No patients found" : "No conversations yet"}
                 </div>
               )}
@@ -414,36 +502,29 @@ export function WhatsAppMessages() {
           </Card>
         </div>
 
-        {/* Right Column - Messages */}
-        <div className="lg:col-span-2">
+        {/* Right Column - Messages (fixed height, message pane scrolls) */}
+        <div className="lg:col-span-2 min-h-0 h-full">
           {selectedPatient ? (
-            <Card className="h-full flex flex-col border-border shadow-sm bg-gradient-to-br from-white to-blue-50/30 dark:from-card dark:to-blue-950/10">
-              <CardHeader className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-t-lg pb-3">
+            <Card className="h-full flex flex-col border-border shadow-sm bg-gradient-to-br from-white to-blue-50/30 dark:from-card dark:to-blue-950/10 overflow-hidden">
+              <CardHeader className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-t-lg pb-3 flex-shrink-0">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm flex-shrink-0">
                       <MessageSquareIcon className="w-5 h-5 text-white" />
                     </div>
-                    <div>
-                      <CardTitle className="text-white">{selectedPatient.name}</CardTitle>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-sm text-cyan-100">
-                          {selectedPatient.phone}
-                        </p>
-                        {isConnected ? (
-                          <Badge className="bg-green-500/80 text-xs">Live</Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-red-500/80 text-white text-xs border-red-300">Offline</Badge>
-                        )}
-                      </div>
+                    <div className="min-w-0">
+                      <CardTitle className="text-white truncate">{selectedPatient.name}</CardTitle>
+                      <p className="text-sm text-cyan-100 truncate mt-0.5">
+                        {selectedPatient.phone}
+                      </p>
                     </div>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col min-h-0 pt-4">
-                <ScrollArea
+              <CardContent className="flex-1 flex flex-col min-h-0 pt-4 pb-4 overflow-hidden">
+                <div
                   ref={messagesContainerRef}
-                  className="flex-1 pr-4 mb-4"
+                  className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-2 mb-4"
                 >
                   {isLoadingMessages ? (
                     <div className="flex items-center justify-center h-32">
@@ -468,19 +549,19 @@ export function WhatsAppMessages() {
                           }`}
                         >
                           <div
-                            className={`max-w-[70%] rounded-lg p-3 shadow-sm ${
+                            className={`max-w-[85%] sm:max-w-[75%] min-w-0 rounded-lg p-3 shadow-sm overflow-hidden ${
                               message.direction === "outbound"
                                 ? "bg-gradient-to-r from-teal-500 to-emerald-500 text-white"
                                 : "bg-muted"
                             }`}
                           >
-                            <div className="flex items-start gap-2 mb-1">
+                            <div className="flex items-start gap-2 mb-1 min-w-0">
                               {message.type === "scheduler" ? (
-                                <BotIcon className="h-4 w-4 mt-0.5" />
+                                <BotIcon className="h-4 w-4 mt-0.5 flex-shrink-0" />
                               ) : message.direction === "inbound" ? (
-                                <UserIcon className="h-4 w-4 mt-0.5" />
+                                <UserIcon className="h-4 w-4 mt-0.5 flex-shrink-0" />
                               ) : null}
-                              <div className="flex-1">
+                              <div className="flex-1 min-w-0 overflow-hidden">
                                 {message.type === "scheduler" && (
                                   <Badge
                                     variant="secondary"
@@ -489,12 +570,12 @@ export function WhatsAppMessages() {
                                     Auto: {message.scenario?.replace("copy_", "").replace(/_/g, " ")}
                                   </Badge>
                                 )}
-                                <p className="text-sm whitespace-pre-wrap">
-                                  {message.body}
+                                <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                                  {renderWhatsAppMessageBody(message)}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center justify-between gap-2 mt-2 text-xs opacity-70">
+                            <div className="flex items-center justify-between gap-2 mt-2 text-xs opacity-70 flex-wrap">
                               <span>{formatMessageTime(message.received_at)}</span>
                               {message.direction === "outbound" && (
                                 <div className="flex items-center gap-1">
@@ -508,10 +589,10 @@ export function WhatsAppMessages() {
                       <div ref={messagesEndRef} />
                     </div>
                   )}
-                </ScrollArea>
+                </div>
 
                 {/* Send Message Input */}
-                <div className="space-y-2 border-t border-border pt-4">
+                <div className="space-y-2 border-t border-border pt-4 flex-shrink-0">
                   <Textarea
                     placeholder="Type your message..."
                     value={messageText}
@@ -526,8 +607,8 @@ export function WhatsAppMessages() {
                     disabled={isSending || !selectedPatient.consent_whatsapp || !selectedWhatsAppPhone}
                     className="resize-none"
                   />
-                  <div className="flex items-center justify-between">
-                    <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
                       <p className="text-xs text-muted-foreground">
                         {messageText.length}/1600 characters
                       </p>
@@ -550,7 +631,7 @@ export function WhatsAppMessages() {
                         !selectedPatient.consent_whatsapp ||
                         !selectedWhatsAppPhone
                       }
-                      className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600"
+                      className="bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 flex-shrink-0"
                     >
                       {isSending ? (
                         <>
@@ -569,7 +650,7 @@ export function WhatsAppMessages() {
               </CardContent>
             </Card>
           ) : (
-            <Card className="h-[700px] flex items-center justify-center border-border shadow-sm bg-gradient-to-br from-white to-blue-50/30 dark:from-card dark:to-blue-950/10">
+            <Card className="h-full flex items-center justify-center border-border shadow-sm bg-gradient-to-br from-white to-blue-50/30 dark:from-card dark:to-blue-950/10">
               <div className="text-center text-muted-foreground">
                 <MessageSquareIcon className="h-16 w-16 mx-auto mb-4 opacity-30" />
                 <p className="text-lg font-medium">Select a patient to view messages</p>

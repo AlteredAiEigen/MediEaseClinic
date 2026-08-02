@@ -17,10 +17,14 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.constants.whatsapp_templates import PRESCRIPTION_TEMPLATE_NAME
 from app.services.healthcare_provider_service import HealthcareProviderService
-from app.services.s3_service import s3_service
+from app.services.prescription_share_service import PrescriptionShareService
 from app.services.whatsapp_service import WhatsAppService
 from app.services.whatsapp_template_service import WhatsAppTemplateService
-from app.services.whatsapp_utils import format_whatsapp_number, render_template_body
+from app.services.whatsapp_utils import (
+    format_whatsapp_number,
+    mask_download_url_as_prescription,
+    render_template_body,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,12 +135,14 @@ class PrescriptionWhatsAppService:
 
         patient_id = str(appointment.get("patientId", ""))
         message_body = details.get("body") or "Prescription download link sent via WhatsApp template."
+        link_url = details.get("link_url")
         message_doc = {
             "message_sid": message_sid,
             "direction": "outbound",
             "from": details.get("from_number", ""),
             "to": details.get("to", ""),
             "body": message_body,
+            "link_url": link_url,
             "patient_id": patient_id or None,
             "appointment_id": str(appointment.get("_id")),
             "sent_by": sent_by or "system",
@@ -230,8 +236,12 @@ class PrescriptionWhatsAppService:
             appointment_id=str(appointment.get("_id")),
         )
 
-        if result.get("success") and not result.get("body"):
-            result["body"] = render_template_body(template, content_values)
+        # Always store a clinic-facing body with "prescription" instead of the raw URL.
+        download_url = content_values.get("prescription_download_url") or ""
+        rendered_body = render_template_body(template, content_values)
+        result["body"] = mask_download_url_as_prescription(rendered_body, download_url)
+        if download_url:
+            result["link_url"] = download_url
 
         # Twilio often accepts the message (queued) then fails delivery moments later.
         # Poll status briefly so the doctor gets a failure popup instead of a false success.
@@ -424,9 +434,12 @@ class PrescriptionWhatsAppService:
         filename = appointment.get("prescriptionFileName") or "prescription.pdf"
 
         try:
-            download_url = await s3_service.generate_prescription_download_url(
-                s3_key,
+            share_service = PrescriptionShareService(self.db)
+            download_url = await share_service.create_share_url(
+                s3_key=s3_key,
                 filename=filename,
+                appointment_id=str(appointment.get("_id")),
+                patient_id=str(appointment.get("patientId") or ""),
             )
         except Exception as exc:
             await self._log_whatsapp_attempt(

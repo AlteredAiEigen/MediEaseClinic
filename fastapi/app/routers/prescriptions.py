@@ -9,6 +9,7 @@ from typing import Optional
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel
 
@@ -23,6 +24,7 @@ from app.models.s3_prescription import (
     PrescriptionTest,
 )
 from app.services.prescription_service import PrescriptionService
+from app.services.prescription_share_service import PrescriptionShareService
 from app.services.ai_service import ai_service
 from app.middleware.auth import require_any_role, require_doctor_or_admin
 from app.utils.response import success_response, paginated_response
@@ -32,6 +34,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/share/{token}", include_in_schema=False)
+async def open_prescription_share_link(
+    token: str,
+    db: AsyncIOMotorDatabase = Depends(get_db),
+):
+    """
+    Public short link for prescription downloads (used in WhatsApp messages).
+    Redirects to a fresh S3 presigned URL; no auth required.
+    """
+    share_service = PrescriptionShareService(db)
+    download_url = await share_service.resolve_redirect_url(token)
+    if not download_url:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="This prescription link is invalid or has expired",
+        )
+    return RedirectResponse(url=download_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)

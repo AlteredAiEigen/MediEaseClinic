@@ -16,11 +16,12 @@ export interface WhatsAppMessage {
   message_sid: string;
   direction: "inbound" | "outbound" | "unknown";
   body: string;
+  link_url?: string | null;
   status: string;
   received_at: string;
   from: string;
   to: string;
-  type: "manual" | "scheduler" | "inbound";
+  type: "manual" | "scheduler" | "inbound" | "prescription" | string;
   scenario?: string;
   appointment_id?: string;
 }

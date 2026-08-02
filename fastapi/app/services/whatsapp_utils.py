@@ -49,3 +49,40 @@ def render_template_body(template: Dict[str, Any], values: Dict[str, Any]) -> st
     for position, value in content_vars.items():
         rendered = rendered.replace(f"{{{{{position}}}}}", str(value))
     return rendered
+
+
+# Matches http(s) URLs; trailing sentence punctuation is excluded by the caller when needed.
+_URL_IN_TEXT_RE = re.compile(r"https?://[^\s<>\"']+")
+
+
+def mask_download_url_as_prescription(
+    body: str,
+    download_url: Optional[str] = None,
+) -> str:
+    """
+    Replace a prescription download URL in stored message text with the label
+    \"prescription\" so the WhatsApp Messages UI never shows a raw S3/presigned URL.
+    The real URL should be stored separately as link_url for click-through.
+    """
+    if not body:
+        return body
+
+    text = body
+    if download_url:
+        text = text.replace(download_url, "prescription")
+
+    def _replace(match: re.Match) -> str:
+        raw = match.group(0)
+        url = raw.rstrip(".,;:!?) ]}\"'" )
+        trailing = raw[len(url) :]
+        lowered = url.lower()
+        if (
+            "s3.amazonaws.com" in lowered
+            or "/prescriptions/share/" in lowered
+            or "prescription" in lowered
+            or "amazonaws.com" in lowered
+        ):
+            return "prescription" + trailing
+        return raw
+
+    return _URL_IN_TEXT_RE.sub(_replace, text)

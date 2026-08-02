@@ -225,6 +225,11 @@ class Database:
             # WhatsApp messages collection indexes
             await cls.database.whatsapp_messages.create_index("message_sid", unique=True)
             await cls.database.whatsapp_messages.create_index("patient_id")
+
+            # Short prescription download links (WhatsApp)
+            await cls.database.prescription_share_links.create_index("token", unique=True)
+            await cls.database.prescription_share_links.create_index("expires_at")
+            await cls.database.prescription_share_links.create_index("appointment_id")
             
             # Pre-registration email verifications collection indexes
             await cls.database.pre_registration_email_verifications.create_index("email")
