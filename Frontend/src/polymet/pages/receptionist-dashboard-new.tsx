@@ -108,6 +108,7 @@ interface QueueStats {
   checkout_pending?: number;
   cancelled?: number;
   average_wait_time: number;
+  completed_today?: number;
 }
 
 const extractList = <T,>(rawData: any): T[] => {
@@ -817,7 +818,11 @@ export function ReceptionistDashboardNew() {
   const waitingPatients = queueList.filter((q) => q.status === "waiting").length;
   const inConsultation = queueList.filter((q) => q.status === "in-consultation").length;
   const awaitingCheckout = queueList.filter((q) => q.status === "completed" || q.status === "checkout-pending" || q.status === "checkout").length;
-  const completedToday = queueStats?.checked_out ?? 0;
+  // Count both receptionist checkouts and auto-completed consultations
+  // (digital prescription flow sets queue status to "completed", not "checked-out").
+  const completedToday =
+    queueStats?.completed_today ??
+    ((queueStats?.checked_out ?? 0) + (queueStats?.completed ?? 0));
 
   // Move patient from queue back to appointments (persist to backend)
   const moveBackToAppointments = async (queueEntryId: string, appointmentId?: string) => {
@@ -1542,7 +1547,7 @@ const confirmCheckoutWithoutPrescription = () => {
                   {completedToday}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Successfully checkout
+                  Consultations finished
                 </p>
               </div>
               <div className="h-14 w-14 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">

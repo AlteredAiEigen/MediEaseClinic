@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserPlusIcon, ArrowLeftIcon, SaveIcon, Loader2Icon, ShieldCheckIcon, CheckCircle2Icon, MailIcon, CheckCircleIcon, RefreshCwIcon, XCircleIcon } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { post, get } from "@/lib/api-client";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 
 export function RegisterPatient() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -1043,7 +1044,15 @@ export function RegisterPatient() {
       </Dialog>
 
       {/* Success Dialog */}
-      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+      <Dialog
+        open={showSuccessDialog}
+        onOpenChange={(open) => {
+          setShowSuccessDialog(open);
+          if (!open) {
+            navigate("/receptionist-patients", { replace: true });
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <div className="flex flex-col items-center text-center space-y-4 py-4">
@@ -1072,20 +1081,14 @@ export function RegisterPatient() {
           </DialogHeader>
           <div className="flex gap-3 pt-4">
             <Button
-              onClick={() => setShowSuccessDialog(false)}
+              onClick={() => {
+                setShowSuccessDialog(false);
+                navigate("/receptionist-patients", { replace: true });
+              }}
               className="flex-1 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-600 hover:to-emerald-600 text-white"
             >
-              Continue
+              OK
             </Button>
-            <Link to="/receptionist-dashboard" className="flex-1">
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowSuccessDialog(false)}
-              >
-                Go to Dashboard
-              </Button>
-            </Link>
           </div>
         </DialogContent>
       </Dialog>

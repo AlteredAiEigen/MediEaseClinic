@@ -734,10 +734,18 @@ class AppointmentService:
                 detail="Appointment not found"
             )
         
-        # Normalize status: when a doctor marks "completed", we set it to "checkout-pending"
+        # Keep doctor "completed" as checkout-pending so receptionist still sees the patient.
+        # Explicit checkout / system completion should remain "completed".
         normalized_status = new_status
         if new_status == "completed":
-            normalized_status = "checkout-pending"
+            # If already checkout-pending (or beyond), allow final completed transition.
+            existing = await self.appointments_collection.find_one(
+                {"_id": ObjectId(appointment_id)},
+                {"status": 1},
+            )
+            current_status = (existing or {}).get("status")
+            if current_status not in ["checkout-pending", "checkout", "completed", "checked-out"]:
+                normalized_status = "checkout-pending"
 
         update_data = {
             "status": normalized_status,

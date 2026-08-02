@@ -1422,22 +1422,37 @@ class QueueService:
                 "checked_out": 0,
                 "checkout_pending": 0,
                 "cancelled": 0,
-                "average_wait_time": 0
+                "average_wait_time": 0,
+                "completed_today": 0,
             }
             
             total_wait = 0
             wait_count = 0
             
             for result in results:
-                status_key = result["_id"].replace("-", "_")
-                stats[status_key] = result["count"]
-                stats["total_patients"] += result["count"]
+                raw_status = result["_id"] or ""
+                status_key = str(raw_status).replace("-", "_")
+                # Normalize legacy aliases into canonical keys
+                if status_key in {"checkedout", "checkout_completed"}:
+                    status_key = "checked_out"
+                if status_key == "checkout":
+                    # Legacy mid-state; treat as awaiting checkout
+                    status_key = "checkout_pending"
+
+                count = int(result.get("count") or 0)
+                if status_key in stats:
+                    stats[status_key] = count
+                stats["total_patients"] += count
                 if result.get("avg_wait_time"):
-                    total_wait += result["avg_wait_time"] * result["count"]
-                    wait_count += result["count"]
+                    total_wait += result["avg_wait_time"] * count
+                    wait_count += count
             
             if wait_count > 0:
                 stats["average_wait_time"] = round(total_wait / wait_count, 2)
+
+            # Completed Today includes both receptionist checkouts and consultations
+            # that auto-completed (e.g. digital prescription generated).
+            stats["completed_today"] = int(stats.get("checked_out", 0)) + int(stats.get("completed", 0))
             
             return stats
         
