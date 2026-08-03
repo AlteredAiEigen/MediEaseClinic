@@ -169,6 +169,7 @@ export function WritePrescriptionPanel({
   const [letterhead, setLetterhead] = useState<PrescriptionLetterhead | null>(null);
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   const [confirmNewRxOpen, setConfirmNewRxOpen] = useState(false);
+  const [sendSuccessOpen, setSendSuccessOpen] = useState(false);
   const [sendErrorOpen, setSendErrorOpen] = useState(false);
   const [sendErrorMessage, setSendErrorMessage] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -740,6 +741,8 @@ export function WritePrescriptionPanel({
           setPrescriptionFinalized(true);
           setFinalizedVia("whatsapp");
           setDeliveryFailedMessage(null);
+          setConfirmSendOpen(false);
+          setSendSuccessOpen(true);
           toast({
             title: "Prescription sent on WhatsApp",
             description:
@@ -1294,6 +1297,28 @@ export function WritePrescriptionPanel({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Close</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={sendSuccessOpen} onOpenChange={setSendSuccessOpen}>
+        <AlertDialogContent className="z-[300]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Message sent successfully</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              The prescription WhatsApp message was sent to the patient. This prescription is now
+              view only.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => {
+                setSendSuccessOpen(false);
+                onOpenChange(false);
+              }}
+            >
+              OK
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

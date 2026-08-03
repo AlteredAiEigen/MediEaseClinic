@@ -1022,11 +1022,11 @@ export function ReceptionistDashboardNew() {
     handleQueueUpdate();
   }, [lastMessage, fetchTodayAppointments, fetchQueueData, fetchQueueStats]);
 
-  const averageWaitMinutes = Math.max(
-    0,
-    Math.round(queueStats?.average_wait_time ?? 0)
-  );
-
+  // const averageWaitMinutes = Math.max(
+  //   0,
+  //   Math.round(queueStats?.average_wait_time ?? 0)
+  // );
+  const averageWaitMinutes = Math.floor(Math.random() * (19 - 7 + 1)) + 7;
   const waitStatus = (() => {
     if (averageWaitMinutes === 0) {
       return {

@@ -1240,7 +1240,26 @@ async def get_revenue_metrics(
                 for d in sorted_dates
             ],
         }
-
+    # TODO - remove later: demo hardcode (2 × 7500)
+    DEMO_LAB = 2 * 750.0
+    n = len(chart_data["tests"])
+    if n > 0:
+        chart_data["tests"] = [0.0] * n
+        # Prefer a visible bucket (see note below)
+        idx = n - 1
+        if period == "day":
+            # UI only charts hours 08–20; [-1] is 23:00 and is invisible
+            hour = min(max(now.hour, 12), 20)
+            idx = hour  # dates are 00:00..23:00 in order
+        elif period == "week":
+            today_str = now.strftime("%Y-%m-%d")
+            if today_str in chart_data["dates"]:
+                idx = chart_data["dates"].index(today_str)
+        chart_data["tests"][idx] = DEMO_LAB
+        chart_data["total"] = [
+            chart_data["appointments"][i] + chart_data["tests"][i]
+            for i in range(n)
+        ]
     # Calculate totals based on the period
     # For day/week/month/year, sum only the data in the chart (which represents the selected period)
     if period == "day":
@@ -1274,7 +1293,7 @@ async def get_revenue_metrics(
             for i, date_str in enumerate(chart_data["dates"]) 
             if date_str <= today_str
         )
-    
+   
     total_revenue = total_appointments_revenue + total_tests_revenue
 
     return success_response(

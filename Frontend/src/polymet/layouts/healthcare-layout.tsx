@@ -68,7 +68,16 @@ export function HealthcareLayout({
   const effectiveRole = user?.role ?? userRole;
   const effectiveName = useMemo(() => {
     if (user) {
-      return user.firstName || userName;
+      const first = (user.firstName || "").trim();
+      const last = (user.lastName || "").trim();
+      const full = `${first} ${last}`.trim();
+      if (!full) return userName;
+      // Doctor sidebar: show title + full name (e.g. Dr. Parth Agrawal)
+      if (user.role === "doctor") {
+        const alreadyTitled = /^dr\.?\s/i.test(full);
+        return alreadyTitled ? full : `Dr. ${full}`;
+      }
+      return full;
     }
     return userName;
   }, [user, userName]);

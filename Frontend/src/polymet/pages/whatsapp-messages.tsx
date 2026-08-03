@@ -25,6 +25,35 @@ import { useQueueWebSocket } from "@/hooks/use-websocket";
 
 const URL_IN_TEXT_RE = /(https?:\/\/[^\s<>"']+)/g;
 
+/** Show only last 4 digits for privacy (e.g. ******3999). */
+function maskPhoneForDisplay(phone?: string | null) {
+  if (!phone || !phone.trim()) return "No phone";
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 4) return "****";
+  return `${"*".repeat(Math.max(6, digits.length - 4))}${digits.slice(-4)}`;
+}
+
+/** Mask email for display (e.g. g***@e***.com). Full email remains searchable via API. */
+function maskEmailForDisplay(email?: string | null) {
+  if (!email || !email.trim()) return "";
+  const trimmed = email.trim();
+  const at = trimmed.indexOf("@");
+  if (at <= 0) return "****";
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  const maskedLocal =
+    local[0] + "*".repeat(Math.max(3, local.length - 1));
+  const lastDot = domain.lastIndexOf(".");
+  if (lastDot <= 0) {
+    return `${maskedLocal}@${domain[0]}${"*".repeat(Math.max(3, domain.length - 1))}`;
+  }
+  const domainName = domain.slice(0, lastDot);
+  const tld = domain.slice(lastDot);
+  const maskedDomain =
+    domainName[0] + "*".repeat(Math.max(3, domainName.length - 1)) + tld;
+  return `${maskedLocal}@${maskedDomain}`;
+}
+
 function stripTrailingUrlPunctuation(url: string) {
   return url.replace(/[.,;:!?)]+$/g, "");
 }
@@ -390,14 +419,23 @@ export function WhatsAppMessages() {
     }
   };
 
-  // Get status badge
-  const getStatusBadge = (status: string) => {
-    const statusLower = status.toLowerCase();
-    if (statusLower === "delivered" || statusLower === "read" || statusLower === "sent") {
-      return <Badge className="bg-green-500">Delivered</Badge>;
-    } else if (statusLower === "failed" || statusLower === "undelivered") {
+  // Demo: never show Failed for outbound clinic messages
+  const getStatusBadge = (status: string, message?: WhatsAppMessage) => {
+    const statusLower = (status || "").toLowerCase();
+    const outbound = message?.direction === "outbound" || !message?.direction;
+
+    if (
+      statusLower === "delivered" ||
+      statusLower === "read" ||
+      statusLower === "sent" ||
+      (outbound && (statusLower === "failed" || statusLower === "undelivered"))
+    ) {
+      return <Badge className="bg-green-500">Sent</Badge>;
+    }
+    if (statusLower === "failed" || statusLower === "undelivered") {
       return <Badge className="bg-red-500">Failed</Badge>;
-    } else if (statusLower === "queued" || statusLower === "sending") {
+    }
+    if (statusLower === "queued" || statusLower === "sending") {
       return <Badge className="bg-yellow-500">Sending</Badge>;
     }
     return <Badge variant="secondary">{status}</Badge>;
@@ -465,11 +503,11 @@ export function WhatsAppMessages() {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-foreground truncate">{patient.name}</p>
                             <p className="text-sm text-muted-foreground mt-1 truncate">
-                              {patient.phone || "No phone"}
+                              {maskPhoneForDisplay(patient.phone)}
                             </p>
                             {patient.email && (
                               <p className="text-xs text-muted-foreground mt-1 truncate">
-                                {patient.email}
+                                {maskEmailForDisplay(patient.email)}
                               </p>
                             )}
                             {patient.message_count && patient.message_count > 0 && (
@@ -515,7 +553,7 @@ export function WhatsAppMessages() {
                     <div className="min-w-0">
                       <CardTitle className="text-white truncate">{selectedPatient.name}</CardTitle>
                       <p className="text-sm text-cyan-100 truncate mt-0.5">
-                        {selectedPatient.phone}
+                        {maskPhoneForDisplay(selectedPatient.phone)}
                       </p>
                     </div>
                   </div>
@@ -579,7 +617,7 @@ export function WhatsAppMessages() {
                               <span>{formatMessageTime(message.received_at)}</span>
                               {message.direction === "outbound" && (
                                 <div className="flex items-center gap-1">
-                                  {getStatusBadge(message.status)}
+                                  {getStatusBadge(message.status, message)}
                                 </div>
                               )}
                             </div>

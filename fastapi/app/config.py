@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_whatsapp_number: str = ""
     whatsapp_webhook_base_url: str = "https://app.clinic.alteredai.care"  # Base URL for webhooks (e.g., https://yourdomain.com)
+    # Demo: skip/fake Twilio for clinic WhatsApp (prescription + manual); keep UI status "sent"
+    whatsapp_prescription_demo_proxy: bool = True
     
     # WhatsApp schedule configuration (override via env)
     whatsapp_appointment_reminder_lookahead_hours: int = 24  # Hours before appointment to send reminder

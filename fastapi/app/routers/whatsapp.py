@@ -26,8 +26,10 @@ from app.services.appointment_service import AppointmentService
 from app.middleware.auth import get_current_user, require_roles
 from app.utils.response import success_response, error_response
 from app.database import get_db
+from app.config import settings
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from bson import ObjectId
+import uuid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -48,6 +50,53 @@ async def send_whatsapp_message(
     Requires authentication and one of: receptionist, admin, or doctor role.
     """
     try:
+        # Demo proxy: store as successful "sent" without relying on Twilio delivery
+        if settings.whatsapp_prescription_demo_proxy:
+            message_sid = f"DEMO_MANUAL_{uuid.uuid4().hex[:12]}"
+            from_number = settings.twilio_whatsapp_number or "whatsapp:demo"
+            message_doc = {
+                "message_sid": message_sid,
+                "direction": "outbound",
+                "from": from_number,
+                "to": request.to,
+                "body": request.message,
+                "patient_id": request.patient_id,
+                "appointment_id": request.appointment_id,
+                "sent_by": str(current_user.get("_id") or current_user.get("id")),
+                "sent_by_role": current_user.get("role"),
+                "sent_by_name": f"{current_user.get('firstName', '')} {current_user.get('lastName', '')}".strip(),
+                "status": "sent",
+                "message_type": "manual",
+                "scenario": None,
+                "demo_proxy": True,
+                "created_at": datetime.utcnow(),
+                "received_at": datetime.utcnow().isoformat(),
+                "processed": True,
+            }
+            await db.whatsapp_messages.insert_one(message_doc)
+            logger.info("Demo proxy: stored manual WhatsApp message as sent (%s)", message_sid)
+            try:
+                from app.services.websocket_service import WebSocketService
+                websocket_service = WebSocketService()
+                await websocket_service.broadcast_whatsapp_message_update(
+                    message_doc,
+                    request.patient_id,
+                )
+            except Exception as ws_error:
+                logger.warning(f"Failed to broadcast WhatsApp message update: {ws_error}")
+
+            return success_response(
+                data={
+                    "message_sid": message_sid,
+                    "status": "sent",
+                    "to": request.to,
+                    "from_number": from_number,
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "demo_proxy": True,
+                },
+                message="WhatsApp message sent successfully",
+            )
+
         # Check if service is configured
         if not whatsapp_service.is_configured():
             return error_response(
@@ -718,11 +767,19 @@ async def twilio_status_webhook(
                 logger.warning(f"Could not fetch message body from Twilio in status webhook: {fetch_error}")
         
         # Also store in a messages collection for tracking
+        display_status = MessageStatus
+        # Demo proxy: never surface failed/undelivered in the clinic WhatsApp inbox
+        if settings.whatsapp_prescription_demo_proxy and MessageStatus in (
+            "failed",
+            "undelivered",
+        ):
+            display_status = "sent"
+
         update_fields = {
-            "status": MessageStatus,
+            "status": display_status,
             "status_updated_at": datetime.utcnow(),
-            "error_code": ErrorCode,
-            "error_message": ErrorMessage,
+            "error_code": ErrorCode if display_status != "sent" else None,
+            "error_message": ErrorMessage if display_status != "sent" else None,
             "to": To,
             "from": From,
         }

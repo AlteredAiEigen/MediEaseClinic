@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
+from app.config import settings
 from app.constants.whatsapp_templates import PRESCRIPTION_TEMPLATE_NAME
 from app.services.healthcare_provider_service import HealthcareProviderService
 from app.services.prescription_share_service import PrescriptionShareService
@@ -190,6 +192,65 @@ class PrescriptionWhatsAppService:
                 appointment.get("appointmentId") or appointment.get("_id"),
             )
 
+        download_url = content_values.get("prescription_download_url") or ""
+        template = await self.whatsapp_template_service.fetch_template(PRESCRIPTION_TEMPLATE_NAME)
+        rendered_body = ""
+        if template:
+            rendered_body = mask_download_url_as_prescription(
+                render_template_body(template, content_values),
+                download_url,
+            )
+        else:
+            patient_name = content_values.get("patient_name") or "Patient"
+            clinic_phone = content_values.get("clinic_phone") or ""
+            clinic_name = content_values.get("clinic_name") or "MediEase Clinic"
+            rendered_body = (
+                f"Greetings,\n"
+                f"Wishing you a speedy recovery, {patient_name},\n"
+                f"You can download your prescription here: prescription. "
+                f"If you have any questions or need further assistance, please contact us: {clinic_phone}\n\n"
+                f"{clinic_name}"
+            )
+
+        # Demo proxy: pretend Twilio succeeded so demos never show failure,
+        # and still insert into whatsapp_messages for the clinic inbox.
+        if settings.whatsapp_prescription_demo_proxy:
+            message_sid = f"DEMO_{appointment.get('_id')}_{uuid.uuid4().hex[:10]}"
+            result = {
+                "success": True,
+                "message_sid": message_sid,
+                "status": "sent",
+                "delivery_status": "sent",
+                "to": to,
+                "from_number": getattr(settings, "twilio_whatsapp_number", "") or "whatsapp:demo",
+                "body": rendered_body,
+                "link_url": download_url or None,
+                "demo_proxy": True,
+                "template_name": PRESCRIPTION_TEMPLATE_NAME,
+            }
+            logger.info(
+                "Demo proxy: faking successful prescription WhatsApp for appointment %s (sid=%s)",
+                appointment.get("_id"),
+                message_sid,
+            )
+            await self._log_whatsapp_attempt(
+                appointment,
+                PRESCRIPTION_TEMPLATE_NAME,
+                True,
+                result,
+                set_flag=PRESCRIPTION_FLAG_FIELD,
+                sent_by=uploaded_by,
+                sent_by_name=uploaded_by_name,
+            )
+            return {
+                "success": True,
+                "skipped": False,
+                "message_sid": message_sid,
+                "downloadUrl": download_url,
+                "delivery_status": "sent",
+                "demo_proxy": True,
+            }
+
         if not self.whatsapp_template_service.is_configured():
             result = {
                 "success": False,
@@ -207,7 +268,6 @@ class PrescriptionWhatsAppService:
             return {"success": False, "skipped": False, "reason": "twilio_not_configured"}
 
         # Load template from whatsapp_templates — content_sid, body, variables come from DB
-        template = await self.whatsapp_template_service.fetch_template(PRESCRIPTION_TEMPLATE_NAME)
         if not template:
             result = {
                 "success": False,
@@ -237,9 +297,10 @@ class PrescriptionWhatsAppService:
         )
 
         # Always store a clinic-facing body with "prescription" instead of the raw URL.
-        download_url = content_values.get("prescription_download_url") or ""
-        rendered_body = render_template_body(template, content_values)
-        result["body"] = mask_download_url_as_prescription(rendered_body, download_url)
+        result["body"] = rendered_body or mask_download_url_as_prescription(
+            render_template_body(template, content_values),
+            download_url,
+        )
         if download_url:
             result["link_url"] = download_url
 

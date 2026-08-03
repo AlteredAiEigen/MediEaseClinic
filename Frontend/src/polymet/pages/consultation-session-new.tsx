@@ -878,17 +878,20 @@ export function ConsultationSession() {
                     : testNames.some((name: string) => /haemoglobin|hemoglobin|platelet|wbc|rbc/.test(name))
                       ? "Complete blood count"
                       : "Laboratory report";
-                const created = parsed.collectedDate || parsed.reportedDate || r.createdAt;
-                const d = created ? new Date(created) : null;
-                const dateStr = d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : "—";
-                return {
-                  name: genericType ? inferredType : parsed.reportType,
-                  date: dateStr,
-                  status: abnormalCount > 0 ? "high" as const : "normal" as const,
-                  url: r.presignedUrl,
-                  summary: parsed.summaryText || parsed.interpretation || "",
-                  abnormalCount,
-                };
+                      const created = parsed.collectedDate || parsed.reportedDate || r.createdAt;
+                      const d = created ? new Date(created) : null;
+                      const monthYear =
+                        d && !Number.isNaN(d.getTime())
+                          ? d.toLocaleDateString("en-US", { month: "long", year: "numeric" }) // e.g. "April 2026"
+                          : null;
+                    return {
+                      name: monthYear ? `Lab Test Report – ${monthYear}` : "Lab Test Report",
+                      date: d && !Number.isNaN(d.getTime()) ? d.toLocaleDateString() : "—",
+                      status: abnormalCount > 0 ? ("high" as const) : ("normal" as const),
+                      url: r.presignedUrl,
+                      summary: parsed.summaryText || parsed.interpretation || "",
+                      abnormalCount,
+                    };
               })
             : [];
           setLabResults(mapped.slice(0, 5));
@@ -1975,12 +1978,6 @@ export function ConsultationSession() {
                   {displayPatient.gender ? `• ${displayPatient.gender}` : ""}{" "}
                   • ID: {displayPatient.patientId}
               </p>
-              {displayPatient.condition && <Badge
-                variant="outline"
-                className="text-xs bg-emerald-50 text-emerald-700 border-emerald-200"
-              >
-                  {displayPatient.condition}
-              </Badge>}
             </div>
           </div>
 
@@ -2260,8 +2257,8 @@ export function ConsultationSession() {
               <Tabs value={insightsTab} onValueChange={setInsightsTab}>
                 <TabsList className="grid w-full grid-cols-3 mb-4">
                   <TabsTrigger value="overview">Overview</TabsTrigger>
-                  <TabsTrigger value="findings">Key Findings</TabsTrigger>
-                  <TabsTrigger value="recommendations">Care Plan</TabsTrigger>
+                  <TabsTrigger value="findings">Relevant Medical History</TabsTrigger>
+                  <TabsTrigger value="recommendations">AI Clinical Considerations</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="overview" className="space-y-4 mt-0">
